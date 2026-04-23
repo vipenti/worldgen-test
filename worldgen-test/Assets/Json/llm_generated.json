@@ -1,0 +1,14 @@
+{
+  "perlinScale": 0.02,
+  "chunkHeight": 35,
+  "chunkWidth": 16,
+  "surfaceTileID": 9,
+  "middleTileID": 7,
+  "deepTileID": 8,
+  "liquidTileID": 13,
+  "waterLevel": 5,
+  "detailScale": 0.12,
+  "flowerTileID": 4,
+  "bushTileID": 7,
+  "rockTileID": 8
+}
