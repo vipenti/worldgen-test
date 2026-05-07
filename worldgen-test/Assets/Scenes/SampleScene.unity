@@ -275,7 +275,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &249223928
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1189,7 +1189,6 @@ GameObject:
   - component: {fileID: 1447165634}
   - component: {fileID: 1447165635}
   - component: {fileID: 1447165636}
-  - component: {fileID: 1447165637}
   m_Layer: 0
   m_Name: VoxelTerrain
   m_TagString: Untagged
@@ -1226,7 +1225,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::WorldManager
   player: {fileID: 249223932}
   chunkPrefab: {fileID: 7262472378977919133, guid: 1923b02dbda562748ad858d2d660bd21, type: 3}
-  viewDistance: 8
+  atlasManager: {fileID: 1573031126}
+  viewDistance: 5
   blendDistance: 10
   pathWidth: 5
   pathBlendWidth: 50
@@ -1238,7 +1238,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1447165632}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 15dd2d2d073c2b54fb59bdba5ed817ea, type: 3}
   m_Name: 
@@ -1246,25 +1246,7 @@ MonoBehaviour:
   inputField: {fileID: 880284052}
   lmStudioEndpoint: http://127.0.0.1:1234/v1/chat/completions
   modelId: qwen/qwen3.5-9b
---- !u!114 &1447165637
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1447165632}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 2ba53ae149a1b9349853a05c552944cf, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::GenerateTexture
-  serverUrl: http://localhost:5000
-  prompt: seamless PBR wood texture, oak, top-down, photorealistic, 4k detail
-  negativePrompt: blurry, seams, low quality, distorted, watermark
-  tileable: 0
-  normalStrength: 5
-  steps: 4
-  guidanceScale: 0
+  generateTexture: {fileID: 1573031125}
 --- !u!1 &1521507449
 GameObject:
   m_ObjectHideFlags: 0
@@ -1348,7 +1330,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 1447165637}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: GenerateTexture, Assembly-CSharp
         m_MethodName: Generate
         m_Mode: 1
@@ -1398,6 +1380,73 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1521507449}
   m_CullTransparentMesh: 1
+--- !u!1 &1573031124
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1573031127}
+  - component: {fileID: 1573031126}
+  - component: {fileID: 1573031125}
+  m_Layer: 0
+  m_Name: AtlasManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1573031125
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1573031124}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ba53ae149a1b9349853a05c552944cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GenerateTexture
+  serverUrl: http://localhost:5000
+  materialName: wood
+  negativePrompt: blurry, seams, low quality, distorted, watermark
+  tileable: 1
+  normalStrength: 5
+  steps: 4
+  guidanceScale: 0
+--- !u!114 &1573031126
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1573031124}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38ef94223db2bca4584f9676b0b52163, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TextureAtlasManager
+  maxTextures: 32
+  columns: 8
+  textureSize: 512
+--- !u!4 &1573031127
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1573031124}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -11.05671, y: -0, z: 600.0012}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1707007902
 GameObject:
   m_ObjectHideFlags: 0
@@ -1868,3 +1917,4 @@ SceneRoots:
   - {fileID: 1447165634}
   - {fileID: 1358852792}
   - {fileID: 1707007904}
+  - {fileID: 1573031127}

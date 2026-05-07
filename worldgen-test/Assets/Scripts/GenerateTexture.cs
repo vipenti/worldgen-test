@@ -16,7 +16,7 @@ public class GenerateTexture : MonoBehaviour
     public string serverUrl = "http://localhost:5000";
 
     [Header("Parametri")]
-    public string prompt = "seamless tileable wood texture, top-down view";
+    public string materialName = "wood";
     [TextArea] public string negativePrompt = "";
     public bool tileable = false;
     public float normalStrength = 5.0f;
@@ -25,7 +25,9 @@ public class GenerateTexture : MonoBehaviour
     public int steps = 4;
     public float guidanceScale = 0.0f;
 
-    public static event Action<Texture2D> OnTextureGenerated;
+    public static event Action<Texture2D, string> OnTextureGenerated;
+    public static event Action<Texture2D>         OnNormalGenerated;
+    public static event Action<string>            OnGenerationComplete;
 
     [System.Serializable] class ImageResponse  { public string image_base64; }
     [System.Serializable] class NormalResponse { public string image_base64; }
@@ -33,11 +35,19 @@ public class GenerateTexture : MonoBehaviour
     [ContextMenu("Genera Texture")]
     public void Generate() => StartCoroutine(GenerateRoutine());
 
+    public void Generate(string name)
+    {
+        materialName = name;
+        StartCoroutine(GenerateRoutine());
+    }
+
     IEnumerator GenerateRoutine()
     {
         string outputDir = Path.Combine(Application.dataPath, "GeneratedTexture");
         Directory.CreateDirectory(outputDir);
-        string stamp = DateTime.Now.ToString("yyyyMMdd_HHmmss");
+        string safeName = materialName.Trim().Replace(" ", "_");
+        //string prompt   = $"seamless PBR {materialName} texture, top-down, minecraft style, albedo map";
+        string prompt = $"Seamless flat 2D tileable pattern of {materialName}, minimalist vector art, solid vibrant colors, simple shapes, cel-shaded style, hand-painted clean illustration, top-down orthographic perspective, 2D game asset, low detail, no gradients, no grit.";
 
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
@@ -64,13 +74,13 @@ public class GenerateTexture : MonoBehaviour
         }
 
         byte[] imageBytes = Convert.FromBase64String(imageBase64);
-        string albedoPath = Path.Combine(outputDir, $"texture_{stamp}.png");
+        string albedoPath = Path.Combine(outputDir, $"{safeName}.png");
         File.WriteAllBytes(albedoPath, imageBytes);
         Debug.Log($"<color=cyan>GenerateTexture:</color> Albedo salvata → {albedoPath}");
 
         Texture2D generated = new Texture2D(2, 2);
         generated.LoadImage(imageBytes);
-        OnTextureGenerated?.Invoke(generated);
+        OnTextureGenerated?.Invoke(generated, safeName);
 
         // Step 2: estrai normal map
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /extract_normal_map...");
@@ -96,9 +106,16 @@ public class GenerateTexture : MonoBehaviour
             yield break;
         }
 
-        string normalPath = Path.Combine(outputDir, $"texture_{stamp}_normal.png");
-        File.WriteAllBytes(normalPath, Convert.FromBase64String(normalBase64));
+        byte[] normalBytes = Convert.FromBase64String(normalBase64);
+        string normalPath = Path.Combine(outputDir, $"{safeName}_normal.png");
+        File.WriteAllBytes(normalPath, normalBytes);
         Debug.Log($"<color=cyan>GenerateTexture:</color> Normal map salvata → {normalPath}");
+
+        Texture2D generatedNormal = new Texture2D(2, 2);
+        generatedNormal.LoadImage(normalBytes);
+        OnNormalGenerated?.Invoke(generatedNormal);
+
+        OnGenerationComplete?.Invoke(safeName);
 
 #if UNITY_EDITOR
         AssetDatabase.Refresh();

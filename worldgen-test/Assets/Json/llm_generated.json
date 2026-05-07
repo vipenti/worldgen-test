@@ -1,14 +1,17 @@
 {
-  "perlinScale": 0.02,
-  "chunkHeight": 35,
+  "perlinScale": 0.015,
+  "chunkHeight": 28,
   "chunkWidth": 16,
-  "surfaceTileID": 9,
-  "middleTileID": 7,
-  "deepTileID": 8,
-  "liquidTileID": 13,
-  "waterLevel": 5,
+  "waterLevel": 4,
   "detailScale": 0.12,
+  "octaves": 4,
+  "ridgeFactor": 0.1,
+  "warpStrength": 0.15,
+  "surfaceTileID": 1,
+  "middleTileID": 2,
+  "deepTileID": 13,
+  "liquidTileID": 3,
   "flowerTileID": 4,
-  "bushTileID": 7,
-  "rockTileID": 8
+  "bushTileID": 1,
+  "rockTileID": 5
 }

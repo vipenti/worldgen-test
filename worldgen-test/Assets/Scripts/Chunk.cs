@@ -18,6 +18,11 @@ public class BiomeConfig
     public byte flowerTileID;
     public byte bushTileID;
     public byte rockTileID;
+
+    // Noise avanzato
+    public int   octaves      = 4;
+    public float ridgeFactor  = 0f;
+    public float warpStrength = 0.2f;
 }
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
@@ -31,7 +36,8 @@ public class Chunk : MonoBehaviour
 
     private int chunkWidth;
     private int chunkHeight;
-    private float texSize = 0.25f;
+    private const float texW = 1f / 8f; // 8 colonne nell'atlas
+    private const float texH = 1f / 4f; // 4 righe nell'atlas
     private BiomeConfig currentConfig;
 
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
@@ -46,6 +52,41 @@ public class Chunk : MonoBehaviour
 
         GenerateMapDataInterpolated(pos, oldBinary, targetBinary, transitionCenter, innerRadius, blendDist, pathHalfWidth, pathBlendWidth, pathLevel);
         GenerateMesh();
+    }
+
+    // fBm + ridged noise + domain warping
+    static float SampleNoise(float worldX, float worldZ, BiomeConfig cfg)
+    {
+        float wx = worldX, wz = worldZ;
+        if (cfg.warpStrength > 0f)
+        {
+            float s = cfg.perlinScale * 0.5f;
+            float ox = cfg.warpStrength * 60f * (Mathf.PerlinNoise(worldX * s + 31.7f, worldZ * s + 17.3f) * 2f - 1f);
+            float oz = cfg.warpStrength * 60f * (Mathf.PerlinNoise(worldX * s + 83.1f, worldZ * s + 59.4f) * 2f - 1f);
+            wx += ox; wz += oz;
+        }
+
+        int   octaves   = Mathf.Max(1, cfg.octaves);
+        float amplitude = 1f, frequency = 1f, value = 0f, maxValue = 0f;
+
+        for (int o = 0; o < octaves; o++)
+        {
+            float sample = Mathf.PerlinNoise(wx * cfg.perlinScale * frequency, wz * cfg.perlinScale * frequency);
+
+            if (cfg.ridgeFactor > 0f)
+            {
+                float ridge = 1f - Mathf.Abs(sample * 2f - 1f);
+                ridge *= ridge;
+                sample = Mathf.Lerp(sample, ridge, cfg.ridgeFactor);
+            }
+
+            value    += sample * amplitude;
+            maxValue += amplitude;
+            amplitude *= 0.5f;
+            frequency *= 2f;
+        }
+
+        return maxValue > 0f ? value / maxValue : 0f;
     }
 
     void GenerateMapDataInterpolated(Vector2Int pos, BiomeConfig old, BiomeConfig target, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
@@ -63,8 +104,8 @@ public class Chunk : MonoBehaviour
                 float adjustedDist = Mathf.Max(0f, dist - innerRadius);
                 float t           = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(adjustedDist / blendDist));
 
-                float noiseOld    = Mathf.PerlinNoise(worldX * old.perlinScale,    worldZ * old.perlinScale);
-                float noiseTarget = Mathf.PerlinNoise(worldX * target.perlinScale, worldZ * target.perlinScale);
+                float noiseOld    = SampleNoise(worldX, worldZ, old);
+                float noiseTarget = SampleNoise(worldX, worldZ, target);
                 int finalHeight   = Mathf.FloorToInt(Mathf.Lerp(noiseOld * old.chunkHeight, noiseTarget * target.chunkHeight, t));
 
                 // Appiattimento del path lungo Z (centro a worldX=0)
@@ -81,13 +122,18 @@ public class Chunk : MonoBehaviour
                 byte surface = useNew ? target.surfaceTileID : old.surfaceTileID;
                 byte middle  = useNew ? target.middleTileID  : old.middleTileID;
                 byte deep    = useNew ? target.deepTileID    : old.deepTileID;
+                byte liquid  = useNew ? target.liquidTileID  : old.liquidTileID;
+                int waterLevel = Mathf.RoundToInt(Mathf.Lerp(old.waterLevel, target.waterLevel, t));
 
                 for (int y = 0; y < 256; y++)
                 {
-                    if      (y > finalHeight)          map[x, y, z] = 0;
-                    else if (y == finalHeight)         map[x, y, z] = surface;
-                    else if (y > finalHeight - 3)      map[x, y, z] = middle;
-                    else                               map[x, y, z] = deep;
+                    if (y > finalHeight)
+                    {
+                        map[x, y, z] = (y <= waterLevel) ? liquid : (byte)0;
+                    }
+                    else if (y == finalHeight) map[x, y, z] = surface;
+                    else if (y > finalHeight - 3) map[x, y, z] = middle;
+                    else map[x, y, z] = deep;
                 }
             }
         }
@@ -219,13 +265,13 @@ public class Chunk : MonoBehaviour
         }
 
         int textureIndex = blockID - 1;
-        float xOffset = (textureIndex % 4) * texSize;
-        float yOffset = (3 - (textureIndex / 4)) * texSize;
+        float xOffset = (textureIndex % 8) * texW;
+        float yOffset = (3 - (textureIndex / 8)) * texH;
 
-        uvs.Add(new Vector2(xOffset, yOffset));
-        uvs.Add(new Vector2(xOffset, yOffset + texSize));
-        uvs.Add(new Vector2(xOffset + texSize, yOffset + texSize));
-        uvs.Add(new Vector2(xOffset + texSize, yOffset));
+        uvs.Add(new Vector2(xOffset,        yOffset));
+        uvs.Add(new Vector2(xOffset,        yOffset + texH));
+        uvs.Add(new Vector2(xOffset + texW, yOffset + texH));
+        uvs.Add(new Vector2(xOffset + texW, yOffset));
 
         triangles.Add(vCount); triangles.Add(vCount + 1); triangles.Add(vCount + 2);
         triangles.Add(vCount); triangles.Add(vCount + 2); triangles.Add(vCount + 3);
