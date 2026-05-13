@@ -1,0 +1,8 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Get-Content \"c:\\\\Users\\\\vpentangelo\\\\Documents\\\\GitHub\\\\worldgen-test\\\\worldgen-test\\\\Assets\\\\Json\\\\objects\\\\rabbit.json\" -TotalCount 5)",
+      "Read(//c/Users/vpentangelo/Documents/GitHub/worldgen-test/**)"
+    ]
+  }
+}
