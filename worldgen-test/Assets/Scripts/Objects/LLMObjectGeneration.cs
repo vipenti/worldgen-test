@@ -5,11 +5,6 @@ using UnityEngine;
 using UnityEngine.Networking;
 using System.Collections;
 
-[Serializable]
-class ImageResponse
-{
-    public string image_base64;
-}
 
 public class LLMObjectGeneration : MonoBehaviour
 {
@@ -27,7 +22,7 @@ public class LLMObjectGeneration : MonoBehaviour
     [Header("Generation")]
     public Quality quality = Quality.low;
     public bool transparent = true;
-    public string serverAddress = "http://127.0.0.1:5000";
+    public string serverAddress = "http://25.18.55.60:5000";
 
     [Header("Output")]
     public string outputFolder = "Assets/GeneratedImages";
@@ -72,22 +67,21 @@ public class LLMObjectGeneration : MonoBehaviour
             yield break;
         }
 
-        var response = JsonUtility.FromJson<ImageResponse>(req.downloadHandler.text);
-        if (string.IsNullOrEmpty(response?.image_base64))
+        var imageData = req.downloadHandler.data;
+        if (imageData == null || imageData.Length == 0)
         {
-            Debug.LogError("LLMObjectGeneration: empty image_base64 in response");
+            Debug.LogError("LLMObjectGeneration: empty response from server");
             IsGenerating = false;
             yield break;
         }
 
         if (!Directory.Exists(outputFolder))
             Directory.CreateDirectory(outputFolder);
-
         string outputPath = Path.Combine(outputFolder, $"{object_name}.png");
-        File.WriteAllBytes(outputPath, Convert.FromBase64String(response.image_base64));
+        File.WriteAllBytes(outputPath, imageData);
         Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
 
-        llm3DGeneration?.GenerateFromPath(Path.GetFullPath(outputPath), object_name);
+        llm3DGeneration?.GenerateFromBytes(imageData, object_name);
 
         if (llm3DGeneration != null)
             yield return new WaitUntil(() => !llm3DGeneration.IsGenerating);

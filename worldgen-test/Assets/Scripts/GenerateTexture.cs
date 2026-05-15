@@ -13,7 +13,7 @@ using UnityEditor;
 public class GenerateTexture : MonoBehaviour
 {
     [Header("Server")]
-    public string serverUrl = "http://localhost:5000";
+    public string serverUrl = "http://25.18.55.60:5000";
 
     [Header("Parametri")]
     public string materialName = "wood";
@@ -47,7 +47,7 @@ public class GenerateTexture : MonoBehaviour
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
         //string prompt   = $"seamless PBR {materialName} texture, top-down, minecraft style, albedo map";
-        string prompt = $"Seamless flat 2D tileable pattern of {materialName}, minimalist vector art, solid vibrant colors, simple shapes, cel-shaded style, hand-painted clean illustration, top-down orthographic perspective, 2D game asset, low detail, no gradients, no grit.";
+        string prompt = $"Seamless flat 2D tileable pattern of Minecraft {materialName} texture, viewed from above orthographic perspective.";
 
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
@@ -63,17 +63,16 @@ public class GenerateTexture : MonoBehaviour
             yield break;
         }
 
-        Debug.Log($"<color=cyan>GenerateTexture:</color> Risposta /create_image: {req1.downloadHandler.text}");
-        string imageBase64 = JsonUtility.FromJson<ImageResponse>(req1.downloadHandler.text).image_base64;
+        byte[] imageBytes = req1.downloadHandler.data;
         req1.Dispose();
 
-        if (string.IsNullOrEmpty(imageBase64))
+        if (imageBytes == null || imageBytes.Length == 0)
         {
-            Debug.LogError("[GenerateTexture] image_base64 è null o vuoto — controlla il nome del campo nella risposta.");
+            Debug.LogError("[GenerateTexture] risposta vuota da /create_image");
             yield break;
         }
 
-        byte[] imageBytes = Convert.FromBase64String(imageBase64);
+        string imageBase64 = Convert.ToBase64String(imageBytes);
         string albedoPath = Path.Combine(outputDir, $"{safeName}.png");
         File.WriteAllBytes(albedoPath, imageBytes);
         Debug.Log($"<color=cyan>GenerateTexture:</color> Albedo salvata → {albedoPath}");
@@ -96,17 +95,14 @@ public class GenerateTexture : MonoBehaviour
             yield break;
         }
 
-        Debug.Log($"<color=cyan>GenerateTexture:</color> Risposta /extract_normal_map: {req2.downloadHandler.text}");
-        string normalBase64 = JsonUtility.FromJson<NormalResponse>(req2.downloadHandler.text).image_base64;
+        byte[] normalBytes = req2.downloadHandler.data;
         req2.Dispose();
 
-        if (string.IsNullOrEmpty(normalBase64))
+        if (normalBytes == null || normalBytes.Length == 0)
         {
-            Debug.LogError("[GenerateTexture] normal_map_base64 è null o vuoto — controlla il nome del campo nella risposta.");
+            Debug.LogError("[GenerateTexture] risposta vuota da /extract_normal_map");
             yield break;
         }
-
-        byte[] normalBytes = Convert.FromBase64String(normalBase64);
         string normalPath = Path.Combine(outputDir, $"{safeName}_normal.png");
         File.WriteAllBytes(normalPath, normalBytes);
         Debug.Log($"<color=cyan>GenerateTexture:</color> Normal map salvata → {normalPath}");

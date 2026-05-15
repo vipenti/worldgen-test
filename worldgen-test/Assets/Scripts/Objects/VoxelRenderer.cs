@@ -65,6 +65,16 @@ public class VoxelRenderer : MonoBehaviour
 #endif
     }
 
+    public void LoadFromJson(string json, string assetName = "object")
+    {
+        jsonFileName = assetName + ".voxjson";
+        _data = ParseJson(json);
+        BuildBatches(_data);
+#if UNITY_EDITOR
+        SaveAsAsset();
+#endif
+    }
+
     VoxelData ParseJson(string json)
     {
         var root = JObject.Parse(json);

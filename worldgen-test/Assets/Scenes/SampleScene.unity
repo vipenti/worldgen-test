@@ -897,7 +897,7 @@ RectTransform:
   m_GameObject: {fileID: 880284050}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.28584, y: 0.28584, z: 0.28584}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1374698191}
@@ -905,7 +905,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 804.5725, y: -541.21246}
+  m_AnchoredPosition: {x: 136, y: -143}
   m_SizeDelta: {x: 831.0577, y: 83.5751}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &880284052
@@ -1244,7 +1244,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMWorldDirector
   inputField: {fileID: 880284052}
-  lmStudioEndpoint: http://127.0.0.1:1234/v1/chat/completions
+  lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
   modelId: qwen/qwen3.5-9b
   generateTexture: {fileID: 1573031125}
 --- !u!1 &1521507449
@@ -1275,7 +1275,7 @@ RectTransform:
   m_GameObject: {fileID: 1521507449}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 2.7749, y: 2.7749, z: 2.7749}
+  m_LocalScale: {x: 0.7931774, y: 0.7931774, z: 0.7931774}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1959077886}
@@ -1283,7 +1283,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 952, y: -377}
+  m_AnchoredPosition: {x: 178.141, y: -96.061005}
   m_SizeDelta: {x: 160, y: 30}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1521507451
@@ -1410,7 +1410,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2ba53ae149a1b9349853a05c552944cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::GenerateTexture
-  serverUrl: http://localhost:5000
+  serverUrl: http://25.18.55.60:5000
   materialName: wood
   negativePrompt: blurry, seams, low quality, distorted, watermark
   tileable: 1

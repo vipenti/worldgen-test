@@ -12,7 +12,7 @@ using UnityEngine.EventSystems;
 public class LLMWorldDirector : MonoBehaviour
 {
     public TMP_InputField inputField;
-    public string lmStudioEndpoint = "http://127.0.0.1:1234/v1/chat/completions";
+    public string lmStudioEndpoint = "http://25.18.55.60:1234/v1/chat/completions";
     public string modelId = "qwen/qwen3.5-9b";
     public GenerateTexture generateTexture;
 
@@ -240,7 +240,7 @@ Output: {
 
         // Costruzione e salvataggio JSON finale
         string finalJson = BuildFinalJson(cleanJson, resolved);
-        string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+        string path = Path.Combine("Assets", "Json", "llm_generated.json");
         File.WriteAllText(path, finalJson);
 
         Debug.Log("JSON finale salvato: " + finalJson);
@@ -269,7 +269,7 @@ Output: {
     Dictionary<string, int> LoadMaterials()
     {
         var dict = new Dictionary<string, int>();
-        string path = Path.Combine(Application.dataPath, "Json", "materials.json");
+        string path = Path.Combine("Assets", "Json", "materials.json");
         if (!File.Exists(path)) return dict;
 
         string json = File.ReadAllText(path).Trim().Trim('{', '}');

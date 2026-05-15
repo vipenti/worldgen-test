@@ -8,7 +8,7 @@ using UnityEngine.Networking;
 [Serializable]
 class VoxOnlyRequest
 {
-    public string image_path;
+    public string image_base64;
     public string output_dir;
     public string output_name;
     public int    seed                   = 1;
@@ -18,14 +18,6 @@ class VoxOnlyRequest
     public int    slat_sampling_steps    = 12;
 }
 
-[Serializable]
-class VoxOnlyResponse
-{
-    public string status;
-    public int    voxel_count;
-    public string vxz_path;
-    public string voxjson_path;
-}
 
 public class LLM3DGeneration : MonoBehaviour
 {
@@ -43,11 +35,21 @@ public class LLM3DGeneration : MonoBehaviour
     [Header("References")]
     public VoxelRenderer voxelRenderer;
 
-    const string Endpoint = "http://127.0.0.1:7960/generate_vox_only";
+    const string Endpoint = "http://25.18.55.60:7960/generate_vox_only";
 
-    string OutputDir => Path.Combine(Application.dataPath, "Json", "objects");
+    string OutputDir => Path.Combine("Assets", "Json", "objects");
 
     public bool IsGenerating { get; private set; }
+
+    byte[] _pendingImageBytes;
+
+    public void GenerateFromBytes(byte[] bytes, string name = "")
+    {
+        _pendingImageBytes = bytes;
+        outputName         = name;
+        IsGenerating       = true;
+        StartCoroutine(GenerateCoroutine());
+    }
 
     public void GenerateFromPath(string path, string name = "")
     {
@@ -70,28 +72,40 @@ public class LLM3DGeneration : MonoBehaviour
 
     IEnumerator GenerateCoroutine()
     {
-        // Rimuove virgolette/spazi accidentali e normalizza i separatori
-        var cleanPath = imagePath.Trim().Trim('"');
-        var absImagePath = Path.IsPathRooted(cleanPath)
-            ? cleanPath
-            : Path.GetFullPath(Path.Combine(Application.dataPath, "..", cleanPath));
-        absImagePath = absImagePath.Replace('\\', '/');
+        byte[] imageBytes;
+        string name;
 
-        if (!File.Exists(absImagePath))
+        if (_pendingImageBytes != null)
         {
-            Debug.LogError($"LLM3DGeneration: file non trovato: {absImagePath}");
-            yield break;
+            imageBytes         = _pendingImageBytes;
+            _pendingImageBytes = null;
+            name = string.IsNullOrEmpty(outputName) ? "object" : outputName;
+        }
+        else
+        {
+            var cleanPath = imagePath.Trim().Trim('"');
+            var absImagePath = Path.IsPathRooted(cleanPath)
+                ? cleanPath
+                : Path.GetFullPath(Path.Combine(Application.dataPath, "..", cleanPath));
+            absImagePath = absImagePath.Replace('\\', '/');
+
+            if (!File.Exists(absImagePath))
+            {
+                Debug.LogError($"LLM3DGeneration: file non trovato: {absImagePath}");
+                yield break;
+            }
+
+            imageBytes = File.ReadAllBytes(absImagePath);
+            name = string.IsNullOrEmpty(outputName)
+                ? Path.GetFileNameWithoutExtension(cleanPath)
+                : outputName;
         }
 
         var absOutputDir = OutputDir.Replace('\\', '/');
 
-        var name = string.IsNullOrEmpty(outputName)
-            ? Path.GetFileNameWithoutExtension(cleanPath)
-            : outputName;
-
         var request = new VoxOnlyRequest
         {
-            image_path             = absImagePath,
+            image_base64           = Convert.ToBase64String(imageBytes),
             output_dir             = absOutputDir,
             output_name            = name,
             seed                   = seed,
@@ -109,7 +123,7 @@ public class LLM3DGeneration : MonoBehaviour
         req.SetRequestHeader("Content-Type", "application/json");
         req.timeout = 180;
 
-        Debug.Log($"LLM3DGeneration: generazione '{name}' da {imagePath}...");
+        Debug.Log($"LLM3DGeneration: generazione '{name}'...");
         yield return req.SendWebRequest();
 
         if (req.result != UnityWebRequest.Result.Success)
@@ -119,15 +133,8 @@ public class LLM3DGeneration : MonoBehaviour
             yield break;
         }
 
-        var response = JsonUtility.FromJson<VoxOnlyResponse>(req.downloadHandler.text);
-        Debug.Log($"LLM3DGeneration: {response.voxel_count} voxels → {response.voxjson_path}");
-
-        if (voxelRenderer != null)
-        {
-            voxelRenderer.jsonFolder   = Path.GetDirectoryName(response.voxjson_path);
-            voxelRenderer.jsonFileName = Path.GetFileName(response.voxjson_path);
-            voxelRenderer.Reload();
-        }
+        Debug.Log($"LLM3DGeneration: risposta ricevuta ({req.downloadHandler.data.Length} bytes)");
+        voxelRenderer?.LoadFromJson(req.downloadHandler.text, name);
 
         IsGenerating = false;
     }

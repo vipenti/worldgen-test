@@ -256,6 +256,52 @@ MonoBehaviour:
     m_VarianceClampScale: 0.9
     m_ContrastAdaptiveSharpening: 0
   m_Version: 2
+--- !u!1 &1036177226
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1036177228}
+  - component: {fileID: 1036177227}
+  m_Layer: 0
+  m_Name: AssetGenerator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1036177227
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1036177226}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6430d02e3f819b34b90c2be5041ecb24, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GenerateAsset
+  listPath: Assets/Json/list_of_objects.json
+  llmObjectGeneration: {fileID: 1308525855}
+--- !u!4 &1036177228
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1036177226}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1308525852
 GameObject:
   m_ObjectHideFlags: 0
@@ -323,14 +369,15 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: flower poit
   stylePrompt: A flower poit made only of cubes in Minecraft style on a neutral background.
-    High resolution, isometric view, studio lighting.
+    Low cube resolution, isometric view, studio lighting.
   negativePrompt: shadow, background, fine grained details, ground, floor, base,
     text, watermark, multiple elements
-  quality: 0
+  quality: 1
   transparent: 1
-  serverAddress: http://127.0.0.1:5000
+  serverAddress: http://25.18.55.60:5000
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 1308525856}
+  autoGenerate: 0
 --- !u!114 &1308525856
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -343,7 +390,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a8e8a8d2705b0f44188c8a1dab657222, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLM3DGeneration
-  imagePath: '"C:\Users\vpentangelo\Documents\GitHub\worldgen-test\worldgen-test\Assets\GeneratedImages\elephant.png"'
+  imagePath: 
   outputName: elephant
   seed: 1
   ssGuidanceStrength: 7.5
@@ -485,3 +532,4 @@ SceneRoots:
   - {fileID: 35526978}
   - {fileID: 2078267562}
   - {fileID: 1308525854}
+  - {fileID: 1036177228}
