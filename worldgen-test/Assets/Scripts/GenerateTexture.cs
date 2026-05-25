@@ -47,7 +47,7 @@ public class GenerateTexture : MonoBehaviour
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
         //string prompt   = $"seamless PBR {materialName} texture, top-down, minecraft style, albedo map";
-        string prompt = $"Seamless flat 2D tileable pattern of Minecraft {materialName} texture, viewed from above orthographic perspective.";
+        string prompt = $"Seamless flat 2D tileable pixel art texture of a simple {materialName} surface, 8-bit game sprite asset, solid colors, clean square shapes, minimalist design, top-down orthographic 90-degree scanner view, perfect square pattern, no depth.";
 
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");

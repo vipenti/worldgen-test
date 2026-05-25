@@ -23,6 +23,37 @@ public class BiomeConfig
     public int   octaves      = 4;
     public float ridgeFactor  = 0f;
     public float warpStrength = 0.2f;
+
+    // Layer 2 – ridge overlay (legacy). ridgeLayerAmplitude=0 disables it.
+    public float ridgeLayerScale     = 0f;
+    public float ridgeLayerAmplitude = 0f;
+
+    // Layer 3 – billow overlay (legacy). billowLayerAmplitude=0 disables it.
+    public float billowLayerScale     = 0f;
+    public float billowLayerAmplitude = 0f;
+
+    // Layout map (legacy scatter)
+    public float objectDensityThreshold = 0.65f;
+    public float detailScaleForLayout   = 0.15f;
+
+    // === Python-schema noise system (active when scaleMacro > 0) ===
+    // 1. Continental / Macro noise
+    public float scaleMacro        = 0f;   // size of macro regions [30-100]
+    public float macroInfluence    = 1.0f; // how strongly macro mixes billow vs ridged [0-1]
+    // 2. Billow – rounded hills / dunes
+    public float scaleBillow       = 25f;  // horizontal scale [10-60]
+    public float ampBillow         = 20f;  // height contribution [0-50]
+    public float billowExponent    = 1.0f; // shape: <1 flat tops, >1 steeper [0.5-2]
+    // 3. Ridged – sharp peaks / canyons
+    public float scaleRidged       = 15f;  // horizontal scale [5-30]
+    public float ampRidged         = 40f;  // height contribution [0-80]
+    public float ridgedExponent    = 2.0f; // sharpness: higher = knife-edge [1-3]
+    // 4. Domain warping  (warpStrength already exists; warpScale is new)
+    public float warpScale         = 20f;  // scale of warp noise [10-40]
+    // 5. Base & layout
+    public float baseTerrainHeight = 15f;  // Y floor before noise layers [5-25]
+    public float scaleLayout       = 30f;  // spawn-zone size [10-60]
+    public float slopeMaxLimit     = 1.2f; // max slope for object placement [0.5-3]
 }
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
@@ -40,17 +71,23 @@ public class Chunk : MonoBehaviour
     private const float texH = 1f / 4f; // 4 righe nell'atlas
     private BiomeConfig currentConfig;
 
+    public float[,] LayoutMap { get; private set; }
+    public int[,]   HeightMap { get; private set; }
+
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
     public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
     {
         chunkWidth  = targetBinary.chunkWidth;
         chunkHeight = Mathf.Max(oldBinary.chunkHeight, targetBinary.chunkHeight);
 
-        map = new byte[chunkWidth, 256, chunkWidth];
+        map       = new byte[chunkWidth, 256, chunkWidth];
+        HeightMap = new int[chunkWidth, chunkWidth];
+        LayoutMap = new float[chunkWidth, chunkWidth];
         mesh = new Mesh();
         GetComponent<MeshFilter>().mesh = mesh;
 
         GenerateMapDataInterpolated(pos, oldBinary, targetBinary, transitionCenter, innerRadius, blendDist, pathHalfWidth, pathBlendWidth, pathLevel);
+        ComputeLayoutMap(pos, targetBinary);
         GenerateMesh();
     }
 
@@ -89,6 +126,111 @@ public class Chunk : MonoBehaviour
         return maxValue > 0f ? value / maxValue : 0f;
     }
 
+    public static float SampleNoisePublic(float worldX, float worldZ, BiomeConfig cfg) => SampleNoise(worldX, worldZ, cfg);
+
+    public static float SampleRidgedNoise(float worldX, float worldZ, float scale, int octaves)
+    {
+        float value = 0f, amplitude = 1f, frequency = 1f, maxValue = 0f;
+        for (int o = 0; o < Mathf.Max(1, octaves); o++)
+        {
+            float s     = Mathf.PerlinNoise(worldX * scale * frequency, worldZ * scale * frequency);
+            float ridge = 1f - Mathf.Abs(s * 2f - 1f);
+            ridge *= ridge;
+            value    += ridge * amplitude;
+            maxValue += amplitude;
+            amplitude *= 0.5f; frequency *= 2f;
+        }
+        return maxValue > 0f ? value / maxValue : 0f;
+    }
+
+    public static float SampleBillowNoise(float worldX, float worldZ, float scale, int octaves)
+    {
+        float value = 0f, amplitude = 1f, frequency = 1f, maxValue = 0f;
+        for (int o = 0; o < Mathf.Max(1, octaves); o++)
+        {
+            float s      = Mathf.PerlinNoise(worldX * scale * frequency, worldZ * scale * frequency);
+            float billow = Mathf.Abs(s * 2f - 1f);
+            value    += billow * amplitude;
+            maxValue += amplitude;
+            amplitude *= 0.5f; frequency *= 2f;
+        }
+        return maxValue > 0f ? value / maxValue : 0f;
+    }
+
+    // Python-schema compound height (used when cfg.scaleMacro > 0)
+    public static float ComputeHeightNew(float wx, float wz, BiomeConfig cfg)
+    {
+        // 1. Domain warping
+        float warpedX = wx, warpedZ = wz;
+        if (cfg.warpStrength > 0f && cfg.warpScale > 0f)
+        {
+            float s = 1f / cfg.warpScale;
+            warpedX += (Mathf.PerlinNoise(wx * s + 501f, wz * s + 1f)   * 2f - 1f) * cfg.warpStrength;
+            warpedZ += (Mathf.PerlinNoise(wx * s + 2f,   wz * s + 502f) * 2f - 1f) * cfg.warpStrength;
+        }
+
+        // 2. Macro (no warp — large scale, stable)
+        float macro = cfg.scaleMacro > 0f
+            ? Mathf.PerlinNoise(wx / cfg.scaleMacro + 101f, wz / cfg.scaleMacro + 4917.3f)
+            : 0.5f;
+
+        // 3. Billow  |raw*2-1|^exponent * amp
+        float billow = 0f;
+        if (cfg.ampBillow > 0f && cfg.scaleBillow > 0f)
+        {
+            float raw = Mathf.PerlinNoise(warpedX / cfg.scaleBillow + 202f, warpedZ / cfg.scaleBillow + 7631.1f);
+            billow = Mathf.Pow(Mathf.Abs(raw * 2f - 1f), cfg.billowExponent) * cfg.ampBillow;
+        }
+
+        // 4. Ridged  (1-|raw*2-1|)^exponent * amp
+        float ridged = 0f;
+        if (cfg.ampRidged > 0f && cfg.scaleRidged > 0f)
+        {
+            float raw = Mathf.PerlinNoise(warpedX / cfg.scaleRidged + 303f, warpedZ / cfg.scaleRidged + 2813.9f);
+            ridged = Mathf.Pow(1f - Mathf.Abs(raw * 2f - 1f), cfg.ridgedExponent) * cfg.ampRidged;
+        }
+
+        // 5. Fusion: macro decides how much ridged vs billow
+        float height = cfg.baseTerrainHeight
+                     + billow * (1f - macro * cfg.macroInfluence)
+                     + ridged * macro;
+
+        // 6. Depression mask: conche acquatiche dove macro è molto basso
+        float depression = Mathf.Clamp01((macro - 0.25f) / 0.15f);
+        height = depression * height + (1f - depression) * (cfg.waterLevel - 3f);
+
+        return height;
+    }
+
+    void ComputeLayoutMap(Vector2Int pos, BiomeConfig cfg)
+    {
+        int   w          = chunkWidth;
+        float slopeLimit = cfg.slopeMaxLimit > 0f ? cfg.slopeMaxLimit : 4f;
+        float scaleL     = cfg.scaleLayout   > 0f ? cfg.scaleLayout   : 30f;
+
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < w; z++)
+        {
+            int h = HeightMap[x, z];
+            if (h <= cfg.waterLevel) { LayoutMap[x, z] = 0f; continue; }
+
+            // Central-difference gradient (matches Python's np.gradient)
+            int hn = (z + 1 < w) ? HeightMap[x, z + 1] : h;
+            int hs = (z - 1 >= 0) ? HeightMap[x, z - 1] : h;
+            int he = (x + 1 < w) ? HeightMap[x + 1, z] : h;
+            int hw = (x - 1 >= 0) ? HeightMap[x - 1, z] : h;
+            float gx    = (he - hw) * 0.5f;
+            float gz    = (hn - hs) * 0.5f;
+            float slope = Mathf.Sqrt(gx * gx + gz * gz);
+
+            if (slope > slopeLimit) { LayoutMap[x, z] = 0f; continue; }
+
+            float worldX = pos.x * w + x;
+            float worldZ = pos.y * w + z;
+            LayoutMap[x, z] = Mathf.PerlinNoise(worldX / scaleL + 404f, worldZ / scaleL + 5591.7f);
+        }
+    }
+
     void GenerateMapDataInterpolated(Vector2Int pos, BiomeConfig old, BiomeConfig target, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
     {
         for (int x = 0; x < chunkWidth; x++)
@@ -104,9 +246,29 @@ public class Chunk : MonoBehaviour
                 float adjustedDist = Mathf.Max(0f, dist - innerRadius);
                 float t           = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(adjustedDist / blendDist));
 
-                float noiseOld    = SampleNoise(worldX, worldZ, old);
-                float noiseTarget = SampleNoise(worldX, worldZ, target);
-                int finalHeight   = Mathf.FloorToInt(Mathf.Lerp(noiseOld * old.chunkHeight, noiseTarget * target.chunkHeight, t));
+                float rawOld, rawTarget;
+                if (target.scaleMacro > 0f)
+                {
+                    rawTarget = ComputeHeightNew(worldX, worldZ, target);
+                    rawOld    = old.scaleMacro > 0f
+                        ? ComputeHeightNew(worldX, worldZ, old)
+                        : SampleNoise(worldX, worldZ, old) * old.chunkHeight;
+                }
+                else
+                {
+                    float noiseOld    = SampleNoise(worldX, worldZ, old);
+                    float noiseTarget = SampleNoise(worldX, worldZ, target);
+                    rawOld    = noiseOld    * old.chunkHeight;
+                    rawTarget = noiseTarget * target.chunkHeight;
+                    if (target.ridgeLayerAmplitude > 0f)
+                        rawTarget += SampleRidgedNoise(worldX, worldZ, target.ridgeLayerScale, target.octaves)
+                                     * target.ridgeLayerAmplitude * target.chunkHeight;
+                    if (target.billowLayerAmplitude > 0f)
+                        rawTarget += SampleBillowNoise(worldX, worldZ, target.billowLayerScale, target.octaves)
+                                     * target.billowLayerAmplitude * target.chunkHeight;
+                }
+
+                int finalHeight = Mathf.FloorToInt(Mathf.Lerp(rawOld, rawTarget, t));
 
                 // Appiattimento del path lungo Z (centro a worldX=0)
                 float distFromPath = Mathf.Abs(worldX);
@@ -116,6 +278,8 @@ public class Chunk : MonoBehaviour
                     float pathInfluence = 1f - Mathf.SmoothStep(0f, 1f, blendT);
                     finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, pathLevel, pathInfluence));
                 }
+
+                HeightMap[x, z] = finalHeight;
 
                 float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
                 bool useNew  = dither < t;

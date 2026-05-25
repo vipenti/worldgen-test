@@ -20,6 +20,12 @@ public class WorldManager : MonoBehaviour
     public float pathBlendWidth = 20f; // Blocchi di raccordo verso le colline
     public int pathLevel = 8;          // Quota del path
 
+    [Header("Layout Map")]
+    public GameObject defaultObjectPrefab;
+
+    [Header("Debug Visualization")]
+    public MapVisualizer mapVisualizer;
+
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
 
@@ -60,6 +66,7 @@ public class WorldManager : MonoBehaviour
         targetConfig = LoadLatestConfig();
         oldConfig = targetConfig;
 
+        mapVisualizer?.GenerateMaps(targetConfig);
         UpdateChunks();
         yield return StartCoroutine(SpawnPlayer());
     }
@@ -138,6 +145,7 @@ public class WorldManager : MonoBehaviour
             transitionStartCoord = currentCoord;
             isTransitioning = true;
 
+            mapVisualizer?.GenerateMaps(targetConfig);
         }
     }
 
@@ -194,6 +202,24 @@ public class WorldManager : MonoBehaviour
 
             chunkScript.Initialize(coord, oldConfig, targetConfig, tCenter, innerRadius, blendDistance, pathWidth * 0.5f, pathBlendWidth, pathLevel);
             activeChunks.Add(coord, chunkScript);
+            SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
+        }
+    }
+
+    void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
+    {
+        if (defaultObjectPrefab == null) return;
+        float[,] layout  = chunk.LayoutMap;
+        int[,]   heights = chunk.HeightMap;
+        int w = cfg.chunkWidth;
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < w; z++)
+        {
+            if (layout[x, z] > cfg.objectDensityThreshold)
+            {
+                Vector3 pos = worldPos + new Vector3(x, heights[x, z] + 1, z);
+                Instantiate(defaultObjectPrefab, pos, Quaternion.identity, chunk.transform);
+            }
         }
     }
     void RemoveFarChunks(Vector2Int playerChunkPos)

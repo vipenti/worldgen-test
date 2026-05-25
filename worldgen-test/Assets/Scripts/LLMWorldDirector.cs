@@ -14,6 +14,9 @@ public class LLMWorldDirector : MonoBehaviour
     public TMP_InputField inputField;
     public string lmStudioEndpoint = "http://25.18.55.60:1234/v1/chat/completions";
     public string modelId = "qwen/qwen3.5-9b";
+    public int maxTokens = 8192;
+    [Tooltip("Enable Qwen3 thinking for Step 2 (JSON params). Disable if context window is small (<=4096).")]
+    public bool thinkingForParams = true; // Impostato a true per forzare l'uso del tag <analysis> ottimizzato
     public GenerateTexture generateTexture;
 
     static readonly (string llm, string config)[] TileFields =
@@ -32,74 +35,8 @@ public class LLMWorldDirector : MonoBehaviour
         var materials = LoadMaterials();
         string materialList = materials.Count > 0
             ? string.Join("\n", new List<string>(materials.Keys).ConvertAll(k => $"    - {k}"))
-            : "    (nessuno ancora — devi inventare nomi nuovi)";
-
-        return
-@"You are a Procedural Generation Expert for a Unity Voxel Engine.
-Your goal is to translate user descriptions into specific JSON parameters.
-
-AVAILABLE MATERIALS (use these names when they fit the biome):
-" + materialList + @"
-
-PARAMETER GUIDELINES:
-- perlinScale: Controls terrain frequency. [0.01-0.03] large rolling hills, [0.08-0.12] jagged mountains.
-- chunkHeight: Controls max amplitude. [10-30] plains/beaches, [60-80] tall peaks.
-- chunkWidth: Always 16.
-- waterLevel: Y-coordinate below which liquid fills.
-- detailScale: Detail noise frequency. [0.1-0.2] typical.
-- octaves: Noise detail layers. [2] smooth, [4] typical varied terrain, [6] very rugged.
-- ridgeFactor: Peak sharpness. [0.0] soft rounded hills, [0.5] mixed, [1.0] sharp ridges and narrow valleys.
-- warpStrength: Terrain folding/warping. [0.0] regular, [0.3] organic natural look, [0.7] heavily eroded.
-
-TILE ASSIGNMENT:
-Assign a material name (string) to each of: surface, middle, deep, liquid, flower, bush, rock.
-- Prefer existing material names from AVAILABLE MATERIALS when they fit.
-- If no existing material fits, invent a short descriptive English name (e.g. ""volcanic_rock"", ""arctic_snow""). New materials will be generated automatically.
-
-OUTPUT FORMAT — ONLY the JSON object, no prose:
-{
-  ""perlinScale"": <float>,
-  ""chunkHeight"": <int>,
-  ""chunkWidth"": 16,
-  ""waterLevel"": <int>,
-  ""detailScale"": <float>,
-  ""octaves"": <int>,
-  ""ridgeFactor"": <float>,
-  ""warpStrength"": <float>,
-  ""surface"": ""<material_name>"",
-  ""middle"": ""<material_name>"",
-  ""deep"":   ""<material_name>"",
-  ""liquid"": ""<material_name>"",
-  ""flower"": ""<material_name>"",
-  ""bush"":   ""<material_name>"",
-  ""rock"":   ""<material_name>""
-}
-
-FEW-SHOT EXAMPLES:
-
-User: ""A peaceful green meadow with some flowers""
-Output: {
-  ""perlinScale"": 0.005, ""chunkHeight"": 25, ""chunkWidth"": 16, ""waterLevel"": 5, ""detailScale"": 0.15,
-  ""octaves"": 3, ""ridgeFactor"": 0.0, ""warpStrength"": 0.1,
-  ""surface"": ""grass"", ""middle"": ""grass_dirt"", ""deep"": ""soil"",
-  ""liquid"": ""water"", ""flower"": ""flower_patch"", ""bush"": ""wet_grass"", ""rock"": ""soil_rocks""
-}
-
-User: ""Rugged rocky canyons with deep water at the bottom""
-Output: {
-  ""perlinScale"": 0.09, ""chunkHeight"": 75, ""chunkWidth"": 16, ""waterLevel"": 20, ""detailScale"": 0.2,
-  ""octaves"": 5, ""ridgeFactor"": 0.8, ""warpStrength"": 0.5,
-  ""surface"": ""rocky_surface"", ""middle"": ""rock"", ""deep"": ""rock"",
-  ""liquid"": ""deep_water"", ""flower"": ""rock_chips"", ""bush"": ""rocky_surface"", ""rock"": ""rock""
-}
-
-User: ""Tropical beach with white sand and shallow pools""
-Output: {
-  ""perlinScale"": 0.008, ""chunkHeight"": 15, ""chunkWidth"": 16, ""waterLevel"": 10, ""detailScale"": 0.1,
-  ""octaves"": 2, ""ridgeFactor"": 0.0, ""warpStrength"": 0.1,
-  ""surface"": ""white_sand"", ""middle"": ""wet_sand"", ""deep"": ""sand_rocks"",
-  ""liquid"": ""shallow_water"", ""flower"": ""shell"", ""bush"": ""wet_grass"", ""rock"": ""sand_rocks""
-}";
+            : "    (none yet — invent new short English names)";
+        return Prompts.ParametricSystem(materialList);
     }
 
     void Update()
@@ -128,88 +65,131 @@ Output: {
 
     IEnumerator PostRequestCoroutine(string userText)
     {
-        string systemPrompt = BuildSystemPrompt();
-        string cleanSystemPrompt = systemPrompt.Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", " ");
-        string cleanUserText = userText.Replace("\"", "\\\"").Replace("\n", " ").Replace("\r", " ");
-        string mergedInput = "System: " + cleanSystemPrompt + " User: " + cleanUserText;
+        // ── STEP 1: expand user concept into a rich world description ──────────
+        Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 1 — generazione descrizione mondo...");
+
+        var step1 = new string[] { "" };
+        yield return StartCoroutine(CallLLM(
+            Prompts.DescriptionSystem(),
+            userText,
+            raw =>
+            {
+                string content = ExtractAssistantContent(raw);
+                content = StripMarkdownCodeFence(content).Trim();
+                content = StripThinkingTags(content);
+                step1[0] = content;
+            }));
+
+        string worldDescription = step1[0];
+        if (string.IsNullOrEmpty(worldDescription))
+        {
+            Debug.LogError("LLMWorldDirector: Step 1 fallito — nessuna descrizione ricevuta.");
+            yield break;
+        }
+        Debug.Log("<color=cyan>LLMWorldDirector:</color> Descrizione mondo generata:\n" + worldDescription);
+
+        // ── STEP 2: derive noise parameters + materials from description ───────
+        Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 2 — generazione parametri bioma...");
+        var step2 = new string[] { "" };
+        yield return StartCoroutine(CallLLM(
+            BuildSystemPrompt(),
+            worldDescription,
+            raw => step2[0] = raw,
+            disableThinking: !thinkingForParams));
+
+        string rawParamResponse = step2[0];
+        if (string.IsNullOrEmpty(rawParamResponse))
+        {
+            Debug.LogError("LLMWorldDirector: Step 2 fallito — nessuna risposta parametri.");
+            yield break;
+        }
+        
+        yield return StartCoroutine(ProcessResponseCoroutine(rawParamResponse));
+    }
+
+    IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false)
+    {
+        if (disableThinking)
+            systemPrompt = "/no_think\n" + systemPrompt;
+
+        // CORREZIONE CRUCIALE: Usiamo JsonUtility escape o rimpiazziamo i caratteri preservando i ritorni a capo (\n validi nel JSON)
+        string escapedSystem = EscapeStringForJson(systemPrompt);
+        string escapedUser = EscapeStringForJson(userText);
 
         string chatPayload = "{" +
             "\"model\": \"" + modelId + "\"," +
             "\"messages\": [" +
-                "{\"role\": \"system\", \"content\": \"" + cleanSystemPrompt + "\"}," +
-                "{\"role\": \"user\", \"content\": \"" + cleanUserText + "\"}" +
+                "{\"role\": \"system\", \"content\": \"" + escapedSystem + "\"}," +
+                "{\"role\": \"user\", \"content\": \"" + escapedUser + "\"}" +
             "]," +
-            "\"temperature\": 0.7," +
-            "\"max_tokens\": 2000," +
+            "\"temperature\": 0.3," + // Abbassata la temperatura a 0.3 per renderlo più matematico e meno incline a inventare
+            "\"max_tokens\": " + maxTokens + "," +
             "\"stream\": false" +
         "}";
 
-        string responsesPayload = "{" +
-            "\"model\": \"" + modelId + "\"," +
-            "\"input\": \"" + mergedInput + "\"," +
-            "\"temperature\": 0.7," +
-            "\"stream\": false" +
-        "}";
-
-        bool endpointLooksLikeResponses = lmStudioEndpoint.ToLowerInvariant().Contains("/responses");
-        string[] payloads = endpointLooksLikeResponses
-            ? new[] { responsesPayload, chatPayload }
-            : new[] { chatPayload, responsesPayload };
-        string[] payloadKinds = endpointLooksLikeResponses
-            ? new[] { "responses(input)", "chat(messages)" }
-            : new[] { "chat(messages)", "responses(input)" };
-
-        string lastError = string.Empty;
-
-        for (int i = 0; i < payloads.Length; i++)
+        using (UnityWebRequest request = new UnityWebRequest(lmStudioEndpoint, "POST"))
         {
-            using (UnityWebRequest request = new UnityWebRequest(lmStudioEndpoint, "POST"))
+            request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(chatPayload));
+            request.downloadHandler = new DownloadHandlerBuffer();
+            request.SetRequestHeader("Content-Type", "application/json");
+
+            yield return request.SendWebRequest();
+
+            if (request.result == UnityWebRequest.Result.Success)
             {
-                byte[] bodyRaw = Encoding.UTF8.GetBytes(payloads[i]);
-                request.uploadHandler   = new UploadHandlerRaw(bodyRaw);
-                request.downloadHandler = new DownloadHandlerBuffer();
-                request.SetRequestHeader("Content-Type", "application/json");
-
-                Debug.Log("Inviando richiesta LLM | payload: " + payloadKinds[i]);
-                yield return request.SendWebRequest();
-
-                if (request.result == UnityWebRequest.Result.Success)
-                {
-                    Debug.Log("Risposta raw LLM: " + request.downloadHandler.text);
-                    yield return StartCoroutine(ProcessResponseCoroutine(request.downloadHandler.text));
-                    yield break;
-                }
-
-                lastError = "Errore API: " + request.error + " | Response: " + request.downloadHandler.text;
-                Debug.LogWarning("Tentativo fallito con payload " + payloadKinds[i] + ". " + lastError);
+                onSuccess(request.downloadHandler.text);
+            }
+            else
+            {
+                Debug.LogError($"Errore API di chiamata LLM: {request.error} | Content: {request.downloadHandler.text}");
             }
         }
+    }
 
-        Debug.LogError(lastError);
+    // Trasforma i ritorni a capo reali in \n testuali leggibili dalla stringa JSON senza rompere la formattazione
+    string EscapeStringForJson(string str)
+    {
+        if (string.IsNullOrEmpty(str)) return "";
+        StringBuilder sb = new StringBuilder();
+        foreach (char c in str)
+        {
+            switch (c)
+            {
+                case '"': sb.Append("\\\""); break;
+                case '\\': sb.Append("\\\\"); break;
+                case '\b': sb.Append("\\b"); break;
+                case '\f': sb.Append("\\f"); break;
+                case '\n': sb.Append("\\n"); break; // Preserva l'andata a capo nel JSON!
+                case '\r': sb.Append("\\r"); break;
+                case '\t': sb.Append("\\t"); break;
+                default: sb.Append(c); break;
+            }
+        }
+        return sb.ToString();
     }
 
     IEnumerator ProcessResponseCoroutine(string rawResponse)
     {
-        // Estrazione e validazione JSON — senza yield, quindi in try/catch
         string cleanJson = null;
         try
         {
             string assistantText = ExtractAssistantContent(rawResponse);
             if (string.IsNullOrWhiteSpace(assistantText))
-                throw new Exception("Impossibile estrarre choices[0].message.content dalla risposta.");
+                throw new Exception("Impossibile estrarre content logico.");
 
             assistantText = StripMarkdownCodeFence(assistantText).Trim();
+            assistantText = StripThinkingTags(assistantText);
             cleanJson = ExtractFirstJsonObject(assistantText);
+            
             if (string.IsNullOrWhiteSpace(cleanJson))
-                throw new Exception("Nessun oggetto JSON trovato nel content dell'assistente.");
+                throw new Exception("Nessun oggetto JSON trovato nella risposta pulita dell'LLM.");
         }
         catch (Exception e)
         {
-            Debug.LogError("L'LLM non ha risposto con un JSON valido: " + e.Message);
+            Debug.LogError("Errore estrazione JSON dall'LLM: " + e.Message + " -> Risposta Raw ricevuta: " + rawResponse);
             yield break;
         }
 
-        // Risoluzione materiali (con possibili yield per generazione texture)
         var materials = LoadMaterials();
         var resolved  = new Dictionary<string, int>();
 
@@ -218,33 +198,28 @@ Output: {
             string matName = ExtractStringField(cleanJson, llmField);
             if (string.IsNullOrEmpty(matName)) continue;
 
-            matName = matName.Trim().Replace(" ", "_");
+            matName = matName.Trim().ToLowerInvariant().Replace(" ", "_");
 
             if (!materials.ContainsKey(matName))
             {
-                if (generateTexture == null)
-                {
-                    Debug.LogWarning($"[LLMWorldDirector] GenerateTexture non assegnato — materiale '{matName}' ignorato.");
-                    continue;
-                }
-                Debug.Log($"<color=cyan>LLMWorldDirector:</color> Materiale '{matName}' non trovato, generazione...");
+                if (generateTexture == null) {continue;}
+                Debug.Log($"<color=orange>LLMWorldDirector:</color> Generazione texture per nuovo materiale: '{matName}'...");
                 yield return StartCoroutine(GenerateAndWait(matName));
                 materials = LoadMaterials();
             }
 
             if (materials.TryGetValue(matName, out int id))
-                resolved[llmField] = id + 1; // +1: atlas slot 0 → blockID 1
-            else
-                Debug.LogWarning($"[LLMWorldDirector] Materiale '{matName}' non disponibile dopo generazione, ignorato.");
+                resolved[llmField] = id + 1; 
         }
 
-        // Costruzione e salvataggio JSON finale
         string finalJson = BuildFinalJson(cleanJson, resolved);
-        string path = Path.Combine("Assets", "Json", "llm_generated.json");
+        string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+        
+        // Assicuriamoci che la cartella esista
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, finalJson);
 
-        Debug.Log("JSON finale salvato: " + finalJson);
-        Debug.Log("<color=cyan>Nuovo bioma generato dall'IA e salvato!</color>");
+        Debug.Log("<color=green>LLMWorldDirector: Configurazione Bioma e Texture salvata con successo!</color>");
     }
 
     IEnumerator GenerateAndWait(string matName)
@@ -264,12 +239,10 @@ Output: {
         yield return new WaitUntil(() => done);
     }
 
-    // --- HELPERS ---
-
     Dictionary<string, int> LoadMaterials()
     {
         var dict = new Dictionary<string, int>();
-        string path = Path.Combine("Assets", "Json", "materials.json");
+        string path = Path.Combine(Application.dataPath, "Json", "materials.json");
         if (!File.Exists(path)) return dict;
 
         string json = File.ReadAllText(path).Trim().Trim('{', '}');
@@ -318,24 +291,27 @@ Output: {
     string BuildFinalJson(string llmJson, Dictionary<string, int> resolved)
     {
         var entries = new List<string>();
-
-        string[] numericFields = { "perlinScale", "chunkHeight", "chunkWidth", "waterLevel", "detailScale", "octaves", "ridgeFactor", "warpStrength" };
+        string[] numericFields = {
+            "scaleMacro", "macroInfluence",
+            "scaleBillow", "ampBillow", "billowExponent",
+            "scaleRidged", "ampRidged", "ridgedExponent",
+            "warpStrength", "warpScale",
+            "baseTerrainHeight", "waterLevel",
+            "chunkHeight", "chunkWidth",
+            "scaleLayout", "objectDensityThreshold", "slopeMaxLimit"
+        };
         foreach (string field in numericFields)
         {
             string val = ExtractRawField(llmJson, field);
             if (val != null) entries.Add($"  \"{field}\": {val}");
         }
-
         foreach (var (llmField, configField) in TileFields)
         {
             if (resolved.TryGetValue(llmField, out int id))
                 entries.Add($"  \"{configField}\": {id}");
         }
-
         return "{\n" + string.Join(",\n", entries) + "\n}";
     }
-
-    // --- PARSING (invariato dall'originale) ---
 
     string ExtractAssistantContent(string raw)
     {
@@ -350,6 +326,21 @@ Output: {
         int startQuote = raw.IndexOf('"', colonIndex + 1);
         if (startQuote < 0) return string.Empty;
         TryReadJsonString(raw, startQuote, out string content);
+
+        if (string.IsNullOrEmpty(content))
+        {
+            int rcIdx = raw.IndexOf("\"reasoning_content\"", messageIndex, StringComparison.Ordinal);
+            if (rcIdx >= 0)
+            {
+                int rcColon = raw.IndexOf(':', rcIdx);
+                if (rcColon >= 0)
+                {
+                    int rcQuote = raw.IndexOf('"', rcColon + 1);
+                    if (rcQuote >= 0 && TryReadJsonString(raw, rcQuote, out string rc) && !string.IsNullOrEmpty(rc))
+                        return "<think>" + rc + "</think>";
+                }
+            }
+        }
         return content;
     }
 
@@ -389,6 +380,19 @@ Output: {
             else sb.Append(c);
         }
         return false;
+    }
+
+    string StripThinkingTags(string text)
+    {
+        int start = text.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+        while (start >= 0)
+        {
+            int end = text.IndexOf("</think>", start, StringComparison.OrdinalIgnoreCase);
+            if (end < 0) { text = text.Substring(0, start).Trim(); break; }
+            text  = (text.Substring(0, start) + text.Substring(end + 8)).Trim();
+            start = text.IndexOf("<think>", StringComparison.OrdinalIgnoreCase);
+        }
+        return text.Trim();
     }
 
     string StripMarkdownCodeFence(string text)
