@@ -3,6 +3,10 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Newtonsoft.Json.Linq;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class WorldManager : MonoBehaviour
 {
@@ -21,7 +25,24 @@ public class WorldManager : MonoBehaviour
     public int pathLevel = 8;          // Quota del path
 
     [Header("Layout Map")]
-    public GameObject defaultObjectPrefab;
+    public GameObject defaultObjectPrefab;  // fallback quando nessun prefab bioma è disponibile
+    [Range(0f, 1f)]
+    public float objectSpawnChance  = 0.2f;
+    public float objectGroundOffset = -0.3f;  // offset Y applicato dopo il bounds-fit (negativo = affonda leggermente)
+
+    [Header("Object Scales by Size")]
+    public float scaleHuge    = 15f;
+    public float scaleBig     =  7f;
+    public float scaleSmall   =  3f;
+    public float scaleTiny    =  1f;
+    public float scaleDefault =  5f;
+
+    private Dictionary<string, GameObject>                 _readyPrefabs       = new Dictionary<string, GameObject>();
+    private List<string>                                   _pendingObjectNames = new List<string>();
+    private Dictionary<string, List<BillboardPlaceholder>> _placeholders      = new Dictionary<string, List<BillboardPlaceholder>>();
+    private Dictionary<string, float>                      _objectScaleFactors = new Dictionary<string, float>();
+    private Dictionary<string, float>                      _objectFreqChances  = new Dictionary<string, float>();
+    private HashSet<string>                                _uniqueSpawned      = new HashSet<string>();
 
     [Header("Debug Visualization")]
     public MapVisualizer mapVisualizer;
@@ -67,6 +88,7 @@ public class WorldManager : MonoBehaviour
         oldConfig = targetConfig;
 
         mapVisualizer?.GenerateMaps(targetConfig);
+        LoadBiomePrefabs();
         UpdateChunks();
         yield return StartCoroutine(SpawnPlayer());
     }
@@ -146,6 +168,7 @@ public class WorldManager : MonoBehaviour
             isTransitioning = true;
 
             mapVisualizer?.GenerateMaps(targetConfig);
+            LoadBiomePrefabs();
         }
     }
 
@@ -208,20 +231,206 @@ public class WorldManager : MonoBehaviour
 
     void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
     {
-        if (defaultObjectPrefab == null) return;
+        var allNames = new List<string>(_readyPrefabs.Keys);
+        allNames.AddRange(_pendingObjectNames);
+        if (allNames.Count == 0) return;
+
         float[,] layout  = chunk.LayoutMap;
         int[,]   heights = chunk.HeightMap;
         int w = cfg.chunkWidth;
+
         for (int x = 0; x < w; x++)
         for (int z = 0; z < w; z++)
         {
-            if (layout[x, z] > cfg.objectDensityThreshold)
+            if (layout[x, z] <= cfg.objectDensityThreshold) continue;
+
+            string name      = allNames[Random.Range(0, allNames.Count)];
+            float  freqChance = _objectFreqChances.TryGetValue(name, out float fc) ? fc : 1f;
+            float  scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : 1f;
+
+            if (freqChance < 0f) // unique
             {
-                Vector3 pos = worldPos + new Vector3(x, heights[x, z] + 1, z);
-                Instantiate(defaultObjectPrefab, pos, Quaternion.identity, chunk.transform);
+                if (_uniqueSpawned.Contains(name)) continue;
+            }
+            else if (Random.value > freqChance * objectSpawnChance) continue;
+
+            float   wx      = worldPos.x + x;
+            float   wz      = worldPos.z + z;
+            float   groundY = GetGroundY(wx, wz, heights[x, z]);
+            Vector3 pos     = new Vector3(wx, groundY, wz);
+
+            if (_readyPrefabs.TryGetValue(name, out var prefab))
+            {
+                var obj = Instantiate(prefab, pos, Quaternion.Euler(-90f, 0f, 0f), chunk.transform);
+                obj.transform.localScale = Vector3.one * scaleFactor;
+                var rend = obj.GetComponentInChildren<Renderer>();
+                if (rend != null)
+                    obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+                if (freqChance < 0f) _uniqueSpawned.Add(name);
+            }
+            else
+            {
+                float   billH        = scaleFactor;
+                Vector3 billboardPos = new Vector3(pos.x, groundY + billH * 0.5f, pos.z);
+                SpawnBillboard(name, billboardPos, chunk.transform, scaleFactor);
+                if (freqChance < 0f) _uniqueSpawned.Add(name);
             }
         }
     }
+
+    float GetGroundY(float wx, float wz, int fallbackY)
+    {
+        var origin = new Vector3(wx, fallbackY + 10f, wz);
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 30f))
+            return hit.point.y;
+        return fallbackY;
+    }
+
+    void SpawnBillboard(string objName, Vector3 pos, Transform parent, float scaleFactor = 1f)
+    {
+        var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);
+        quad.transform.SetParent(parent);
+        quad.transform.position   = pos;
+        quad.transform.localScale = Vector3.one * scaleFactor;
+        Destroy(quad.GetComponent<MeshCollider>());
+
+        var placeholder = quad.AddComponent<BillboardPlaceholder>();
+        placeholder.objectName = objName;
+
+        if (!_placeholders.ContainsKey(objName))
+            _placeholders[objName] = new List<BillboardPlaceholder>();
+        _placeholders[objName].Add(placeholder);
+    }
+
+    public void UpdatePlaceholderTexture(string objectName, byte[] pngBytes)
+    {
+        if (!_placeholders.TryGetValue(objectName, out var list)) return;
+        var tex = new Texture2D(2, 2);
+        tex.LoadImage(pngBytes);
+        foreach (var p in list)
+            if (p != null) p.SetTexture(tex);
+    }
+
+    public void ReplacePlaceholders(string objectName)
+    {
+#if UNITY_EDITOR
+        string prefabPath = $"Assets/GeneratedAsset/{objectName}.prefab";
+        var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+        if (prefab == null)
+        {
+            Debug.LogWarning($"[WorldManager] Prefab non trovato per sostituzione: {prefabPath}");
+            return;
+        }
+
+        _readyPrefabs[objectName] = prefab;
+        _pendingObjectNames.Remove(objectName);
+        float scaleFactor = _objectScaleFactors.TryGetValue(objectName, out float sf) ? sf : scaleDefault;
+
+        if (!_placeholders.TryGetValue(objectName, out var list)) return;
+        foreach (var p in list)
+        {
+            if (p == null) continue;
+            float     billH   = scaleFactor;
+            float     groundY = p.transform.position.y - billH * 0.5f;
+            Transform parent  = p.transform.parent;
+            Destroy(p.gameObject);
+            var obj = Instantiate(prefab, new Vector3(p.transform.position.x, groundY, p.transform.position.z), Quaternion.Euler(-90f, 0f, 0f), parent);
+            obj.transform.localScale = Vector3.one * scaleFactor;
+            var rend = obj.GetComponentInChildren<Renderer>();
+            if (rend != null)
+                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+        }
+        _placeholders.Remove(objectName);
+        Debug.Log($"[WorldManager] Sostituiti placeholder di '{objectName}' con prefab 3D.");
+#endif
+    }
+
+    public void ReloadBiomePrefabs() => LoadBiomePrefabs();
+
+    void LoadBiomePrefabs()
+    {
+        _readyPrefabs.Clear();
+        _pendingObjectNames.Clear();
+        _objectScaleFactors.Clear();
+        _objectFreqChances.Clear();
+        _uniqueSpawned.Clear();
+        _placeholders.Clear();
+
+        string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, "{}");
+        }
+
+        try
+        {
+            var root = JObject.Parse(File.ReadAllText(path));
+            foreach (var entry in root)
+            {
+                string name = entry.Key;
+
+                // Support both formats: { name: id } and { name: { id, size, frequency } }
+                float scaleF = 1f, freqC = 1f;
+                if (entry.Value?.Type == JTokenType.Object)
+                {
+                    scaleF = SizeToScale(entry.Value["size"]?.ToString() ?? "big");
+                    freqC  = FreqToChance(    entry.Value["frequency"]?.ToString() ?? "common");
+                }
+                _objectScaleFactors[name] = scaleF;
+                _objectFreqChances[name]  = freqC;
+
+                string prefabPath = $"Assets/GeneratedAsset/{name}.prefab";
+#if UNITY_EDITOR
+                var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
+                if (prefab != null) _readyPrefabs[name] = prefab;
+                else                _pendingObjectNames.Add(name);
+#else
+                _pendingObjectNames.Add(name);
+#endif
+            }
+        }
+        catch (System.Exception e)
+        {
+            Debug.LogError($"[WorldManager] Errore lettura current_objects.json: {e.Message}");
+        }
+
+        if (_readyPrefabs.Count == 0 && _pendingObjectNames.Count == 0 && defaultObjectPrefab != null)
+            _readyPrefabs["__default__"] = defaultObjectPrefab;
+
+        Debug.Log($"[WorldManager] {_readyPrefabs.Count} prefab pronti, {_pendingObjectNames.Count} in attesa.");
+    }
+
+    float SizeToScale(string size) => size switch
+    {
+        "huge"  => scaleHuge,
+        "big"   => scaleBig,
+        "small" => scaleSmall,
+        "tiny"  => scaleTiny,
+        _       => scaleDefault
+    };
+
+    // Returns per-object spawn probability multiplier; -1 = unique (max 1 in world)
+    static float FreqToChance(string freq) => freq switch
+    {
+        "very_common" => 1.00f,
+        "common"      => 0.50f,
+        "rare"        => 0.10f,
+        "super_rare"  => 0.03f,
+        "unique"      => -1f,
+        _             => 0.50f
+    };
+
+    public void RegenerateAllChunks()
+    {
+        foreach (var kvp in activeChunks)
+            if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+        activeChunks.Clear();
+        _uniqueSpawned.Clear();
+        UpdateChunks();
+        Debug.Log("[WorldManager] Tutti i chunk rigenerati con i nuovi oggetti.");
+    }
+
     void RemoveFarChunks(Vector2Int playerChunkPos)
     {
         List<Vector2Int> coordsToRemove = new List<Vector2Int>();

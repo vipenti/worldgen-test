@@ -92,6 +92,7 @@ public class LLM3DGeneration : MonoBehaviour
             if (!File.Exists(absImagePath))
             {
                 Debug.LogError($"LLM3DGeneration: file non trovato: {absImagePath}");
+                IsGenerating = false;
                 yield break;
             }
 

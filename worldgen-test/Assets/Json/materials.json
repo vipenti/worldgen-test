@@ -12,5 +12,7 @@
   "soft_dirt": 10,
   "cactus_patch": 11,
   "dry_grass": 12,
-  "pebble_stones": 13
+  "pebble_stones": 13,
+  "hardy_shrub": 14,
+  "smooth_stones": 15
 }

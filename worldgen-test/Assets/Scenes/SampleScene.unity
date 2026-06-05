@@ -289,7 +289,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::PlayerMovement
   controller: {fileID: 249223929}
-  speed: 8
+  speed: 12
   gravity: -9.81
   jumpHeight: 3
 --- !u!143 &249223929
@@ -587,7 +587,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: cb303d92160756549a052050fb4920e2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::MouseLook
-  mouseSensitivity: 100
+  mouseSensitivity: 75
   playerBody: {fileID: 249223932}
 --- !u!1 &410087039
 GameObject:
@@ -1232,6 +1232,13 @@ MonoBehaviour:
   pathBlendWidth: 50
   pathLevel: 8
   defaultObjectPrefab: {fileID: 0}
+  objectSpawnChance: 0.06
+  objectGroundOffset: -0.8
+  scaleHuge: 15
+  scaleBig: 11
+  scaleSmall: 6
+  scaleTiny: 1
+  scaleDefault: 5
   mapVisualizer: {fileID: 1508923896}
 --- !u!114 &1447165636
 MonoBehaviour:
@@ -1248,7 +1255,11 @@ MonoBehaviour:
   inputField: {fileID: 880284052}
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
   modelId: qwen/qwen3.5-9b
+  maxTokens: 4096
+  thinkingForParams: 0
   generateTexture: {fileID: 1573031125}
+  generateAsset: {fileID: 1772015175}
+  worldManager: {fileID: 0}
 --- !u!1 &1508923895
 GameObject:
   m_ObjectHideFlags: 0
@@ -1539,6 +1550,117 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: -137.62726, y: -0.00002, z: 56.13071}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1772015171
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1772015176}
+  - component: {fileID: 1772015175}
+  - component: {fileID: 1772015174}
+  - component: {fileID: 1772015173}
+  - component: {fileID: 1772015172}
+  m_Layer: 0
+  m_Name: AssetManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1772015172
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1772015171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46d7380bbebe4f74ca5deb90136475c7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoxelRenderer
+  jsonFolder: Assets/Json/objects
+  jsonFileName: output.voxjson
+  defaultVoxelSize: 1
+  defaultColor: {r: 1, g: 1, b: 1, a: 1}
+  assetFolder: Assets/GeneratedAsset
+--- !u!114 &1772015173
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1772015171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8e8a8d2705b0f44188c8a1dab657222, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LLM3DGeneration
+  imagePath: 
+  outputName: 
+  seed: 1
+  ssGuidanceStrength: 7.5
+  ssSamplingSteps: 12
+  slatGuidanceStrength: 3
+  slatSamplingSteps: 12
+  voxelRenderer: {fileID: 1772015172}
+--- !u!114 &1772015174
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1772015171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5819055ac562629448c86fa0d738c763, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
+  object_name: house
+  stylePrompt: A house made only of cubes in Minecraft style on a neutral background.
+    Low cube resolution, isometric view, studio lighting.
+  negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
+    elements
+  quality: 1
+  transparent: 0
+  serverAddress: http://25.18.55.60:5000
+  outputFolder: Assets/GeneratedImages
+  llm3DGeneration: {fileID: 1772015173}
+  autoGenerate: 0
+--- !u!114 &1772015175
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1772015171}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 6430d02e3f819b34b90c2be5041ecb24, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GenerateAsset
+  listPath: Assets/Json/current_objects.json
+  assetFolder: Assets/GeneratedAsset
+  llmObjectGeneration: {fileID: 1772015174}
+  worldManager: {fileID: 1447165635}
+--- !u!4 &1772015176
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1772015171}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 5.35967, y: 0, z: -264.77866}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1967,3 +2089,4 @@ SceneRoots:
   - {fileID: 1707007904}
   - {fileID: 1573031127}
   - {fileID: 1508923897}
+  - {fileID: 1772015176}

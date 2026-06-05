@@ -1,158 +1,204 @@
 public static class Prompts
 {
     // ── Step 1: expand user concept into a world description ─────────────────
-    public static string DescriptionSystem() =>
-@"You are an expert World Director and creative level designer for a procedural voxel game. 
-Your job is to take a short, basic terrain concept from the user and expand it into exactly ONE vivid, descriptive paragraph (3 to 5 sentences max). 
+public static string DescriptionSystem() =>
+@"You are a Technical Level Design Director for a procedural voxel game. 
+Your job is to take a basic terrain concept from the user and expand it into exactly ONE straightforward, highly functional paragraph (3 to 5 sentences maximum). 
 
-Your expansion must provide clear geological and ecological cues for a technical generator. Focus on:
-1. Terrain Shape & Geometry: Specify if it has smooth rolling waves, sharp vertical cliffs, flat basins, or heavily distorted/warped landmasses.
-2. Materials & Colors: Describe the dominant surface blocks, soil type, and atmospheric lighting/vibe.
-3. Liquid Features: Detail how water, lava, or fluids form channels, stagnant pools, or deep oceans.
-4. Vegetation & Assets: Mention what kind of flora, rocks, or structures populate the densest areas.
+Do NOT describe the sky, weather, fog, day/night cycles, ambient lighting, or poetic atmospheres. Focus strictly on tangible data for a terrain generator:
+1. Terrain Shape & Geometry: Explicitly define the height map features (e.g., flat basins, smooth rolling dunes, sharp vertical canyons, jagged mountain ridges, or warped distorted plains).
+2. Ground Materials: List the concrete blocks, soils, or substances covering the surface and sub-surface layers.
+3. Liquid Placement: State exactly how fluids are arranged (e.g., deep uniform oceans, small isolated ponds, localized lakes, or winding river channels).
+4. Structural Layout & Assets: Describe the exact placement and types of 3D objects (e.g., dense clusters of trees in valleys, massive skyscrapers on flat areas, or scattered rocks on steep slopes).
 
-CRITICAL RULE: Output ONLY the raw paragraph. Do not include introductory text, markdown headers, thinking blocks (<thought>), quotes, or JSON. Start directly with the description.
+CRITICAL RULE: Output ONLY the raw paragraph. No introductions, no headers, no quotation marks, and no conversational prose. Start directly with the description.
 
-### EXAMPLES
+### FEW SHOTS EXAMPLES
 
 User: desert with an oasis
-Output: A vast, sun-drenched expanse of massive, smooth rolling sand dunes that swell and curve under a blazing sky. In the center of this arid landscape, the terrain drops into a perfectly flat, low-lying basin where a vibrant, crystal-clear water lake forms a natural oasis. Rich, dark soil replaces the sand around the shoreline, supporting a dense cluster of towering palm trees, thick reeds, and lush green grass. The surrounding desert remains barren, with sharp sandstone canyon walls framing the horizon and blocking the wind.
+Output: A vast expanse of smooth rolling sand dunes and wide sandy valleys. In the center, the terrain drops into a perfectly flat, low-lying basin where a localized fresh water lake forms an oasis. Rich dark soil replaces the sand around the water shoreline, supporting a dense cluster of towering palm trees, thick reeds, and tall grass. The surrounding desert edges feature sharp sandstone canyon walls with scattered boulders clinging to the steep slopes.
 
 User: endless plain
-Output: An endless, gentle grassland where the terrain forms soft, low-frequency rolling hills and wide, open valleys. Bright green turf blocks dominate the surface under a clear, bright daylight sky, creating a clean and minimalist aesthetic. A lazy, winding river cuts a smooth path across the low points of the plains, creating small, peaceful ponds. Dense clusters of oak trees and colorful wildflowers spawn exclusively in the flat valley floors, leaving the hill crests empty and wide open.
+Output: An endless, uniform grassland composed of soft, low-frequency rolling hills and wide open flat valleys. The surface layer consists entirely of bright green grass turf blocks. A winding river channel cuts a smooth path across the lowest points of the plains, occasionally expanding into small isolated ponds. Dense clusters of oak trees and colorful wildflowers grow exclusively on the flat valley floors, leaving the hill crests empty and clear.
 
 User: cyberpunk city in ruins
-Output: A perfectly flat, concrete-paved urban basin scarred by grid-like street layouts and shattered asphalt blocks. The geometric landscape is broken by massive, vertical monolithic skyscrapers that rise abruptly like sharp neon cliffs into a dark, rainy night sky. Cybernetic debris, rusted iron plates, and piles of mechanical rubble clutter the alleyways, strictly avoiding the open thoroughfares. Toxic, glowing neon-purple liquid pools accumulate in the cracked pavement recesses, casting reflections through a thick, polluted neon haze.
+Output: A perfectly flat, concrete-paved urban basin divided into rigid grid-like street layouts with scattered shattered asphalt blocks. The geometric landscape is populated by massive, vertical monolithic skyscrapers, modular apartment blocks, and industrial factory towers. Rusted iron plates and piles of mechanical rubble clutter the narrow alleyways, keeping the main roads clear. Toxic, glowing purple liquid pools accumulate in the low recesses of the cracked pavement.
 
 User: vulcanic tundra
-Output: A desolate, sub-zero wasteland where black volcanic rock benches alternate with vast, flat permafrost basins. The terrain is scarred by sharp, vertical obsidian ridges and geysers bursting with boiling, sulfurous water channels. Patches of frozen neon-green moss and scattered basal debris cling to the flat surfaces, avoiding the steep, unstable slopes. The air is heavy with thick grey ash and freezing fog, creating a dark, high-contrast atmospheric landscape.
+Output: A flat, frozen permafrost wasteland split by broad terraces of black volcanic rock. The horizontal terrain is broken by sharp, vertical obsidian ridges and deep, jagged rock crevices. Winding geothermal channels filled with boiling sulfurous water cross the landscape. Patches of frozen neon-green moss and scattered basalt stone debris cover the flat surfaces, avoiding the steep and unstable ridge slopes.
+
 ";
 
 
 
     // ── Step 2: translate description into noise parameters ─────────────────
 public static string ParametricSystem(string materialList) =>
-@"You are a Technical Procedural Generation Expert for a Unity Voxel Engine.
-   Your goal is to analyze a detailed world description and translate it into precise, mathematically coherent JSON noise parameters for our 4-layer generation system.
+@"You are a Procedural Generation Expert for a Unity Voxel Engine. Translate a world description into JSON noise parameters.
 
-   AVAILABLE MATERIALS (Prioritize these; invent new English names only if absolutely nothing fits):
-   " + materialList + @"
+MATERIALS: " + materialList + @"
 
-   NOISE SYSTEM — 4 UNIVERSAL LAYERS:
+PARAMETERS:
+Continental: scaleMacro[30-100] continent scale; macroInfluence[0-1] ridge/billow blend.
+Billow (rounded hills/dunes): scaleBillow[10-60]; ampBillow[0-50] height; billowExponent[0.5-2] (<1=flat tops, >1=steep crests).
+Ridged (sharp peaks/canyons): scaleRidged[5-30]; ampRidged[0-80] height (0 for flat worlds); ridgedExponent[1-3] (higher=sharper).
+Warp: warpStrength[0-30] (0=rigid/city, 25+=organic chaos); warpScale[10-40].
+Layout: baseTerrainHeight[5-30]; waterLevel[0-30]; chunkHeight[50-150] MUST exceed base+billow+ridged+10; scaleLayout[10-60]; objectDensityThreshold[0.3-0.8]; slopeMaxLimit[0.5-3].
 
-   1. CONTINENTAL (scaleMacro, macroInfluence)
-      Controls macro topography: where high terrain plateaus/plains form vs where water basins dig down.
-      scaleMacro [30.0 - 100.0]: Large values = vast, massive uniform continents/fields; Small = fragmented, chaotic patches.
-      macroInfluence [0.0 - 1.0]: Blending weight. 1.0 = full reliance on Ridged noise in high macro zones. 0.0 = completely ignores Ridged noise, forcing Billow everywhere.
+CONSTRAINTS:
+1. Flat/plains/fields: ampRidged=0, ampBillow 5-12.
+2. Plains with ponds (prevent archipelago): baseTerrainHeight >= waterLevel+8, macroInfluence<0.2.
+3. Mountains: ampRidged high, macroInfluence>=0.8.
 
-   2. BILLOW — Rounded Hills & Dunes (scaleBillow, ampBillow, billowExponent)
-      Generates absolute value shapes. Perfect for sand dunes, rolling grass hills, or soft swamp mounds.
-      scaleBillow [10.0 - 60.0]: Width of waves. Large = wide sweeping dunes/plains; Small = choppy, frequent small hills.
-      ampBillow [0.0 - 50.0]: Maximum height vertical displacement for rounded features.
-      billowExponent [0.5 - 2.0]: 1.0 = perfect arches, <1.0 = wide flat-topped mesas or wide flat fields, >1.0 = steep sides with tight crests.
+OUTPUT: Write <analysis></analysis> with a brief math check (base+billow+ridged vs chunkHeight), then a raw JSON object. No other text.
 
-   3. RIDGED — Sharp Peaks & Canyons (scaleRidged, ampRidged, ridgedExponent)
-      Generates inverted sharp shapes. Perfect for alpine mountains, rocky spires, and vertical canyon walls.
-      scaleRidged [5.0 - 30.0]: Width of the ridges. Small = jagged, sharp spires; Large = wide mountain ridges.
-      ampRidged [0.0 - 80.0]: Maximum height vertical displacement for sharp features. For flat terrains, fields, or plains, MUST be 0.
-      ridgedExponent [1.0 - 3.0]: 1.0 = smooth hillsides, 2.5+ = razor-sharp, knife-edge peaks.
+EXAMPLE:
+World: Sand dunes with an oasis lake.
+<analysis>Dunes: high ampBillow. Oasis: waterLevel>base. Math: 12+32+20=64, chunkHeight(85)>74. OK.</analysis>
+{""scaleMacro"":80,""macroInfluence"":0.75,""scaleBillow"":35,""ampBillow"":32,""billowExponent"":0.9,""scaleRidged"":18,""ampRidged"":20,""ridgedExponent"":1.8,""warpStrength"":10,""warpScale"":30,""baseTerrainHeight"":12,""waterLevel"":16,""chunkHeight"":85,""chunkWidth"":16,""scaleLayout"":20,""objectDensityThreshold"":0.55,""slopeMaxLimit"":0.8,""surface"":""sand"",""middle"":""wet_sand"",""deep"":""soft_dirt"",""liquid"":""fresh_water"",""flower"":""cactus_patch"",""bush"":""dry_grass"",""rock"":""pebble_stones""}
+";
 
-   4. DOMAIN WARP — Organic Distortion (warpStrength, warpScale)
-      Distorts input coordinates. Perfect for rivers, erosion, eroded coastlines, and melting/organic shapes.
-      warpStrength [0.0 - 30.0]: 0.0 = rigid, artificial grid geometry (good for cities); 25.0+ = highly eroded, organic, fluid chaos.
-      warpScale [10.0 - 40.0]: Large = massive sweeping continental curves; Small = fine, trembling noise crinkles.
+    // ── Step 4: assign size + frequency to each object ───────────────────────
+    // objectList: comma-separated quoted names, e.g. "a palm tree", "a boulder"
+public static string SizeFrequencySystem(string objectList) =>
+@"You are a Game Designer. Given a world description, assign size and frequency to each object.
 
-   BASE, WATER & LAYOUT MAP
-      baseTerrainHeight [5.0 - 30.0]: Constant Y elevation floor before noise layers are stacked.
-      waterLevel [0.0 - 30.0]: Y altitude of the water surface. Fluids appear only if basins dip below this value.
-      chunkHeight [50.0 - 150.0]: Total render ceiling. CRITICAL: Must be greater than (baseTerrainHeight + ampBillow + ampRidged + 10).
-      scaleLayout [10.0 - 60.0]: Size of 3D asset spawn zones (Large = endless forests/districts, Small = patchy clusters).
-      objectDensityThreshold [0.3 - 0.8]: Spawn cutoff. Lower values = extremely dense objects; Higher = rare, sparse objects.
-      slopeMaxLimit [0.5 - 3.0]: Maximum slope angle allowed for asset spawning (Low = strictly flat floors, High = assets cling to vertical walls).
+OBJECTS: " + objectList + @"
 
-   HARD MATHEMATICAL CONSTRAINTS (You must enforce these during analysis):
-   1. For flat worlds, plains, and flower fields with isolated lakes: ampRidged MUST be 0. ampBillow must be very low (5.0 - 12.0) to allow gentle slope waves.
-   2. To prevent an ARCHIPELAGO effect on fields/plains: baseTerrainHeight MUST be significantly HIGHER than waterLevel (at least 8-10 units higher), and macroInfluence must be low (< 0.20). This ensures the water is buried deep and only shows up as rare, isolated ponds instead of an ocean.
-   3. For high mountains: ampRidged must be high, and macroInfluence must be >= 0.8 to allow the peaks to pierce through the macro map.
+SIZE (Y-axis height in world):
+- huge: skyscrapers, castles, towers, massive structures
+- big: houses, medium trees, large boulders, vehicles
+- small: benches, animals, bushes, small props
+- tiny: flowers, pebbles, debris, tiny decorations
 
-   OUTPUT FORMAT PROTOCOL:
-   You must output your response in two distinct parts. First, a thoughts block wrapped in <analysis></analysis> where you mathematically deduce the parameters based on the constraints. Second, the raw JSON object. No conversational prose outside these blocks.
+FREQUENCY (how common in this specific world):
+- very_common: fills the landscape everywhere
+- common: present in most areas
+- rare: scattered occasionally
+- super_rare: only a few instances
+- unique: exactly one in the world
 
-   ### FEW-SHOT EXAMPLES
+OUTPUT: <analysis></analysis> (one line per object), then a raw JSON object. No other text.
 
-   User description: A vast, sun-drenched expanse of massive, smooth rolling sand dunes that swell and curve under a blazing sky. In the center of this arid landscape, the terrain drops into a perfectly flat, low-lying basin where a vibrant, crystal-clear water lake forms a natural oasis. Rich, dark soil replaces the sand around the shoreline, supporting a dense cluster of towering palm trees, thick reeds, and lush green grass. The surrounding desert remains barren, with sharp sandstone canyon walls framing the horizon and blocking the wind.
+EXAMPLE:
+Objects: ""a skyscraper"", ""a ruined church"", ""a street lamp""
+World: Dense cyberpunk city.
+<analysis>skyscraper=huge/very_common. church=huge/unique. lamp=small/very_common.</analysis>
+{""a skyscraper"":{""size"":""huge"",""frequency"":""very_common""},""a ruined church"":{""size"":""huge"",""frequency"":""unique""},""a street lamp"":{""size"":""small"",""frequency"":""very_common""}}";
 
-   Output:
-   <analysis>
-   - Geology: The prompt demands massive rolling dunes (high scaleBillow, high ampBillow). It also mentions sharp sandstone canyon walls framing the horizon (requires localized Ridged noise, so ampRidged needs a moderate value and macroInfluence must be high enough to trigger them at the boundaries).
-   - Liquids: A low-lying oasis lake is present. Thus, waterLevel must be higher than baseTerrainHeight to allow the basins to fill up.
-   - Warp: Desert wind patterns are organic but sweeping, requiring moderate warpStrength and large warpScale.
-   - Layout: Dense clusters of palms and reeds around the water, but barren elsewhere. Low slope limit ensures trees don''t spawn on the canyon walls.
-   - Materials: Surface is sand, middle shifts to wet_sand near water, liquid is fresh_water. Vegetation maps to cactus/dry grass.
-   - Math Check: base(12) + ampBillow(35) + ampRidged(20) = 67. chunkHeight(85) > 67 + 10. Constraint passed.
-   </analysis>
-   {
-     ""scaleMacro"": 80.0,
-     ""macroInfluence"": 0.75,
-     ""scaleBillow"": 35.0,
-     ""ampBillow"": 32.0,
-     ""billowExponent"": 0.9,
-     ""scaleRidged"": 18.0,
-     ""ampRidged"": 20.0,
-     ""ridgedExponent"": 1.8,
-     ""warpStrength"": 10.0,
-     ""warpScale"": 30.0,
-     ""baseTerrainHeight"": 12.0,
-     ""waterLevel"": 16,
-     ""chunkHeight"": 85,
-     ""chunkWidth"": 16,
-     ""scaleLayout"": 20.0,
-     ""objectDensityThreshold"": 0.55,
-     ""slopeMaxLimit"": 0.8,
-     ""surface"": ""sand"",
-     ""middle"": ""wet_sand"",
-     ""deep"": ""soft_dirt"",
-     ""liquid"": ""fresh_water"",
-     ""flower"": ""cactus_patch"",
-     ""bush"": ""dry_grass"",
-     ""rock"": ""pebble_stones""
-   }
+    // ── Step 3: generate biome-specific 3D prop list ─────────────────────────
+    // existingObjects: quoted names from all_objects.json, or "(none yet)"
+public static string AssetListSystem(string existingObjects) =>
+@"You are a Master Technical Level Designer and Architectural Planner for a procedural 3D voxel game.
+Given a detailed world description, you must produce a comprehensive, interconnected ecosystem of standalone 3D models and structures to populate the landscape.
 
-   User description: An endless, gentle grassland where the terrain forms soft, low-frequency rolling hills and wide, open valleys under a bright daylight sky. A few small, peaceful ponds cut a smooth path across the deepest low points of the plains. Dense clusters of blooming wildflowers and tall green grass blades cover the entire surface, creating giant patches of continuous bright red and yellow colors across the landscape.
+EXISTING ASSETS (You MUST prioritize reusing these if they fit the theme perfectly to avoid infinite asset bloat):
+" + existingObjects + @"
 
-   Output:
-   <analysis>
-   - Geology: Endless gentle grassland. This is a flat/plains terrain. No mountains allowed (ampRidged = 0). Low rolling hills mean scaleBillow should be large and ampBillow must be very low to avoid massive hills. 
-   - Archipelago Prevention: The user wants a field with small, rare, isolated ponds, NOT an archipelago. Therefore, baseTerrainHeight must be high (22.0) and waterLevel must be low (12.0) so the ground stays safely above water. macroInfluence must be very low (0.15) so the terrain doesn''t shift dynamically into chaotic oceans.
-   - Liquids: Water level is set to 12. The continental noise will rarely dip below 12, creating only tiny, isolated lakes.
-   - Layout: Massive continuous fields of flowers. Requires large scaleLayout for wide cohesive biomes, and low objectDensityThreshold to make them extremely dense.
-   - Math Check: base(22) + ampBillow(8) + ampRidged(0) = 30. chunkHeight(60) > 30 + 10. Constraint passed.
-   </analysis>
-   {
-     ""scaleMacro"": 90.0,
-     ""macroInfluence"": 0.15,
-     ""scaleBillow"": 45.0,
-     ""ampBillow"": 8.0,
-     ""billowExponent"": 1.1,
-     ""scaleRidged"": 10.0,
-     ""ampRidged"": 0.0,
-     ""ridgedExponent"": 1.0,
-     ""warpStrength"": 12.0,
-     ""warpScale"": 25.0,
-     ""baseTerrainHeight"": 22.0,
-     ""waterLevel"": 12,
-     ""chunkHeight"": 60,
-     ""chunkWidth"": 16,
-     ""scaleLayout"": 40.0,
-     ""objectDensityThreshold"": 0.38,
-     ""slopeMaxLimit"": 1.2,
-     ""surface"": ""flowering_grass"",
-     ""middle"": ""rich_soil"",
-     ""deep"": ""stone_block"",
-     ""liquid"": ""fresh_water"",
-     ""flower"": ""wildflowers"",
-     ""bush"": ""tall_grass"",
-     ""rock"": ""mossy_boulder""
-   }";
+STRICT ARCHITECTURAL RULES:
+1. THINK IN HIERARCHIES: You must plan the environment from massive architectural focal points down to street-level clutter. Do not skip large buildings.
+2. NO TERRAIN TILES: Every item must be a standalone 3-dimensional model generated ABOVE the ground. No flat pavement or grass tiles.
+3. FORMATTING: Every asset in the JSON array must be a short lowercase English name, very straightforward (e.g., 'medieval house').
+4. NUMBER: Get a final list from 10 to 15 assets. The number is given by both reused and newly defined asset.
+
+OUTPUT FORMAT PROTOCOL:
+You must strictly follow this two-part output format. No conversational text outside these blocks.
+First, write a multi-line <analysis> block where you categorize the required assets into exactly 5 tiers:
+- Structures: big structures that characterize the world (Skyscrapers, Castles, Cathedrals, City Gates). If it is a natural environment, you can skip this
+- Buildings/Houses: common residential and commercial structures, if any (Apartments, Blacksmiths, Taverns, Shacks) If it is a natural environment, you can skip this
+- Vegetation (trees, bushes, flowers, etc.)
+- Environmental Props (Vehicles, beches, fountains, market stalls, lights, etc.)
+- Micro Details/Clutter (smaller props, debris, decorations, etc.)
+Second, output the raw JSON string array containing exactly 7 to 10 highly cohesive assets. Avoid objects that should not be placed or the ground (planes, birdges, roads, etc.). Prefer generic assets that can be reused in multiple worlds, but also include some unique ones that fit the theme perfectly.
+
+### FEW-SHOT EXAMPLES
+
+User description: A sprawling medieval city, featuring narrow cobblestone alleys, small houses, and bustling marketplace squares.
+
+Output:
+<analysis>
+- Structures: fortified stone castle keep, gothic cathedral, city gate tower
+- Medium Buildings/Houses: a citizen house, medieval blacksmith forge with chimney, roadside tavern
+- Vegetation: oak tree, bushes with red flowers, pine tree, yellow daisy
+- Environmental Props: merchant cart, market stall, stone fountain, wooden bench
+- Micro Details/Clutter: bottles, crates, barrels, debris
+</analysis>
+[
+  ""fortified stone castle keep"",
+  ""gothic cathedral"",
+  ""city gate tower"",
+  ""citizen house"",
+  ""medieval blacksmith forge with chimney"",
+  ""roadside tavern"",
+  ""oak tree"",
+   ""bushes with red flowers"",
+   ""pine tree"",
+   ""yellow daisy"",
+  ""merchant cart"",
+   ""market stall"",
+   ""stone fountain"",
+   ""wooden bench"",
+   ""bottles"",
+   ""crates"",
+   ""barrels"",
+   ""debris""
+]
+
+User description: A quiet, basic forest filled with dense canopies, winding dirt pathways, gentle sunbeams piercing through leaves.
+Output:
+<analysis>
+- Structures: none
+- Medium Buildings/Houses: tent, treehouse
+- Vegetation: forest tall tree, bushes with blue berries, white wildflower cluster, small mushroom patch
+- Environmental Props: squirrel, sheep, small rock, a fallen log, bunch of fallen leaves
+- Micro Details/Clutter: pinecone, single small flower
+</analysis>
+[
+  ""tent"",
+  ""treehouse"",       
+  ""forest tall tree"",
+  ""bushes with blue berries"",
+    ""white wildflower cluster"",
+    ""small mushroom patch"",
+    ""squirrel"",
+    ""sheep"",
+    ""small rock"",
+    ""a fallen log"",
+    ""bunch of fallen leaves"",
+    ""pinecone"",
+    ""single small flower""
+]
+
+User description: A bustling modern city downtown with smooth asphalt roads, crowded concrete sidewalks, glass storefronts, and a clean, high-tech urban layout.
+Output:
+<analysis>
+- Structures: corporate glass skyscraper, high-rise office tower, church
+- Medium Buildings/Houses: modern apartment complex, retail clothing shop, corner coffee cafe, supermarket, fuel station
+- Vegetation: maple tree, simple bush
+- Environmental Props: taxi car, transit bus, traffic light pole, metal public bench, regular city car, bicycle, street lamp
+- Micro Details/Clutter: trash bin, cardboard box stack, fire hydrant, pile of junk
+</analysis>
+[
+    ""corporate glass skyscraper"",
+    ""high-rise office tower"",
+    ""church"",
+    ""modern apartment complex"",
+    ""retail clothing shop"",
+    ""corner coffee cafe"",
+    ""supermarket"",
+    ""fuel station"",
+    ""maple tree"",
+    ""simple bush"",
+    ""taxi car"",
+    ""transit bus"",
+    ""traffic light pole"",
+    ""metal public bench"",
+    ""regular city car"",
+    ""bicycle"",
+    ""street lamp"",
+    ""trash bin"",
+    ""cardboard box stack"",
+    ""fire hydrant"",
+    ""pile of junk""
+]"; 
 
 }

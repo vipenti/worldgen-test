@@ -8,16 +8,19 @@ using System;
 using System.Text;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
+using Newtonsoft.Json.Linq;
 
 public class LLMWorldDirector : MonoBehaviour
 {
     public TMP_InputField inputField;
     public string lmStudioEndpoint = "http://25.18.55.60:1234/v1/chat/completions";
     public string modelId = "qwen/qwen3.5-9b";
-    public int maxTokens = 8192;
-    [Tooltip("Enable Qwen3 thinking for Step 2 (JSON params). Disable if context window is small (<=4096).")]
-    public bool thinkingForParams = true; // Impostato a true per forzare l'uso del tag <analysis> ottimizzato
+    public int maxTokens = 1024;
+    [Tooltip("Enable Qwen3 native thinking for Step 2. Keep OFF — prompts use explicit <analysis> tags instead, native thinking wastes context budget.")]
+    public bool thinkingForParams = false;
     public GenerateTexture generateTexture;
+    public GenerateAsset generateAsset;
+    public WorldManager worldManager;
 
     static readonly (string llm, string config)[] TileFields =
     {
@@ -88,23 +91,48 @@ public class LLMWorldDirector : MonoBehaviour
         }
         Debug.Log("<color=cyan>LLMWorldDirector:</color> Descrizione mondo generata:\n" + worldDescription);
 
-        // ── STEP 2: derive noise parameters + materials from description ───────
-        Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 2 — generazione parametri bioma...");
-        var step2 = new string[] { "" };
-        yield return StartCoroutine(CallLLM(
-            BuildSystemPrompt(),
-            worldDescription,
-            raw => step2[0] = raw,
-            disableThinking: !thinkingForParams));
+        // ── STEP 2 + 3 in parallelo (entrambi dipendono da worldDescription) ──
+        Debug.Log("<color=cyan>LLMWorldDirector:</color> Steps 2+3 — parametri bioma e lista asset...");
 
-        string rawParamResponse = step2[0];
-        if (string.IsNullOrEmpty(rawParamResponse))
-        {
+        bool step2Done = false, step3Done = false;
+        var r2 = new string[] { "" };
+        var r3 = new string[] { "" };
+
+        StartCoroutine(CallLLM(BuildSystemPrompt(), worldDescription,
+            raw => { r2[0] = raw; step2Done = true; }, disableThinking: !thinkingForParams));
+
+        var existingRegistry = LoadObjectRegistry();
+        string existingList = existingRegistry.Count > 0
+            ? string.Join(", ", new List<string>(existingRegistry.Keys).ConvertAll(k => $"\"{k}\""))
+            : "(none yet)";
+
+        StartCoroutine(CallLLM(Prompts.AssetListSystem(existingList), worldDescription,
+            raw => { r3[0] = raw; step3Done = true; }, disableThinking: true));
+
+        yield return new WaitUntil(() => step2Done && step3Done);
+
+        if (!string.IsNullOrEmpty(r2[0]))
+            yield return StartCoroutine(ProcessResponseCoroutine(r2[0]));
+        else
             Debug.LogError("LLMWorldDirector: Step 2 fallito — nessuna risposta parametri.");
-            yield break;
+
+        List<string>            newObjects     = null;
+        Dictionary<string, int> currentObjects = null;
+        if (!string.IsNullOrEmpty(r3[0]))
+            ProcessAssetList(r3[0], out newObjects, out currentObjects);
+        else
+            Debug.LogWarning("LLMWorldDirector: Step 3 fallito — nessuna lista asset.");
+
+        // ── STEP 4: assign size + frequency ──────────────────────────────────
+        if (currentObjects != null && currentObjects.Count > 0)
+        {
+            Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 4 — size e frequency...");
+            yield return StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
         }
-        
-        yield return StartCoroutine(ProcessResponseCoroutine(rawParamResponse));
+        else if (currentObjects != null && currentObjects.Count > 0)
+        {
+            generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
+        }
     }
 
     IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false)
@@ -220,6 +248,155 @@ public class LLMWorldDirector : MonoBehaviour
         File.WriteAllText(path, finalJson);
 
         Debug.Log("<color=green>LLMWorldDirector: Configurazione Bioma e Texture salvata con successo!</color>");
+    }
+
+    // ── Step 3: asset list ────────────────────────────────────────────────────
+
+    void ProcessAssetList(string raw, out List<string> newObjects, out Dictionary<string, int> currentObjects)
+    {
+        newObjects     = new List<string>();
+        currentObjects = new Dictionary<string, int>();
+
+        string text = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
+        List<string> names = ParseStringArray(text);
+        if (names.Count == 0) { Debug.LogWarning("[LLMWorldDirector] Asset list vuota."); return; }
+
+        var allObjects = LoadObjectRegistry();
+        int nextId = allObjects.Count;
+
+        foreach (string name in names)
+        {
+            if (!allObjects.ContainsKey(name))
+            {
+                allObjects[name] = nextId++;
+                newObjects.Add(name);
+            }
+            currentObjects[name] = allObjects[name];
+        }
+
+        string baseDir = Path.Combine(Application.dataPath, "Json");
+        Directory.CreateDirectory(baseDir);
+        SaveObjectRegistry(allObjects, Path.Combine(baseDir, "all_objects.json"));
+        // current_objects.json written later by Step 4 with size+frequency
+        // save simple version now as fallback
+        SaveObjectRegistry(currentObjects, Path.Combine(baseDir, "current_objects.json"));
+
+        Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Asset list: {currentObjects.Count} correnti, {allObjects.Count} totali, {newObjects.Count} nuovi.");
+    }
+
+    IEnumerator SizeFrequencyCoroutine(string worldDesc, Dictionary<string, int> currentObjects, List<string> newObjects)
+    {
+        string nameList = string.Join(", ", new List<string>(currentObjects.Keys).ConvertAll(k => $"\"{k}\""));
+        var result = new string[] { "" };
+        yield return StartCoroutine(CallLLM(
+            Prompts.SizeFrequencySystem(nameList), worldDesc,
+            raw => { result[0] = raw; }, disableThinking: true));
+
+        if (!string.IsNullOrEmpty(result[0]))
+            ParseAndSaveSizeFrequency(result[0], currentObjects);
+        else
+            Debug.LogWarning("[LLMWorldDirector] Step 4 fallito — size/frequency non salvati.");
+
+        // Reload biome prefabs with updated size/frequency data, then regenerate chunks
+        worldManager?.ReloadBiomePrefabs();
+        worldManager?.RegenerateAllChunks();
+
+        if (currentObjects != null && currentObjects.Count > 0)
+            generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
+    }
+
+    void ParseAndSaveSizeFrequency(string raw, Dictionary<string, int> currentObjects)
+    {
+        string text    = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
+        string jsonObj = ExtractFirstJsonObject(text);
+
+        var meta = new Dictionary<string, (string size, string freq)>();
+        if (!string.IsNullOrEmpty(jsonObj))
+        {
+            try
+            {
+                var root = JObject.Parse(jsonObj);
+                foreach (var entry in root)
+                {
+                    string sz = entry.Value?["size"]?.ToString()      ?? "big";
+                    string fr = entry.Value?["frequency"]?.ToString() ?? "common";
+                    meta[entry.Key] = (sz, fr);
+                }
+            }
+            catch (Exception e) { Debug.LogError("[LLMWorldDirector] SizeFrequency parse error: " + e.Message); }
+        }
+
+        var sb = new StringBuilder("{\n");
+        int i = 0;
+        foreach (var kvp in currentObjects)
+        {
+            string sz = "big", fr = "common";
+            if (meta.TryGetValue(kvp.Key, out var m)) { sz = m.size; fr = m.freq; }
+            sb.Append($"  \"{kvp.Key}\": {{ \"id\": {kvp.Value}, \"size\": \"{sz}\", \"frequency\": \"{fr}\" }}");
+            if (i < currentObjects.Count - 1) sb.Append(",");
+            sb.AppendLine();
+            i++;
+        }
+        sb.Append("}");
+
+        string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
+        Directory.CreateDirectory(Path.GetDirectoryName(path));
+        File.WriteAllText(path, sb.ToString());
+        Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Size+frequency salvati per {currentObjects.Count} oggetti.");
+    }
+
+    List<string> ParseStringArray(string text)
+    {
+        var list  = new List<string>();
+        int start = text.IndexOf('[');
+        int end   = text.LastIndexOf(']');
+        if (start < 0 || end <= start) return list;
+        string inner = text.Substring(start + 1, end - start - 1);
+        foreach (string token in inner.Split(','))
+        {
+            string t = token.Trim().Trim('"');
+            if (!string.IsNullOrEmpty(t)) list.Add(t);
+        }
+        return list;
+    }
+
+    Dictionary<string, int> LoadObjectRegistry()
+    {
+        var    dict = new Dictionary<string, int>();
+        string path = Path.Combine(Application.dataPath, "Json", "all_objects.json");
+        if (!File.Exists(path))
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(path));
+            File.WriteAllText(path, "{}");
+            return dict;
+        }
+        string json = File.ReadAllText(path).Trim().Trim('{', '}');
+        foreach (string line in json.Split(','))
+        {
+            string t = line.Trim();
+            if (string.IsNullOrEmpty(t)) continue;
+            int colon = t.IndexOf(':');
+            if (colon < 0) continue;
+            string key = t.Substring(0, colon).Trim().Trim('"');
+            string val = t.Substring(colon + 1).Trim();
+            if (int.TryParse(val, out int id)) dict[key] = id;
+        }
+        return dict;
+    }
+
+    void SaveObjectRegistry(Dictionary<string, int> dict, string path)
+    {
+        var sb = new StringBuilder("{\n");
+        int i = 0;
+        foreach (var kvp in dict)
+        {
+            sb.Append($"  \"{kvp.Key}\": {kvp.Value}");
+            if (i < dict.Count - 1) sb.Append(",");
+            sb.AppendLine();
+            i++;
+        }
+        sb.Append("}");
+        File.WriteAllText(path, sb.ToString());
     }
 
     IEnumerator GenerateAndWait(string matName)

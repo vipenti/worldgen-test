@@ -1,7 +1,6 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Text;
 using UnityEngine;
 using Newtonsoft.Json.Linq;
 #if UNITY_EDITOR
@@ -29,37 +28,14 @@ public class VoxelRenderer : MonoBehaviour
 
     string JsonPath => Path.Combine(jsonFolder, jsonFileName).Replace('\\', '/');
 
-    [Header("Rendering")]
-    public Mesh     cubeMesh;
-    public Material voxelMaterial;
-
     [Header("Export")]
     public string assetFolder = "Assets/GeneratedAsset";
 
-    private Matrix4x4[][]          _batches;
-    private MaterialPropertyBlock[] _propBlocks;
-    private VoxelData               _data;
-
-    const int BATCH = 1023;
-
-    void OnEnable()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeChanged;
-#endif
-    }
-
-    void OnDisable()
-    {
-#if UNITY_EDITOR
-        UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeChanged;
-#endif
-    }
+    private VoxelData _data;
 
     public void Reload()
     {
         _data = ParseJson(File.ReadAllText(JsonPath));
-        BuildBatches(_data);
 #if UNITY_EDITOR
         SaveAsAsset();
 #endif
@@ -69,7 +45,6 @@ public class VoxelRenderer : MonoBehaviour
     {
         jsonFileName = assetName + ".voxjson";
         _data = ParseJson(json);
-        BuildBatches(_data);
 #if UNITY_EDITOR
         SaveAsAsset();
 #endif
@@ -106,54 +81,10 @@ public class VoxelRenderer : MonoBehaviour
         return new VoxelData { voxelSize = size, count = count, positions = positions, colors = colors };
     }
 
-    void BuildBatches(VoxelData data)
-    {
-        int total      = data.count;
-        int batchCount = Mathf.CeilToInt((float)total / BATCH);
-        _batches    = new Matrix4x4[batchCount][];
-        _propBlocks = new MaterialPropertyBlock[batchCount];
-
-        var scale = Vector3.one * data.voxelSize;
-
-        for (int b = 0; b < batchCount; b++)
-        {
-            int start = b * BATCH;
-            int n     = Mathf.Min(BATCH, total - start);
-
-            _batches[b] = new Matrix4x4[n];
-            var cols    = new Vector4[n];
-
-            for (int i = 0; i < n; i++)
-            {
-                int vi  = start + i;
-                var pos = new Vector3(
-                    data.positions[vi * 3],
-                    data.positions[vi * 3 + 1],
-                    data.positions[vi * 3 + 2]);
-                _batches[b][i] = Matrix4x4.TRS(pos, Quaternion.identity, scale);
-
-                cols[i] = new Vector4(
-                    data.colors[vi * 3],
-                    data.colors[vi * 3 + 1],
-                    data.colors[vi * 3 + 2],
-                    1f);
-            }
-
-            _propBlocks[b] = new MaterialPropertyBlock();
-            _propBlocks[b].SetVectorArray("_BaseColor", cols);
-        }
-
-        Debug.Log($"VoxelRenderer: {total} voxels in {batchCount} batches");
-    }
-
-    void Update()
-    {
-        if (_batches == null) return;
-        for (int b = 0; b < _batches.Length; b++)
-            Graphics.DrawMeshInstanced(cubeMesh, 0, voxelMaterial, _batches[b], _batches[b].Length, _propBlocks[b]);
-    }
-
 #if UNITY_EDITOR
+    void OnEnable()  => UnityEditor.EditorApplication.playModeStateChanged += OnPlayModeChanged;
+    void OnDisable() => UnityEditor.EditorApplication.playModeStateChanged -= OnPlayModeChanged;
+
     void OnPlayModeChanged(UnityEditor.PlayModeStateChange state)
     {
         if (state != UnityEditor.PlayModeStateChange.ExitingEditMode) return;
@@ -172,7 +103,6 @@ public class VoxelRenderer : MonoBehaviour
         var    assetName  = Path.GetFileNameWithoutExtension(jsonFileName);
         string prefabPath = $"{assetFolder}/{assetName}.prefab";
 
-        // Materiale condiviso (uno solo per tutti gli oggetti)
         string vcMatPath = $"{assetFolder}/VoxelVertexColor.mat";
         var    vcShader  = Shader.Find("Custom/VoxelVertexColor");
         if (vcShader == null)
@@ -189,30 +119,25 @@ public class VoxelRenderer : MonoBehaviour
             EditorUtility.SetDirty(vcMat);
         }
 
-        // Crea il prefab con mesh embeddatа come sub-asset
         var mesh = BuildOptimizedMesh(_data);
         mesh.name = assetName;
 
-        // Rimuovi prefab vecchio per evitare sub-asset duplicati
         AssetDatabase.DeleteAsset(prefabPath);
 
         var go = new GameObject(assetName);
-        go.AddComponent<MeshFilter>().sharedMesh   = mesh;
+        go.AddComponent<MeshFilter>().sharedMesh      = mesh;
         go.AddComponent<MeshRenderer>().sharedMaterial = vcMat;
+        go.AddComponent<MeshCollider>().sharedMesh     = mesh;
         var savedPrefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
         DestroyImmediate(go);
 
-        // Embeda la mesh nel file .prefab (nessun .asset separato)
         AssetDatabase.AddObjectToAsset(mesh, prefabPath);
         savedPrefab.GetComponent<MeshFilter>().sharedMesh = mesh;
         PrefabUtility.SavePrefabAsset(savedPrefab);
 
-        string objPath = $"{assetFolder}/{assetName}.obj";
-        ExportOBJ(mesh, objPath);
-
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        Debug.Log($"VoxelRenderer: prefab → {prefabPath}  obj → {objPath}");
+        Debug.Log($"VoxelRenderer: prefab salvato → {prefabPath}");
     }
 
     static void EnsureFolder(string path)
@@ -227,47 +152,7 @@ public class VoxelRenderer : MonoBehaviour
             cur = next;
         }
     }
-
 #endif
-
-    static void ExportOBJ(Mesh mesh, string path)
-    {
-        var verts   = mesh.vertices;
-        var normals = mesh.normals;
-        var colors  = mesh.colors;
-        var tris    = mesh.triangles;
-
-        var sb = new StringBuilder();
-        sb.AppendLine("# VoxelRenderer OBJ export");
-
-        for (int i = 0; i < verts.Length; i++)
-        {
-            var v = verts[i];
-            if (colors != null && i < colors.Length)
-            {
-                var c = colors[i];
-                sb.AppendLine(FormattableString.Invariant($"v {v.x} {v.y} {v.z} {c.r} {c.g} {c.b}"));
-            }
-            else
-            {
-                sb.AppendLine(FormattableString.Invariant($"v {v.x} {v.y} {v.z}"));
-            }
-        }
-
-        for (int i = 0; i < normals.Length; i++)
-        {
-            var n = normals[i];
-            sb.AppendLine(FormattableString.Invariant($"vn {n.x} {n.y} {n.z}"));
-        }
-
-        for (int i = 0; i < tris.Length; i += 3)
-        {
-            int a = tris[i] + 1, b = tris[i + 1] + 1, c = tris[i + 2] + 1;
-            sb.AppendLine($"f {a}//{a} {b}//{b} {c}//{c}");
-        }
-
-        File.WriteAllText(path, sb.ToString());
-    }
 
     static Mesh BuildOptimizedMesh(VoxelData data)
     {

@@ -33,13 +33,22 @@ public class LLMObjectGeneration : MonoBehaviour
 
     public bool IsGenerating { get; private set; }
 
+    // Fires as soon as the PNG is ready, before 3D generation starts
+    public event Action<string, byte[]> OnImageReady;
+
     void Start() { if (autoGenerate) StartObjectGeneration(); }
 
     [ContextMenu("Start Object Generation")]
     public void StartObjectGeneration()
     {
-        OnValidate(); // rigenera sempre il prompt da object_name corrente
+        if (IsGenerating)
+        {
+            Debug.LogWarning($"LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            StopAllCoroutines();
+            IsGenerating = false;
+        }
 
+        OnValidate(); // rigenera sempre il prompt da object_name corrente
         IsGenerating = true;
         StartCoroutine(PostRequest());
     }
@@ -51,6 +60,7 @@ public class LLMObjectGeneration : MonoBehaviour
 
     IEnumerator PostRequest()
     {
+        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name}");
         string json = $"{{\"prompt\": \"{EscapeJson(stylePrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
         using var req = new UnityWebRequest(serverAddress + "/generate_edit", "POST");
@@ -81,6 +91,7 @@ public class LLMObjectGeneration : MonoBehaviour
         File.WriteAllBytes(outputPath, imageData);
         Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
 
+        OnImageReady?.Invoke(object_name, imageData);
         llm3DGeneration?.GenerateFromBytes(imageData, object_name);
 
         if (llm3DGeneration != null)
