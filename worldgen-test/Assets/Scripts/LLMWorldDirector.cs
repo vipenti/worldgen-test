@@ -33,6 +33,10 @@ public class LLMWorldDirector : MonoBehaviour
         ("rock",    "rockTileID"),
     };
 
+    public static event Action<string, float> OnGenerationProgress;
+    public static event Action                OnTerrainPipelineDone;
+    public static event Action<string>        OnGenerationFailed;
+
     string BuildSystemPrompt()
     {
         var materials = LoadMaterials();
@@ -69,6 +73,7 @@ public class LLMWorldDirector : MonoBehaviour
     IEnumerator PostRequestCoroutine(string userText)
     {
         // ── STEP 1: expand user concept into a rich world description ──────────
+        OnGenerationProgress?.Invoke("Designing your world...", 0.05f);
         Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 1 — generazione descrizione mondo...");
 
         var step1 = new string[] { "" };
@@ -87,11 +92,13 @@ public class LLMWorldDirector : MonoBehaviour
         if (string.IsNullOrEmpty(worldDescription))
         {
             Debug.LogError("LLMWorldDirector: Step 1 fallito — nessuna descrizione ricevuta.");
+            OnGenerationFailed?.Invoke("World description failed.");
             yield break;
         }
         Debug.Log("<color=cyan>LLMWorldDirector:</color> Descrizione mondo generata:\n" + worldDescription);
 
         // ── STEP 2 + 3 in parallelo (entrambi dipendono da worldDescription) ──
+        OnGenerationProgress?.Invoke("Planning biome and assets...", 0.15f);
         Debug.Log("<color=cyan>LLMWorldDirector:</color> Steps 2+3 — parametri bioma e lista asset...");
 
         bool step2Done = false, step3Done = false;
@@ -111,6 +118,8 @@ public class LLMWorldDirector : MonoBehaviour
 
         yield return new WaitUntil(() => step2Done && step3Done);
 
+        OnGenerationProgress?.Invoke("Generating terrain textures...", 0.25f);
+
         if (!string.IsNullOrEmpty(r2[0]))
             yield return StartCoroutine(ProcessResponseCoroutine(r2[0]));
         else
@@ -123,16 +132,22 @@ public class LLMWorldDirector : MonoBehaviour
         else
             Debug.LogWarning("LLMWorldDirector: Step 3 fallito — nessuna lista asset.");
 
+        OnGenerationProgress?.Invoke("Analyzing object properties...", 0.50f);
+
         // ── STEP 4: assign size + frequency ──────────────────────────────────
         if (currentObjects != null && currentObjects.Count > 0)
         {
             Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 4 — size e frequency...");
+            OnGenerationProgress?.Invoke("Finalizing world layout...", 0.55f);
             yield return StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
         }
-        else if (currentObjects != null && currentObjects.Count > 0)
+        else
         {
-            generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
+            OnGenerationProgress?.Invoke("Building terrain...", 0.60f);
+            worldManager?.ReloadBiomePrefabs();
+            worldManager?.RegenerateAllChunks();
         }
+        OnTerrainPipelineDone?.Invoke();
     }
 
     IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false)
@@ -298,9 +313,11 @@ public class LLMWorldDirector : MonoBehaviour
             Debug.LogWarning("[LLMWorldDirector] Step 4 fallito — size/frequency non salvati.");
 
         // Reload biome prefabs with updated size/frequency data, then regenerate chunks
+        OnGenerationProgress?.Invoke("Building terrain...", 0.58f);
         worldManager?.ReloadBiomePrefabs();
         worldManager?.RegenerateAllChunks();
 
+        OnGenerationProgress?.Invoke("Generating 3D models...", 0.65f);
         if (currentObjects != null && currentObjects.Count > 0)
             generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
     }

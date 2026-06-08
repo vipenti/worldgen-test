@@ -47,6 +47,9 @@ public class WorldManager : MonoBehaviour
     [Header("Debug Visualization")]
     public MapVisualizer mapVisualizer;
 
+    [Header("Spawning")]
+    public bool skipInitialPlayerSpawn = false;
+
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
 
@@ -90,7 +93,8 @@ public class WorldManager : MonoBehaviour
         mapVisualizer?.GenerateMaps(targetConfig);
         LoadBiomePrefabs();
         UpdateChunks();
-        yield return StartCoroutine(SpawnPlayer());
+        if (!skipInitialPlayerSpawn)
+            yield return StartCoroutine(SpawnPlayer());
     }
 
     void OnDestroy()
@@ -126,7 +130,7 @@ public class WorldManager : MonoBehaviour
         // }
     }
 
-    IEnumerator SpawnPlayer()
+    public IEnumerator SpawnPlayer()
     {
         // Aspetta un frame perché Unity processi i MeshCollider appena assegnati
         yield return null;

@@ -1,3 +1,4 @@
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -14,6 +15,10 @@ public class GenerateAsset : MonoBehaviour
     public LLMObjectGeneration llmObjectGeneration;
     public WorldManager worldManager;
 
+    public static bool IsGenerating { get; private set; }
+    public static event Action        OnAllAssetsComplete;
+    public static event Action<int, int> OnAssetProgress;
+
     // Chiamato da LLMWorldDirector con i soli oggetti nuovi — gira in background
     public void GenerateNew(List<string> names) => StartCoroutine(GenerateList(names));
 
@@ -22,15 +27,25 @@ public class GenerateAsset : MonoBehaviour
 
     IEnumerator GenerateList(List<string> names)
     {
-        if (!CheckReady()) yield break;
-        Debug.Log($"GenerateAsset: avvio generazione di {names.Count} nuovi oggetti in background...");
+        if (!CheckReady()) { OnAllAssetsComplete?.Invoke(); yield break; }
+
+        IsGenerating = true;
+        int total = names.Count;
+        int done  = 0;
+        OnAssetProgress?.Invoke(done, total);
+        Debug.Log($"GenerateAsset: avvio generazione di {total} nuovi oggetti in background...");
 
         llmObjectGeneration.OnImageReady += OnObjectImageReady;
 
         foreach (string name in names)
         {
             string prefabPath = Path.Combine(assetFolder, name + ".prefab");
-            if (File.Exists(prefabPath)) { Debug.Log($"GenerateAsset: '{name}' già presente, skip."); continue; }
+            if (File.Exists(prefabPath))
+            {
+                Debug.Log($"GenerateAsset: '{name}' già presente, skip.");
+                OnAssetProgress?.Invoke(++done, total);
+                continue;
+            }
 
             Debug.Log($"GenerateAsset: generazione '{name}'...");
             llmObjectGeneration.object_name = name;
@@ -38,10 +53,13 @@ public class GenerateAsset : MonoBehaviour
             yield return new WaitUntil(() => !llmObjectGeneration.IsGenerating);
             Debug.Log($"GenerateAsset: '{name}' completato.");
             worldManager?.ReplacePlaceholders(name);
+            OnAssetProgress?.Invoke(++done, total);
         }
 
         llmObjectGeneration.OnImageReady -= OnObjectImageReady;
-        Debug.Log($"GenerateAsset: {names.Count} oggetti generati.");
+        IsGenerating = false;
+        OnAllAssetsComplete?.Invoke();
+        Debug.Log($"GenerateAsset: {total} oggetti generati.");
     }
 
     void OnObjectImageReady(string name, byte[] bytes)
