@@ -157,10 +157,10 @@ public class Chunk : MonoBehaviour
         return maxValue > 0f ? value / maxValue : 0f;
     }
 
-    // Python-schema compound height (used when cfg.scaleMacro > 0)
+    // Sistema di calcolo dell'altezza stratificato e modulato (Minecraft-Style)
     public static float ComputeHeightNew(float wx, float wz, BiomeConfig cfg)
     {
-        // 1. Domain warping
+        // 1. Domain warping (Mantiene le coste e le forme organiche ed erose)
         float warpedX = wx, warpedZ = wz;
         if (cfg.warpStrength > 0f && cfg.warpScale > 0f)
         {
@@ -169,12 +169,12 @@ public class Chunk : MonoBehaviour
             warpedZ += (Mathf.PerlinNoise(wx * s + 2f,   wz * s + 502f) * 2f - 1f) * cfg.warpStrength;
         }
 
-        // 2. Macro (no warp — large scale, stable)
+        // 2. Macro Noise (Regista continentale: definisce dove nascono le regioni)
         float macro = cfg.scaleMacro > 0f
             ? Mathf.PerlinNoise(wx / cfg.scaleMacro + 101f, wz / cfg.scaleMacro + 4917.3f)
             : 0.5f;
 
-        // 3. Billow  |raw*2-1|^exponent * amp
+        // 3. Billow Noise (Genera colline morbide, dune o avvallamenti calpestabili)
         float billow = 0f;
         if (cfg.ampBillow > 0f && cfg.scaleBillow > 0f)
         {
@@ -182,7 +182,7 @@ public class Chunk : MonoBehaviour
             billow = Mathf.Pow(Mathf.Abs(raw * 2f - 1f), cfg.billowExponent) * cfg.ampBillow;
         }
 
-        // 4. Ridged  (1-|raw*2-1|)^exponent * amp
+        // 4. Ridged Noise (Genera montagne aguzze e pareti di canyon)
         float ridged = 0f;
         if (cfg.ampRidged > 0f && cfg.scaleRidged > 0f)
         {
@@ -190,14 +190,25 @@ public class Chunk : MonoBehaviour
             ridged = Mathf.Pow(1f - Mathf.Abs(raw * 2f - 1f), cfg.ridgedExponent) * cfg.ampRidged;
         }
 
-        // 5. Fusion: macro decides how much ridged vs billow
+        // 5. MISCELAZIONE AVANZATA (ZONING):
+        // Calcoliamo un fattore non lineare: se macro < 0.4 le montagne sono VIETATE (valore 0).
+        // Se macro sale verso 0.8, le montagne iniziano a svettare in modo maestoso.
+        float macroMountainFactor = Mathf.SmoothStep(0f, 1f, Mathf.InverseLerp(0.42f, 0.78f, macro));
+        
+        // Applichiamo la fusione: le pianure useranno solo il Billow, le vette useranno il Ridged
         float height = cfg.baseTerrainHeight
-                     + billow * (1f - macro * cfg.macroInfluence)
-                     + ridged * macro;
+                     + billow * (1f - macroMountainFactor * cfg.macroInfluence)
+                     + ridged * macroMountainFactor * cfg.macroInfluence;
 
-        // 6. Depression mask: conche acquatiche dove macro è molto basso
-        float depression = Mathf.Clamp01((macro - 0.25f) / 0.15f);
-        height = depression * height + (1f - depression) * (cfg.waterLevel - 3f);
+        // 6. MASCHERA DEI LAGHI DINAMICA (Previene l'effetto groviera costante):
+        // Scava i bacini acquatici dolcemente solo nelle depressioni più profonde del macro (sotto lo 0.18)
+        // e solo se il bioma prevede effettivamente una quota d'acqua utilizzabile.
+        if (macro < 0.18f && cfg.waterLevel > 0)
+        {
+            float lakeT = Mathf.SmoothStep(0f, 1f, macro / 0.18f); // 0 al centro del lago, 1 a riva
+            float targetLakeFloor = cfg.waterLevel - 3f;
+            height = Mathf.Lerp(targetLakeFloor, height, lakeT);
+        }
 
         return height;
     }

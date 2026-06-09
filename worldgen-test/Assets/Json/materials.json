@@ -1,13 +1,10 @@
 {
-  "beige_sandstone": 0,
-  "dark_soil": 1,
-  "clay": 2,
+  "lush_grass": 0,
+  "rich_topsoil": 1,
+  "clay_loam": 2,
   "fresh_water": 3,
-  "palm_trees": 4,
-  "tall_grass": 5,
-  "boulders": 6,
-  "apple_tree": 7,
-  "moss_patch": 8,
-  "black_volcanic": 9,
-  "cactus_patch": 10
+  "wild_flowers": 4,
+  "hedgerow_bush": 5,
+  "grey_boulder": 6,
+  "stone": 7
 }

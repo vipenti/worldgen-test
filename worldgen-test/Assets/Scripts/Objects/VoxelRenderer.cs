@@ -12,15 +12,17 @@ class VoxelData
 {
     public float voxelSize;
     public int   count;
-    public float[] positions;  // flat: x0,y0,z0, x1,y1,z1, ...
-    public float[] colors;     // flat: r0,g0,b0, r1,g1,b1, ...
+    public float[] positions;  
+    public float[] colors;     
 }
 
 public class VoxelRenderer : MonoBehaviour
 {
-    // Fired synchronously on the main thread right after the prefab is written to disk.
-    // Passes (assetName, savedPrefab) so WorldManager can replace billboards without LoadAssetAtPath.
     public static event Action<string, GameObject> OnPrefabSaved;
+
+    // Global runtime volatile memory caches accessible by standalone builds
+    public static Dictionary<string, Mesh> RuntimeMeshCache = new Dictionary<string, Mesh>();
+    public static Material RuntimeMaterialInstance;
 
     [Header("Data")]
     public string jsonFolder   = "Assets/Json/objects";
@@ -32,8 +34,10 @@ public class VoxelRenderer : MonoBehaviour
 
     string JsonPath => Path.Combine(jsonFolder, jsonFileName).Replace('\\', '/');
 
-    [Header("Export")]
+    [Header("Export & Build Stability")]
     public string assetFolder = "Assets/GeneratedAsset";
+    [Tooltip("Assign your VoxelVertexColor material here to guarantee the shader is compiled into standalone builds.")]
+    public Material voxelMaterialTemplate; 
     [Tooltip("Strip this many voxel layers from the bottom of every generated model (hides the base/plinth).")]
     public int baseBlocksToRemove = 3;
 
@@ -42,7 +46,12 @@ public class VoxelRenderer : MonoBehaviour
     public void Reload()
     {
         _data = ParseJson(File.ReadAllText(JsonPath));
+        
+        // Step 1: Generates the structural mesh directly into RAM (Runs everywhere, Editor & Standalone Build)
+        GenerateRuntimeMesh(Path.GetFileNameWithoutExtension(jsonFileName));
+
 #if UNITY_EDITOR
+        // Step 2: Serializes the file asset to disk (Runs ONLY inside the Unity Editor layout)
         SaveAsAsset();
 #endif
     }
@@ -51,9 +60,42 @@ public class VoxelRenderer : MonoBehaviour
     {
         jsonFileName = assetName + ".voxjson";
         _data = ParseJson(json);
+        
+        // Generates mesh memory pointers natively during active play sessions
+        GenerateRuntimeMesh(assetName);
+
 #if UNITY_EDITOR
         SaveAsAsset();
 #endif
+    }
+
+    /// <summary>
+    /// Builds the optimized Voxel Mesh data layout directly inside volatile RAM.
+    /// This bypasses disk read/write blocks, allowing standalone builds to stream meshes in real-time.
+    /// </summary>
+    void GenerateRuntimeMesh(string assetName)
+    {
+        if (_data == null) return;
+
+        Mesh mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
+        mesh.name = assetName;
+        
+        // Pushes the live mesh instance into the global thread safe runtime dictionary
+        RuntimeMeshCache[assetName] = mesh;
+
+        // Binds or instantiates the vertex shader coloring material safely cross-platform
+        if (RuntimeMaterialInstance == null)
+        {
+            if (voxelMaterialTemplate != null)
+            {
+                RuntimeMaterialInstance = voxelMaterialTemplate;
+            }
+            else
+            {
+                var vcShader = Shader.Find("Custom/VoxelVertexColor");
+                RuntimeMaterialInstance = vcShader != null ? new Material(vcShader) : new Material(Shader.Find("Standard"));
+            }
+        }
     }
 
     VoxelData ParseJson(string json)
@@ -98,11 +140,9 @@ public class VoxelRenderer : MonoBehaviour
         SaveAsAsset();
     }
 
-    [ContextMenu("Save as 3D Asset")]
     void SaveAsAsset()
     {
-        if (_data == null)
-            _data = ParseJson(File.ReadAllText(JsonPath));
+        if (_data == null) _data = ParseJson(File.ReadAllText(JsonPath));
 
         EnsureFolder(assetFolder);
 
@@ -111,22 +151,20 @@ public class VoxelRenderer : MonoBehaviour
 
         string vcMatPath = $"{assetFolder}/VoxelVertexColor.mat";
         var    vcShader  = Shader.Find("Custom/VoxelVertexColor");
-        if (vcShader == null)
-            Debug.LogError("VoxelRenderer: shader 'Custom/VoxelVertexColor' non trovato!");
+        
         var vcMat = AssetDatabase.LoadAssetAtPath<Material>(vcMatPath);
         if (vcMat == null)
         {
             vcMat = new Material(vcShader) { name = "VoxelVertexColor" };
             AssetDatabase.CreateAsset(vcMat, vcMatPath);
         }
-        else
-        {
-            vcMat.shader = vcShader;
-            EditorUtility.SetDirty(vcMat);
-        }
 
-        var mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
-        mesh.name = assetName;
+        // Retrieves the pre-calculated mesh reference safely
+        if (!RuntimeMeshCache.TryGetValue(assetName, out Mesh mesh))
+        {
+            mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
+            mesh.name = assetName;
+        }
 
         AssetDatabase.DeleteAsset(prefabPath);
 
@@ -143,9 +181,8 @@ public class VoxelRenderer : MonoBehaviour
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
-        // Fire before the log so WorldManager replaces billboards on the same frame.
+        
         OnPrefabSaved?.Invoke(assetName, savedPrefab);
-        Debug.Log($"VoxelRenderer: prefab salvato → {prefabPath}");
     }
 
     static void EnsureFolder(string path)
@@ -167,7 +204,6 @@ public class VoxelRenderer : MonoBehaviour
         float h = data.voxelSize * 0.5f;
         float s = data.voxelSize;
 
-        // Find the lowest Y grid coordinate, then compute the cutoff.
         int minGridY = int.MaxValue;
         for (int i = 0; i < data.count; i++)
         {
