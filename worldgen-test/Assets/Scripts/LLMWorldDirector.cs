@@ -9,6 +9,9 @@ using System.Text;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using Newtonsoft.Json.Linq;
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 public class LLMWorldDirector : MonoBehaviour
 {
@@ -295,6 +298,9 @@ public class LLMWorldDirector : MonoBehaviour
         // current_objects.json written later by Step 4 with size+frequency
         // save simple version now as fallback
         SaveObjectRegistry(currentObjects, Path.Combine(baseDir, "current_objects.json"));
+#if UNITY_EDITOR
+        AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
+#endif
 
         Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Asset list: {currentObjects.Count} correnti, {allObjects.Count} totali, {newObjects.Count} nuovi.");
     }
@@ -312,8 +318,10 @@ public class LLMWorldDirector : MonoBehaviour
         else
             Debug.LogWarning("[LLMWorldDirector] Step 4 fallito — size/frequency non salvati.");
 
-        // Reload biome prefabs with updated size/frequency data, then regenerate chunks
+        // Apply new biome config explicitly so targetConfig is current before chunk rebuild,
+        // regardless of whether the player has moved since ProcessResponseCoroutine ran.
         OnGenerationProgress?.Invoke("Building terrain...", 0.58f);
+        if (worldManager != null) worldManager.ApplyNewConfig();
         worldManager?.ReloadBiomePrefabs();
         worldManager?.RegenerateAllChunks();
 
@@ -359,6 +367,9 @@ public class LLMWorldDirector : MonoBehaviour
         string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, sb.ToString());
+#if UNITY_EDITOR
+        AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
+#endif
         Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Size+frequency salvati per {currentObjects.Count} oggetti.");
     }
 

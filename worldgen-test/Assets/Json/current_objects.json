@@ -1,0 +1,16 @@
+{
+  "tall pine tree": { "id": 61, "size": "big", "frequency": "common" },
+  "ancient oak grove": { "id": 62, "size": "big", "frequency": "rare" },
+  "dense mossy stone patch": { "id": 30, "size": "small", "frequency": "very_common" },
+  "tall fern clump": { "id": 31, "size": "small", "frequency": "common" },
+  "hanging vine cluster": { "id": 32, "size": "small", "frequency": "common" },
+  "colorful wildflower patch": { "id": 25, "size": "small", "frequency": "very_common" },
+  "small shrub": { "id": 27, "size": "small", "frequency": "very_common" },
+  "flowing stream segment": { "id": 34, "size": "big", "frequency": "common" },
+  "stagnant water pool": { "id": 33, "size": "small", "frequency": "common" },
+  "fallen log bridge": { "id": 35, "size": "small", "frequency": "rare" },
+  "large boulder": { "id": 36, "size": "big", "frequency": "rare" },
+  "twisted root cluster": { "id": 29, "size": "small", "frequency": "common" },
+  "piece of driftwood": { "id": 15, "size": "tiny", "frequency": "common" },
+  "brown leaf litter": { "id": 20, "size": "small", "frequency": "very_common" }
+}

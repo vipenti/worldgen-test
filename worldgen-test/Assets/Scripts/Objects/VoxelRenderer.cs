@@ -18,6 +18,10 @@ class VoxelData
 
 public class VoxelRenderer : MonoBehaviour
 {
+    // Fired synchronously on the main thread right after the prefab is written to disk.
+    // Passes (assetName, savedPrefab) so WorldManager can replace billboards without LoadAssetAtPath.
+    public static event Action<string, GameObject> OnPrefabSaved;
+
     [Header("Data")]
     public string jsonFolder   = "Assets/Json/objects";
     public string jsonFileName = "output.voxjson";
@@ -30,6 +34,8 @@ public class VoxelRenderer : MonoBehaviour
 
     [Header("Export")]
     public string assetFolder = "Assets/GeneratedAsset";
+    [Tooltip("Strip this many voxel layers from the bottom of every generated model (hides the base/plinth).")]
+    public int baseBlocksToRemove = 3;
 
     private VoxelData _data;
 
@@ -119,7 +125,7 @@ public class VoxelRenderer : MonoBehaviour
             EditorUtility.SetDirty(vcMat);
         }
 
-        var mesh = BuildOptimizedMesh(_data);
+        var mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
         mesh.name = assetName;
 
         AssetDatabase.DeleteAsset(prefabPath);
@@ -137,6 +143,8 @@ public class VoxelRenderer : MonoBehaviour
 
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
+        // Fire before the log so WorldManager replaces billboards on the same frame.
+        OnPrefabSaved?.Invoke(assetName, savedPrefab);
         Debug.Log($"VoxelRenderer: prefab salvato → {prefabPath}");
     }
 
@@ -154,17 +162,30 @@ public class VoxelRenderer : MonoBehaviour
     }
 #endif
 
-    static Mesh BuildOptimizedMesh(VoxelData data)
+    static Mesh BuildOptimizedMesh(VoxelData data, int baseLayersToRemove = 0)
     {
         float h = data.voxelSize * 0.5f;
         float s = data.voxelSize;
 
+        // Find the lowest Y grid coordinate, then compute the cutoff.
+        int minGridY = int.MaxValue;
+        for (int i = 0; i < data.count; i++)
+        {
+            int gy = Mathf.RoundToInt(data.positions[i * 3 + 1] / s);
+            if (gy < minGridY) minGridY = gy;
+        }
+        int cutoffY = (minGridY == int.MaxValue) ? int.MinValue : minGridY + baseLayersToRemove;
+
         var occupied = new HashSet<Vector3Int>(data.count);
         for (int i = 0; i < data.count; i++)
+        {
+            int gy = Mathf.RoundToInt(data.positions[i * 3 + 1] / s);
+            if (gy < cutoffY) continue;
             occupied.Add(new Vector3Int(
                 Mathf.RoundToInt(data.positions[i * 3]     / s),
-                Mathf.RoundToInt(data.positions[i * 3 + 1] / s),
+                gy,
                 Mathf.RoundToInt(data.positions[i * 3 + 2] / s)));
+        }
 
         var faces = new (Vector3Int dir, Vector3[] verts)[]
         {
@@ -182,9 +203,12 @@ public class VoxelRenderer : MonoBehaviour
 
         for (int i = 0; i < data.count; i++)
         {
+            int gyI = Mathf.RoundToInt(data.positions[i * 3 + 1] / s);
+            if (gyI < cutoffY) continue;
+
             var grid = new Vector3Int(
                 Mathf.RoundToInt(data.positions[i * 3]     / s),
-                Mathf.RoundToInt(data.positions[i * 3 + 1] / s),
+                gyI,
                 Mathf.RoundToInt(data.positions[i * 3 + 2] / s));
 
             var world = new Vector3(data.positions[i * 3], data.positions[i * 3 + 1], data.positions[i * 3 + 2]);

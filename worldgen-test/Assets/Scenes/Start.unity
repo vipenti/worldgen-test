@@ -134,6 +134,10 @@ GameObject:
   - component: {fileID: 226235705}
   - component: {fileID: 226235704}
   - component: {fileID: 226235711}
+  - component: {fileID: 226235713}
+  - component: {fileID: 226235712}
+  - component: {fileID: 226235714}
+  - component: {fileID: 226235715}
   m_Layer: 0
   m_Name: LLMDirector
   m_TagString: Untagged
@@ -205,6 +209,7 @@ MonoBehaviour:
   assetFolder: Assets/GeneratedAsset
   llmObjectGeneration: {fileID: 226235711}
   worldManager: {fileID: 0}
+  llmObjectGenerationForImages: {fileID: 0}
 --- !u!114 &226235709
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -257,12 +262,83 @@ MonoBehaviour:
     Low cube resolution, isometric view, studio lighting.
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
-  quality: 0
-  transparent: 1
+  quality: 1
+  transparent: 0
   serverAddress: http://25.18.55.60:5000
   outputFolder: Assets/GeneratedImages
-  llm3DGeneration: {fileID: 0}
+  llm3DGeneration: {fileID: 226235713}
   autoGenerate: 0
+--- !u!114 &226235712
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 226235703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 46d7380bbebe4f74ca5deb90136475c7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VoxelRenderer
+  jsonFolder: Assets/Json/objects
+  jsonFileName: output.voxjson
+  defaultVoxelSize: 1
+  defaultColor: {r: 1, g: 1, b: 1, a: 1}
+  assetFolder: Assets/GeneratedAsset
+--- !u!114 &226235713
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 226235703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: a8e8a8d2705b0f44188c8a1dab657222, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::LLM3DGeneration
+  imagePath: 
+  outputName: 
+  seed: 1
+  ssGuidanceStrength: 7.5
+  ssSamplingSteps: 12
+  slatGuidanceStrength: 3
+  slatSamplingSteps: 12
+  voxelRenderer: {fileID: 226235712}
+--- !u!114 &226235714
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 226235703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 38ef94223db2bca4584f9676b0b52163, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::TextureAtlasManager
+  maxTextures: 32
+  columns: 8
+  textureSize: 512
+--- !u!114 &226235715
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 226235703}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2ba53ae149a1b9349853a05c552944cf, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::GenerateTexture
+  serverUrl: http://25.18.55.60:5000
+  materialName: wood
+  negativePrompt: 
+  tileable: 0
+  normalStrength: 5
+  steps: 4
+  guidanceScale: 0
 --- !u!1 &348590148
 GameObject:
   m_ObjectHideFlags: 0
@@ -471,7 +547,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.7233651, g: 0.8396226, b: 0.43961373, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
@@ -534,7 +610,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Where will you be?
+  m_text: Percent
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -561,13 +637,13 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 36
-  m_fontSizeBase: 36
+  m_fontSize: 22.6
+  m_fontSizeBase: 22.6
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
   m_fontSizeMax: 72
-  m_fontStyle: 0
+  m_fontStyle: 1
   m_HorizontalAlignment: 1
   m_VerticalAlignment: 256
   m_textAlignment: 65535
@@ -630,7 +706,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -182.37, y: -20.751999}
+  m_AnchoredPosition: {x: -176, y: -36}
   m_SizeDelta: {x: 337.1439, y: 50.951}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!1 &673345432
@@ -1369,7 +1445,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: Where will you be?
+  m_text: Status
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -1396,8 +1472,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 36
-  m_fontSizeBase: 36
+  m_fontSize: 23.2
+  m_fontSizeBase: 23.2
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -1682,7 +1758,7 @@ RectTransform:
   m_GameObject: {fileID: 1549178858}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.94697, y: 0.94697, z: 0.94697}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1309043053}
@@ -1690,10 +1766,10 @@ RectTransform:
   - {fileID: 1943997848}
   m_Father: {fileID: 1964670228}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: 4, y: -144.43784}
-  m_SizeDelta: {x: -241.5235, y: -595.5441}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
+  m_AnchoredPosition: {x: 4, y: -138}
+  m_SizeDelta: {x: 764.4765, y: 122.45587}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1549178860
 MonoBehaviour:
@@ -1796,7 +1872,7 @@ RectTransform:
   m_GameObject: {fileID: 1675230346}
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 1.025, y: 0.4875, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 1522224020}
@@ -1819,15 +1895,15 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: UnityEngine.UI::UnityEngine.UI.Image
   m_Material: {fileID: 0}
-  m_Color: {r: 1, g: 1, b: 1, a: 1}
+  m_Color: {r: 0.87686175, g: 0.990566, b: 0.7896493, a: 1}
   m_RaycastTarget: 1
   m_RaycastPadding: {x: 0, y: 0, z: 0, w: 0}
   m_Maskable: 1
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 10913, guid: 0000000000000000f000000000000000, type: 0}
-  m_Type: 0
+  m_Sprite: {fileID: 10907, guid: 0000000000000000f000000000000000, type: 0}
+  m_Type: 1
   m_PreserveAspect: 0
   m_FillCenter: 1
   m_FillMethod: 4
@@ -1871,7 +1947,7 @@ RectTransform:
   m_GameObject: {fileID: 1860251367}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalScale: {x: 0.81438, y: 0.81438, z: 0.81438}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1933398439}
@@ -1879,10 +1955,10 @@ RectTransform:
   - {fileID: 938175638}
   m_Father: {fileID: 1964670228}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 1, y: 1}
+  m_AnchorMin: {x: 0.5, y: 0.5}
+  m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: 4, y: 71}
-  m_SizeDelta: {x: -241.5235, y: -416.4198}
+  m_SizeDelta: {x: 764.4765, y: 301.5802}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1860251369
 MonoBehaviour:
@@ -2170,8 +2246,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 176.22, y: -0.0000019073}
-  m_SizeDelta: {x: 352.448, y: 39.914}
+  m_AnchoredPosition: {x: 120.10821, y: -1}
+  m_SizeDelta: {x: 479.1656, y: 67.0577}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1943997849
 MonoBehaviour:

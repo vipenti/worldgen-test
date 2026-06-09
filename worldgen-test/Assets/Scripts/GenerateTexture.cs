@@ -46,7 +46,6 @@ public class GenerateTexture : MonoBehaviour
         string outputDir = Path.Combine(Application.dataPath, "GeneratedTexture");
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
-        //string prompt   = $"seamless PBR {materialName} texture, top-down, minecraft style, albedo map";
         string prompt = $"Seamless flat 2D tileable pixel art texture of a simple {materialName} surface, 8-bit game sprite asset, solid colors, clean square shapes, minimalist design, top-down orthographic 90-degree scanner view, perfect square pattern, no depth.";
 
         // Step 1: genera immagine
@@ -60,6 +59,7 @@ public class GenerateTexture : MonoBehaviour
         {
             Debug.LogError($"[GenerateTexture] /create_image fallita: {req1.error}");
             req1.Dispose();
+            OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
 
@@ -69,6 +69,7 @@ public class GenerateTexture : MonoBehaviour
         if (imageBytes == null || imageBytes.Length == 0)
         {
             Debug.LogError("[GenerateTexture] risposta vuota da /create_image");
+            OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
 
@@ -92,6 +93,7 @@ public class GenerateTexture : MonoBehaviour
         {
             Debug.LogError($"[GenerateTexture] /extract_normal_map fallita: {req2.error}");
             req2.Dispose();
+            OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
 
@@ -101,8 +103,10 @@ public class GenerateTexture : MonoBehaviour
         if (normalBytes == null || normalBytes.Length == 0)
         {
             Debug.LogError("[GenerateTexture] risposta vuota da /extract_normal_map");
+            OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
+
         string normalPath = Path.Combine(outputDir, $"{safeName}_normal.png");
         File.WriteAllBytes(normalPath, normalBytes);
         Debug.Log($"<color=cyan>GenerateTexture:</color> Normal map salvata → {normalPath}");

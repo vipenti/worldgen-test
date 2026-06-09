@@ -100,5 +100,33 @@ public class LLMObjectGeneration : MonoBehaviour
         IsGenerating = false;
     }
 
+    // Skips the image HTTP request — starts 3D generation directly from pre-fetched bytes.
+    // Used by GenerateAsset's pipeline mode so image[n+1] can overlap with 3D[n].
+    public void StartFromImageBytes(string name, byte[] imageBytes)
+    {
+        if (IsGenerating)
+        {
+            Debug.LogWarning("LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            StopAllCoroutines();
+            IsGenerating = false;
+        }
+        object_name  = name;
+        IsGenerating = true;
+        StartCoroutine(Run3DOnly(imageBytes));
+    }
+
+    IEnumerator Run3DOnly(byte[] imageBytes)
+    {
+        if (!Directory.Exists(outputFolder))
+            Directory.CreateDirectory(outputFolder);
+        File.WriteAllBytes(Path.Combine(outputFolder, $"{object_name}.png"), imageBytes);
+
+        llm3DGeneration?.GenerateFromBytes(imageBytes, object_name);
+        if (llm3DGeneration != null)
+            yield return new WaitUntil(() => !llm3DGeneration.IsGenerating);
+
+        IsGenerating = false;
+    }
+
     static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");
 }
