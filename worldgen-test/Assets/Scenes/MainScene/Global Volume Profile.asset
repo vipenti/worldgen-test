@@ -15,28 +15,28 @@ MonoBehaviour:
   active: 1
   mode:
     m_OverrideState: 1
-    m_Value: 2
+    m_Value: 1
   gaussianStart:
     m_OverrideState: 1
-    m_Value: 35.5
+    m_Value: 180
   gaussianEnd:
     m_OverrideState: 1
-    m_Value: 41.13
+    m_Value: 200
   gaussianMaxRadius:
-    m_OverrideState: 0
-    m_Value: 1
+    m_OverrideState: 1
+    m_Value: 1.5
   highQualitySampling:
     m_OverrideState: 0
     m_Value: 0
   focusDistance:
-    m_OverrideState: 0
-    m_Value: 10
+    m_OverrideState: 1
+    m_Value: 1.8
   aperture:
-    m_OverrideState: 0
-    m_Value: 5.6
+    m_OverrideState: 1
+    m_Value: 16.8
   focalLength:
-    m_OverrideState: 0
-    m_Value: 50
+    m_OverrideState: 1
+    m_Value: 25
   bladeCount:
     m_OverrideState: 0
     m_Value: 5
@@ -137,13 +137,13 @@ MonoBehaviour:
   m_Name: Global Volume Profile
   m_EditorClassIdentifier: Unity.RenderPipelines.Core.Runtime::UnityEngine.Rendering.VolumeProfile
   components:
+  - {fileID: -6226037135932416629}
   - {fileID: 2080545880266275277}
   - {fileID: -945054711378809699}
   - {fileID: 7821652111453029427}
   - {fileID: 2047168365523192878}
   - {fileID: 7604090984545232888}
   - {fileID: -3038381546936437170}
-  - {fileID: -6226037135932416629}
 --- !u!114 &2047168365523192878
 MonoBehaviour:
   m_ObjectHideFlags: 3

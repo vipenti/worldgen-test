@@ -1,13 +1,14 @@
 {
-  "spruce tree": { "id": 13, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "frozen bush": { "id": 14, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "ice flower": { "id": 15, "size": "tiny", "frequency": "rare", "type": "vegetation", "priority": 4 },
-  "jagged ice crystal": { "id": 16, "size": "small", "frequency": "rare", "type": "clutter", "priority": 3 },
-  "snow mound": { "id": 17, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "frozen lake edge": { "id": 18, "size": "normal", "frequency": "common", "type": "clutter", "priority": 1 },
-  "wild arctic hare": { "id": 19, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "ice shard": { "id": 20, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "snowball": { "id": 21, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "pinecone": { "id": 9, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "smooth rock": { "id": 7, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
+  "oak tree": { "id": 0, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "pine tree": { "id": 22, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "tall fern": { "id": 2, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "wildflower": { "id": 3, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 4, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "fallen log": { "id": 6, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "granite stone": { "id": 5, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "wild rabbit": { "id": 8, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 9, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "dry leaf": { "id": 10, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "mushroom": { "id": 11, "size": "tiny", "frequency": "rare", "type": "vegetation", "priority": 4 },
+  "pebble": { "id": 12, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
 }
