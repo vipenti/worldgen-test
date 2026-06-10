@@ -137,10 +137,10 @@ public class LLMWorldDirector : MonoBehaviour
 
         OnGenerationProgress?.Invoke("Analyzing object properties...", 0.50f);
 
-        // ── STEP 4: assign size + frequency ──────────────────────────────────
+        // ── STEP 4: Four-Pass Sequential Pipeline ──────────────────────────────
         if (currentObjects != null && currentObjects.Count > 0)
         {
-            Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 4 — size e frequency...");
+            Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 4 — Avvio pipeline sequenziale a 4 passaggi...");
             OnGenerationProgress?.Invoke("Finalizing world layout...", 0.55f);
             yield return StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
         }
@@ -158,7 +158,6 @@ public class LLMWorldDirector : MonoBehaviour
         if (disableThinking)
             systemPrompt = "/no_think\n" + systemPrompt;
 
-        // CORREZIONE CRUCIALE: Usiamo JsonUtility escape o rimpiazziamo i caratteri preservando i ritorni a capo (\n validi nel JSON)
         string escapedSystem = EscapeStringForJson(systemPrompt);
         string escapedUser = EscapeStringForJson(userText);
 
@@ -168,7 +167,7 @@ public class LLMWorldDirector : MonoBehaviour
                 "{\"role\": \"system\", \"content\": \"" + escapedSystem + "\"}," +
                 "{\"role\": \"user\", \"content\": \"" + escapedUser + "\"}" +
             "]," +
-            "\"temperature\": 0.3," + // Abbassata la temperatura a 0.3 per renderlo più matematico e meno incline a inventare
+            "\"temperature\": 0.3," + 
             "\"max_tokens\": " + maxTokens + "," +
             "\"stream\": false" +
         "}";
@@ -192,7 +191,6 @@ public class LLMWorldDirector : MonoBehaviour
         }
     }
 
-    // Trasforma i ritorni a capo reali in \n testuali leggibili dalla stringa JSON senza rompere la formattazione
     string EscapeStringForJson(string str)
     {
         if (string.IsNullOrEmpty(str)) return "";
@@ -205,7 +203,7 @@ public class LLMWorldDirector : MonoBehaviour
                 case '\\': sb.Append("\\\\"); break;
                 case '\b': sb.Append("\\b"); break;
                 case '\f': sb.Append("\\f"); break;
-                case '\n': sb.Append("\\n"); break; // Preserva l'andata a capo nel JSON!
+                case '\n': sb.Append("\\n"); break; 
                 case '\r': sb.Append("\\r"); break;
                 case '\t': sb.Append("\\t"); break;
                 default: sb.Append(c); break;
@@ -261,14 +259,11 @@ public class LLMWorldDirector : MonoBehaviour
         string finalJson = BuildFinalJson(cleanJson, resolved);
         string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
         
-        // Assicuriamoci che la cartella esista
         Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, finalJson);
 
         Debug.Log("<color=green>LLMWorldDirector: Configurazione Bioma e Texture salvata con successo!</color>");
     }
-
-    // ── Step 3: asset list ────────────────────────────────────────────────────
 
     void ProcessAssetList(string raw, out List<string> newObjects, out Dictionary<string, int> currentObjects)
     {
@@ -295,31 +290,39 @@ public class LLMWorldDirector : MonoBehaviour
         string baseDir = Path.Combine(Application.dataPath, "Json");
         Directory.CreateDirectory(baseDir);
         SaveObjectRegistry(allObjects, Path.Combine(baseDir, "all_objects.json"));
-        // current_objects.json written later by Step 4 with size+frequency
-        // save simple version now as fallback
         SaveObjectRegistry(currentObjects, Path.Combine(baseDir, "current_objects.json"));
 #if UNITY_EDITOR
         AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
 #endif
-
-        Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Asset list: {currentObjects.Count} correnti, {allObjects.Count} totali, {newObjects.Count} nuovi.");
     }
 
+    /// <summary>
+    /// Refactored Four-Pass Sequential Pipeline. 
+    /// Fires 4 isolated discrete calls to populate each tag metadata parameter on its own layer.
+    /// </summary>
     IEnumerator SizeFrequencyCoroutine(string worldDesc, Dictionary<string, int> currentObjects, List<string> newObjects)
     {
         string nameList = string.Join(", ", new List<string>(currentObjects.Keys).ConvertAll(k => $"\"{k}\""));
-        var result = new string[] { "" };
-        yield return StartCoroutine(CallLLM(
-            Prompts.SizeFrequencySystem(nameList), worldDesc,
-            raw => { result[0] = raw; }, disableThinking: true));
+        
+        // PASS 1: Size Extraction
+        var resSize = new string[] { "" };
+        yield return StartCoroutine(CallLLM(Prompts.SizeSystem(nameList), worldDesc, raw => { resSize[0] = raw; }, disableThinking: true));
 
-        if (!string.IsNullOrEmpty(result[0]))
-            ParseAndSaveSizeFrequency(result[0], currentObjects);
-        else
-            Debug.LogWarning("[LLMWorldDirector] Step 4 fallito — size/frequency non salvati.");
+        // PASS 2: Frequency Extraction
+        var resFreq = new string[] { "" };
+        yield return StartCoroutine(CallLLM(Prompts.FrequencySystem(nameList), worldDesc, raw => { resFreq[0] = raw; }, disableThinking: true));
 
-        // Apply new biome config explicitly so targetConfig is current before chunk rebuild,
-        // regardless of whether the player has moved since ProcessResponseCoroutine ran.
+        // PASS 3: Type Extraction
+        var resType = new string[] { "" };
+        yield return StartCoroutine(CallLLM(Prompts.TypeSystem(nameList), worldDesc, raw => { resType[0] = raw; }, disableThinking: true));
+
+        // PASS 4: Priority Extraction
+        var resPriority = new string[] { "" };
+        yield return StartCoroutine(CallLLM(Prompts.PrioritySystem(nameList), worldDesc, raw => { resPriority[0] = raw; }, disableThinking: true));
+
+        // Compilation and compilation injection
+        ParseAndSaveFourPassMetadata(resSize[0], resFreq[0], resType[0], resPriority[0], currentObjects);
+
         OnGenerationProgress?.Invoke("Building terrain...", 0.58f);
         if (worldManager != null) worldManager.ApplyNewConfig();
         worldManager?.ReloadBiomePrefabs();
@@ -330,34 +333,29 @@ public class LLMWorldDirector : MonoBehaviour
             generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
     }
 
-    void ParseAndSaveSizeFrequency(string raw, Dictionary<string, int> currentObjects)
+    /// <summary>
+    /// Processes and merges 4 independent raw LLM responses securely into current_objects.json.
+    /// </summary>
+    void ParseAndSaveFourPassMetadata(string rawSize, string rawFreq, string rawType, string rawPriority, Dictionary<string, int> currentObjects)
     {
-        string text    = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
-        string jsonObj = ExtractFirstJsonObject(text);
-
-        var meta = new Dictionary<string, (string size, string freq)>();
-        if (!string.IsNullOrEmpty(jsonObj))
-        {
-            try
-            {
-                var root = JObject.Parse(jsonObj);
-                foreach (var entry in root)
-                {
-                    string sz = entry.Value?["size"]?.ToString()      ?? "big";
-                    string fr = entry.Value?["frequency"]?.ToString() ?? "common";
-                    meta[entry.Key] = (sz, fr);
-                }
-            }
-            catch (Exception e) { Debug.LogError("[LLMWorldDirector] SizeFrequency parse error: " + e.Message); }
-        }
+        var sizes = ExtractTagValues(rawSize, "size");
+        var frequencies = ExtractTagValues(rawFreq, "frequency");
+        var types = ExtractTagValues(rawType, "type");
+        var priorities = ExtractTagValues(rawPriority, "priority");
 
         var sb = new StringBuilder("{\n");
         int i = 0;
         foreach (var kvp in currentObjects)
         {
-            string sz = "big", fr = "common";
-            if (meta.TryGetValue(kvp.Key, out var m)) { sz = m.size; fr = m.freq; }
-            sb.Append($"  \"{kvp.Key}\": {{ \"id\": {kvp.Value}, \"size\": \"{sz}\", \"frequency\": \"{fr}\" }}");
+            string sz = sizes.ContainsKey(kvp.Key) ? sizes[kvp.Key] : "big";
+            string fr = frequencies.ContainsKey(kvp.Key) ? frequencies[kvp.Key] : "common";
+            string tp = types.ContainsKey(kvp.Key) ? types[kvp.Key] : "vegetation";
+            
+            int pr = 3;
+            if (priorities.ContainsKey(kvp.Key) && int.TryParse(priorities[kvp.Key], out int parsedPr))
+                pr = parsedPr;
+
+            sb.Append($"  \"{kvp.Key}\": {{ \"id\": {kvp.Value}, \"size\": \"{sz}\", \"frequency\": \"{fr}\", \"type\": \"{tp}\", \"priority\": {pr} }}");
             if (i < currentObjects.Count - 1) sb.Append(",");
             sb.AppendLine();
             i++;
@@ -370,7 +368,37 @@ public class LLMWorldDirector : MonoBehaviour
 #if UNITY_EDITOR
         AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
 #endif
-        Debug.Log($"<color=cyan>[LLMWorldDirector]</color> Size+frequency salvati per {currentObjects.Count} oggetti.");
+        Debug.Log($"<color=green>[LLMWorldDirector]</color> Pipeline a 4 passaggi completata con successo per {currentObjects.Count} oggetti.");
+    }
+
+    /// <summary>
+    /// Flexible parsing utility parsing both flat raw string json maps and wrapped key-value schemas.
+    /// </summary>
+    Dictionary<string, string> ExtractTagValues(string raw, string fieldName)
+    {
+        var dict = new Dictionary<string, string>();
+        string text = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
+        string jsonObj = ExtractFirstJsonObject(text);
+        if (string.IsNullOrEmpty(jsonObj)) return dict;
+
+        try
+        {
+            var root = JObject.Parse(jsonObj);
+            foreach (var entry in root)
+            {
+                if (entry.Value?.Type == JTokenType.Object)
+                {
+                    var val = entry.Value[fieldName];
+                    if (val != null) dict[entry.Key] = val.ToString();
+                }
+                else if (entry.Value != null)
+                {
+                    dict[entry.Key] = entry.Value.ToString();
+                }
+            }
+        }
+        catch (Exception e) { Debug.LogError($"[LLMWorldDirector] Failure during discrete {fieldName} pass extraction: " + e.Message); }
+        return dict;
     }
 
     List<string> ParseStringArray(string text)

@@ -55,7 +55,8 @@ public class LLMObjectGeneration : MonoBehaviour
 
     void OnValidate()
     {
-        stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background. Low cube resolution, isometric view, studio lighting.";
+        stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background on a super thin white plane. Low cube resolution, frontal view, studio lighting.";
+        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background. Low cube resolution, isometric view, studio lighting.";
     }
 
     IEnumerator PostRequest()

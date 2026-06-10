@@ -46,7 +46,7 @@ public class GenerateTexture : MonoBehaviour
         string outputDir = Path.Combine(Application.dataPath, "GeneratedTexture");
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
-        string prompt = $"Seamless flat 2D tileable pixel art texture of a simple {materialName} surface, 8-bit game sprite asset, solid colors, clean square shapes, minimalist design, top-down orthographic 90-degree scanner view, perfect square pattern, no depth.";
+        string prompt = $"Seamless flat tileable texture of a simple {materialName} surface for a 3D videogame, to be applied on cube faces. It must contain exclusively simple, clean characteristic details of the material. Top-down orthographic 90-degree view.";
 
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");

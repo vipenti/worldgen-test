@@ -1,16 +1,13 @@
 {
-  "wooden house with thatched roof": { "id": 23, "size": "big", "frequency": "rare" },
-  "stone farmhouse": { "id": 1, "size": "big", "frequency": "super_rare" },
-  "broadleaf deciduous tree": { "id": 19, "size": "small", "frequency": "common" },
-  "small pine tree": { "id": 7, "size": "small", "frequency": "very_common" },
-  "fern cluster": { "id": 20, "size": "small", "frequency": "very_common" },
-  "wildflower patch": { "id": 6, "size": "small", "frequency": "very_common" },
-  "small bush": { "id": 22, "size": "small", "frequency": "common" },
-  "grey boulder": { "id": 10, "size": "small", "frequency": "common" },
-  "simple dirt path segment": { "id": 11, "size": "small", "frequency": "very_common" },
-  "wooden fence post": { "id": 12, "size": "small", "frequency": "rare" },
-  "fallen log": { "id": 13, "size": "small", "frequency": "rare" },
-  "bird nest": { "id": 15, "size": "tiny", "frequency": "super_rare" },
-  "dried leaf pile": { "id": 16, "size": "tiny", "frequency": "common" },
-  "scattered stones": { "id": 14, "size": "small", "frequency": "very_common" }
+  "spruce tree": { "id": 13, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "frozen bush": { "id": 14, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "ice flower": { "id": 15, "size": "tiny", "frequency": "rare", "type": "vegetation", "priority": 4 },
+  "jagged ice crystal": { "id": 16, "size": "small", "frequency": "rare", "type": "clutter", "priority": 3 },
+  "snow mound": { "id": 17, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "frozen lake edge": { "id": 18, "size": "normal", "frequency": "common", "type": "clutter", "priority": 1 },
+  "wild arctic hare": { "id": 19, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "ice shard": { "id": 20, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "snowball": { "id": 21, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 9, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "smooth rock": { "id": 7, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
 }

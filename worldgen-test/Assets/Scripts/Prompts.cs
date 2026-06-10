@@ -18,7 +18,7 @@ CRITICAL FORMATTING RULE: Output ONLY the raw paragraph. No introductions, no he
 ### EXAMPLES
 
 User: quiet basic forest
-Output: A flat plain terrain covered in green grass turf blocks and rich soil layers. A small winding fresh water river cuts a channel through the center of the terrain, forming tiny isolated ponds at the lowest points. The ground is populated by a variety of individual oak trees, tall birch trees, small wild rabbits, and ordinary grey boulders. There are no buildings, roads, or artificial structures.
+Output: A flat plain terrain covered in green grass turf blocks and rich soil layers. A small winding fresh water river cuts a channel through the center of the terrain, forming tiny isolated ponds at the lowest points. The ground is populated by a variety of individual oak trees, tall birch trees, small wild rabbits. There are no buildings, roads, or artificial structures.
 
 User: desert with an oasis
 Output: A dry expanse made of rolling sand dunes and wide sandy valleys. In the center, the terrain drops into a flat, low-lying basin containing a localized pool of fresh water. The shoreline features blocks of wet sand and dark soil supporting individual palm trees, reeds, and small cacti. The surrounding desert remains empty with scattered sandstone rocks on the dune slopes.
@@ -69,7 +69,7 @@ OUTPUT: Write <analysis></analysis> containing a verification of the walkability
 
 World: A quiet basic forest with tall trees and flat green grass clearings.
 <analysis>Forest biome requires flat, walkable paths. No jagged mountains allowed: ampRidged=0. Gentle terrain: ampBillow=6, billowExponent=0.8 for flat clearings. Low water dominance: base(22) > waterLevel(10) so pools are rare. Math: 22+6+0=28. chunkHeight(55)>40. OK.</analysis>
-{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""surface"":""mossy_grass"",""middle"":""rich_soil"",""deep"":""stone"",""liquid"":""fresh_water"",""flower"":""yellow_flower"",""bush"":""green_bush"",""rock"":""grey_boulder""}
+{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""surface"":""mossy_grass"",""middle"":""rich_soil"",""deep"":""stone"",""liquid"":""fresh_water"",""flower"":""yellow_flower"",""bush"":""green_bush""}
 
 World: A jagged mountain peak range with vertical stone cliffs.
 <analysis>Mountain biome requires high verticality. ampRidged=65, scaleRidged=60 for massive ranges. macroInfluence=0.85 to allow ridges to dominate high macro zones. Math: 10+10+65=85. chunkHeight(110)>97. OK.</analysis>
@@ -78,34 +78,8 @@ World: A jagged mountain peak range with vertical stone cliffs.
 World: ";
 
     // ── Step 4: assign size + frequency to each object ───────────────────────
-    // objectList: comma-separated quoted names, e.g. "a palm tree", "a boulder"
-public static string SizeFrequencySystem(string objectList) =>
-@"You are a Game Designer. Given a world description, assign size and frequency to each object.
-
-OBJECTS: " + objectList + @"
-
-SIZE (Y-axis height in world):
-- huge: skyscrapers, castles, towers, massive structures
-- big: houses, medium trees, large boulders, vehicles
-- small: benches, animals, bushes, small props
-- tiny: flowers, pebbles, debris, tiny decorations
-
-FREQUENCY (how common in this specific world):
-- very_common: fills the landscape everywhere
-- common: present in most areas
-- rare: scattered occasionally
-- super_rare: only a few instances
-- unique: exactly one in the world
-
-OUTPUT: <analysis></analysis> (one line per object), then a raw JSON object. No other text.
-
-EXAMPLE:
-Objects: ""a skyscraper"", ""a ruined church"", ""a street lamp""
-World: Dense cyberpunk city.
-<analysis>skyscraper=huge/very_common. church=huge/unique. lamp=small/very_common.</analysis>
-{""a skyscraper"":{""size"":""huge"",""frequency"":""very_common""},""a ruined church"":{""size"":""huge"",""frequency"":""unique""},""a street lamp"":{""size"":""small"",""frequency"":""very_common""}}";
-
-    // ── Step 3: generate biome-specific 3D prop list ─────────────────────────
+    // objectList: comma-separated quoted names, e.g. "a palm tree"
+   // ── Step 3: generate biome-specific 3D prop list ─────────────────────────
     // existingObjects: quoted names from all_objects.json, or "(none yet)"
 public static string AssetListSystem(string existingObjects) =>
 @"You are a Master Technical Level Designer and Architectural Planner for a procedural 3D voxel game.
@@ -128,7 +102,7 @@ First, write a multi-line <analysis> block where you categorize the required ass
 - Structures: big structures that characterize the world (Skyscrapers, Castles, Cathedrals, City Gates, Grand Tents). If it is a natural environment, write 'none'.
 - Buildings/Houses: common residential and commercial structures (Apartments, Blacksmiths, Taverns, Shacks, Booths). If it is a natural environment, write 'none'.
 - Vegetation: individual standalone trees, single bushes, single flowers.
-- Environmental Props: vehicles, benches, fountains, single market stalls, lights, rocks, boulders, single animals.
+- Environmental Props: vehicles, benches, fountains, single market stalls, lights, rocks, single animals.
 - Micro Details/Clutter: single small props, single decorations, single debris items, single bottles, single boxes.
 Second, output the raw JSON string array containing exactly 10 to 15 highly cohesive individual assets. Avoid objects that cannot be placed on the ground (like planes, bridges, or roads).
 
@@ -167,7 +141,7 @@ Output:
 - Structures: none
 - Buildings/Houses: none
 - Vegetation: forest tree, birch tree, wild fern, small bush, mushroom
-- Environmental Props: wild deer, mossy boulder, fallen log, sharp rock, granite stone
+- Environmental Props: wild deer, fallen log, sharp rock, granite stone
 - Micro Details/Clutter: pinecone, wooden stick, dry leaf
 </analysis>
 [
@@ -177,7 +151,6 @@ Output:
   ""small bush"",
   ""mushroom"",
   ""wild deer"",
-  ""mossy boulder"",
   ""fallen log"",
   ""sharp rock"",
   ""granite stone"",
@@ -192,7 +165,7 @@ Output:
 - Structures: grand circus tent
 - Buildings/Houses: wooden ticket booth, iron cage wagon
 - Vegetation: meadow tree, green bush, red flower
-- Environmental Props: circus elephant, wooden chair, decorative flag pole, wooden table, rough boulder
+- Environmental Props: circus elephant, wooden chair, decorative flag pole, wooden table
 - Micro Details/Clutter: circus ticket, juggling club, small stone
 </analysis>
 [
@@ -206,7 +179,6 @@ Output:
   ""wooden chair"",
   ""decorative flag pole"",
   ""wooden table"",
-  ""rough boulder"",
   ""circus ticket"",
   ""juggling club"",
   ""small stone""
@@ -214,4 +186,228 @@ Output:
 
 User description: ";
 
+// ── Step 4: assign size, frequency, type and placement priority ──────────
+// ── PASS 1: SIZE EXTRACTION ──────────────────────────────────────────────
+    public static string SizeSystem(string objectList) =>
+    @"You are a Technical Game Data Compiler. Given a world description and a list of assets, classify ONLY the 'size' category for each individual object based strictly on its physical scale.
+    IMPORTANT: Size classification is based on the object's height compared to a standard human player character (approximately 1.7 meters tall). Consider the object's overall volume and presence in the world when assigning size categories.
+
+    OBJECTS TO PROCESS: " + objectList + @"
+
+    STRICT SCALE RULES:
+    - 'huge': Massive skyscrapers, castles, main cathedral towers, or monolithic landmarks.
+    - 'big': Standard residential houses, shops, trees, temples.
+    - 'normal': human characters, vehicles, small boats, or medium-sized props like market stalls or fountains.
+    - 'small': Bushes, furniture pieces, single animals, fences, or fallen logs.
+    - 'tiny': Individual flowers, mushrooms, small pebbles, or micro ground clutter.
+
+    CRITICAL REQUIREMENT: Output ONLY a raw, flat JSON object mapping each object to its size string. Do not write markdown blocks (```json), conversational prose, or analysis.
+
+    ### EXAMPLES
+
+    World: A quiet, basic forest filled with dense canopies and small clearings.
+    Output:
+    {
+      ""forest tree"": ""big"",
+      ""birch tree"": ""big"",
+      ""bush"": ""small"",
+      ""fountain"": ""normal"",
+      ""fallen log"": ""small"",
+      ""pinecone"": ""tiny"",
+      ""wooden stick"": ""tiny""
+    }
+
+    World: A peaceful medieval village featuring small houses and a central gathering square.
+    Output:
+    {
+      ""village house"": ""big"",
+      ""blacksmith forge"": ""big"",
+      ""wooden bench"": ""small"",
+      ""stone well"": ""normal"",
+      ""wooden barrel"": ""small"",
+      ""flowering bush"": ""small"",
+      ""small stone"": ""tiny""
+    }
+
+    World: A bustling modern city downtown with vertical office towers and wide concrete sidewalks.
+    Output:
+    {
+      ""corporate glass skyscraper"": ""huge"",
+      ""modern apartment complex"": ""huge"",
+      ""supermarket"": ""big"",
+      ""traffic light pole"": ""normal"",
+      ""metal public bench"": ""normal"",
+      ""taxi car"": ""normal"",
+      ""sidewalk maple tree"": ""big"",
+      ""trash bin"": ""small"",
+      ""consumed cigarette"": ""tiny""
+    }";
+
+
+    // ── PASS 2: FREQUENCY EXTRACTION ─────────────────────────────────────────
+    public static string FrequencySystem(string objectList) =>
+    @"You are a Technical Game Data Compiler. Given a world description and a list of assets, classify ONLY the 'frequency' category for each individual object based on how common it should be in this specific biome.
+
+    OBJECTS TO PROCESS: " + objectList + @"
+
+    STRICT FREQUENCY RULES:
+    - 'unique': Exactly ONE single instance exists in the entire world layout (e.g., a specific unique workshop or landmark). Max 1 unique asset per world.
+    - 'super_rare': Very few instances across the landscape.
+    - 'rare': Scattered occasionally.
+    - 'common': Present in most standard areas.
+    - 'very_common': Fills the background landscape everywhere as basic filler.
+
+    CRITICAL REQUIREMENT: Output ONLY a raw, flat JSON object mapping each object to its frequency string. Do not write markdown blocks (```json), conversational prose, or analysis.
+
+    ### EXAMPLES
+
+    World: A quiet, basic forest filled with dense canopies and small clearings.
+    Output:
+    {
+      ""forest tree"": ""very_common"",
+      ""birch tree"": ""common"",
+      ""wild fern"": ""very_common"",
+      ""fallen log"": ""rare"",
+      ""pinecone"": ""very_common"",
+      ""wooden stick"": ""very_common""
+    }
+
+    World: A peaceful medieval village featuring small houses and a central gathering square.
+    Output:
+    {
+      ""village house"": ""common"",
+      ""blacksmith forge"": ""unique"",
+      ""wooden bench"": ""rare"",
+      ""stone well"": ""unique"",
+      ""wooden barrel"": ""common"",
+      ""flowering bush"": ""common"",
+      ""small stone"": ""very_common""
+    }
+
+    World: A bustling modern city downtown with vertical office towers and wide concrete sidewalks.
+    Output:
+    {
+      ""corporate glass skyscraper"": ""common"",
+      ""modern apartment complex"": ""rare"",
+      ""traffic light pole"": ""common"",
+      ""metal public bench"": ""common"",
+      ""taxi car"": ""common"",
+      ""sidewalk maple tree"": ""common"",
+      ""trash bin"": ""very_common""
+    }
+
+    World Description Context: ";
+
+
+    // ── PASS 3: TYPE CATEGORIZATION ──────────────────────────────────────────
+    public static string TypeSystem(string objectList) =>
+    @"You are a Technical Game Data Compiler. Given a world description and a list of assets, classify ONLY the functional placement 'type' behavior for each individual object.
+
+    OBJECTS TO PROCESS: " + objectList + @"
+
+    STRICT TYPE RULES:
+    - 'structure': Core foundations, buildings, large architecture, or major infrastructure (e.g., houses, blacksmiths, towers, bridges).
+    - 'prop': Functional urban, indoor, or thematic furniture items interacting with paths or structures (e.g., lamps, benches, tables, carts, wells, boats).
+    - 'vegetation': Natural living flora, organic greenery, trees, or plants (e.g., trees, bushes, flowers, ferns).
+    - 'clutter': Small ground details, debris, scatter residue, or tiny loose blocks (e.g., single stones, twigs, loose barrels, leaf piles).
+
+    CRITICAL CONSTRAINT: Artificial infrastructure (like bridges), buildings, or vehicles (like cars and boats) can NEVER be classified as vegetation or clutter. They must be structures or props.
+
+    CRITICAL REQUIREMENT: Output ONLY a raw, flat JSON object mapping each object to its type string. Do not write markdown blocks (```json), conversational prose, or analysis.
+
+    ### EXAMPLES
+
+    World: A quiet, basic forest filled with dense canopies and small clearings.
+    Output:
+    {
+      ""forest tree"": ""vegetation"",
+      ""birch tree"": ""vegetation"",
+      ""wild fern"": ""vegetation"",
+      ""fallen log"": ""clutter"",
+      ""pinecone"": ""clutter"",
+      ""wooden stick"": ""clutter""
+    }
+
+    World: A peaceful medieval village featuring small houses and a central gathering square.
+    Output:
+    {
+      ""village house"": ""structure"",
+      ""blacksmith forge"": ""structure"",
+      ""wooden bench"": ""prop"",
+      ""stone well"": ""prop"",
+      ""wooden barrel"": ""clutter"",
+      ""flowering bush"": ""vegetation"",
+      ""small stone"": ""clutter""
+    }
+
+    World: A bustling modern city downtown with vertical office towers and wide concrete sidewalks.
+    Output:
+    {
+      ""corporate glass skyscraper"": ""structure"",
+      ""modern apartment complex"": ""structure"",
+      ""traffic light pole"": ""prop"",
+      ""metal public bench"": ""prop"",
+      ""taxi car"": ""prop"",
+      ""sidewalk maple tree"": ""vegetation"",
+      ""trash bin"": ""clutter""
+    }
+
+    World Description Context: ";
+
+
+    // ── PASS 4: PRIORITY PLACEMENT HIERARCHY ─────────────────────────────────
+    public static string PrioritySystem(string objectList) =>
+    @"You are a Technical Level Design Orchestrator. Given a world description and a list of assets, determine ONLY the exact layout pass 'priority' integer for each object.
+
+    OBJECTS TO PROCESS: " + objectList + @"
+
+    STRICT HIERARCHY RULES:
+    - 1: Primary Architectural Pillars ('structure' behaviors). Buildings, towers, or foundations spawned first to establish spatial centers.
+    - 2: Relational Attached Props ('prop' behaviors). Urban items, furniture, or vehicles spawned second, directly anchored or adjacent to priority 1 foundations.
+    - 3: Standard Large Greenery (Trees and large flora inside 'vegetation' behaviors). Foliage spawned third in remaining open spaces.
+    - 4: Micro Ground Filler (Micro flowers, tiny clutter, small rocks, or leaves). Spawned last as tiny surface decorations.
+
+    CRITICAL REQUIREMENT: Output ONLY a raw, flat JSON object mapping each object to its integer priority value (1, 2, 3, or 4). Do not write markdown blocks (```json), conversational prose, or analysis.
+
+    ### EXAMPLES
+
+    World: A quiet, basic forest filled with dense canopies and small clearings.
+    Output:
+    {
+      ""forest tree"": 3,
+      ""birch tree"": 3,
+      ""wild fern"": 4,
+      ""fallen log"": 4,
+      ""pinecone"": 4,
+      ""wooden stick"": 4
+    }
+
+    World: A peaceful medieval village featuring small houses and a central gathering square.
+    Output:
+    {
+      ""village house"": 1,
+      ""blacksmith forge"": 1,
+      ""wooden bench"": 2,
+      ""stone well"": 2,
+      ""wooden barrel"": 4,
+      ""flowering bush"": 4,
+      ""small stone"": 4
+    }
+
+    World: A bustling modern city downtown with vertical office towers and wide concrete sidewalks.
+    Output:
+    {
+      ""corporate glass skyscraper"": 1,
+      ""modern apartment complex"": 1,
+      ""traffic light pole"": 2,
+      ""metal public bench"": 2,
+      ""taxi car"": 2,
+      ""sidewalk maple tree"": 3,
+      ""trash bin"": 4
+    }
+
+    World Description Context: ";
+
 }
+
+

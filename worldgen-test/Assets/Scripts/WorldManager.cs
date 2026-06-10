@@ -40,6 +40,7 @@ public class WorldManager : MonoBehaviour
     [Header("Object Scales by Categorized Size")]
     public float scaleHuge = 15f;
     public float scaleBig = 7f;
+    public float scaleNormal = 5f;
     public float scaleSmall = 3f;
     public float scaleTiny = 1f;
     public float scaleDefault = 5f;
@@ -60,6 +61,8 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, List<BillboardPlaceholder>> _placeholders = new Dictionary<string, List<BillboardPlaceholder>>();
     private Dictionary<string, float> _objectScaleFactors = new Dictionary<string, float>();
     private Dictionary<string, float> _objectFreqChances = new Dictionary<string, float>();
+    private Dictionary<string, string> _objectTypes = new Dictionary<string, string>();
+    private Dictionary<string, int> _objectPriorities = new Dictionary<string, int>();
     private HashSet<string> _uniqueSpawned = new HashSet<string>();
 
     [Header("Debug & Map Visualization")]
@@ -77,6 +80,15 @@ public class WorldManager : MonoBehaviour
     // Shared runtime material definitions
     private Texture2D atlasTexture;
     private Material sharedChunkMaterial;
+
+    // Cache structure used to track positioned primary buildings 
+    // so secondary props can align themselves relative to them.
+    private struct StructureAnchor
+    {
+        public Vector3 position;    // Global world position of the building
+        public string assetName;    // Name of the asset (e.g., "village house")
+        public float scale;         // Applied scale factor
+    }
 
     void Start() => StartCoroutine(InitRoutine());
 
@@ -260,8 +272,9 @@ public class WorldManager : MonoBehaviour
     }
 
     /// <summary>
-    /// Processes landscape geometry distributions, preventing overlapping or clipped asset placements.
-    /// Fully adapted to support direct memory instantiations inside standalone builds.
+    /// Distribuisce gli oggetti sulla griglia rispettando rigorosamente l'ordine di priorità (1-4).
+    /// FIX CORRETTIVO: La quantità e la densità di ogni singolo asset sono determinate esclusivamente
+    /// dal rispettivo parametro di rarità (Rarity), isolando i cicli di spawn per ogni oggetto.
     /// </summary>
     void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
     {
@@ -269,136 +282,191 @@ public class WorldManager : MonoBehaviour
         allNames.AddRange(_pendingObjectNames);
         if (allNames.Count == 0) return;
 
-        var veryCommonNames = new List<string>();
-        var commonNames = new List<string>();
-        var rareNames = new List<string>();
-        var superRareNames = new List<string>();
-        var uniqueNames = new List<string>();
-
-        foreach (string n in allNames)
-        {
-            float fc = _objectFreqChances.TryGetValue(n, out float f) ? f : 0.5f;
-            if (fc < 0f) uniqueNames.Add(n);
-            else if (fc <= 0.03f) superRareNames.Add(n);
-            else if (fc <= 0.10f) rareNames.Add(n);
-            else if (fc <= 0.50f) commonNames.Add(n);
-            else veryCommonNames.Add(n);
-        }
-
-        (List<string> names, int cellSize, int exclRadius, bool isStructureTier)[] tiers =
-        {
-            (uniqueNames, cellUnique, uniqueExclusionRadius, true),
-            (superRareNames, cellSuperRare, cellSuperRare / 3, true),
-            (rareNames, cellRare, cellRare / 3, true),
-            (commonNames, cellCommon, 0, false),
-            (veryCommonNames, cellVeryCommon, 0, false),
-        };
-
         int w = cfg.chunkWidth;
         int bx = Mathf.RoundToInt(worldPos.x);
         int bz = Mathf.RoundToInt(worldPos.z);
 
+        // Matrice di occupazione dei pixel e cache delle strutture primarie
         bool[,] excluded = new bool[w, w];
+        List<StructureAnchor> placedStructures = new List<StructureAnchor>();
 
-        foreach (var (names, cellSize, exclRadius, isStructureTier) in tiers)
+        // Eseguiamo i 4 passaggi cronologici sequenziali (da Priorità 1 a Priorità 4)
+        for (int currentPriority = 1; currentPriority <= 4; currentPriority++)
         {
-            if (names.Count == 0) continue;
+            // Filtriamo gli oggetti che appartengono unicamente alla priorità corrente
+            var passObjects = allNames.Where(n => {
+                int pr = _objectPriorities.TryGetValue(n, out int pVal) ? pVal : 3;
+                return pr == currentPriority;
+            }).ToList();
 
-            int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
-            int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
-            int gcx1 = Mathf.FloorToInt((float)(bx + w - 1) / cellSize);
-            int gcz1 = Mathf.FloorToInt((float)(bz + w - 1) / cellSize);
+            if (passObjects.Count == 0) continue;
 
-            for (int gcx = gcx0; gcx <= gcx1; gcx++)
-            for (int gcz = gcz0; gcz <= gcz1; gcz++)
+            // Iteriamo INDIPENDENTEMENTE su ogni singolo oggetto del pass corrente
+            foreach (string name in passObjects)
             {
-                int nameSeed = PlacementHash(gcx, gcz, cellSize * 1000);
-                string name = names[(int)((uint)nameSeed % (uint)names.Count)];
+                float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+                bool isUnique = fc < 0f;
 
-                bool isUnique = _objectFreqChances.TryGetValue(name, out float fc) && fc < 0f;
-                if (isUnique && _uniqueSpawned.Contains(name)) continue;
-
-                int jSeed = PlacementHash(gcx, gcz, cellSize * 997 + 1);
-                float jx = ((jSeed & 0xFF) / 255f) * cellSize;
-                float jz = (((jSeed >> 8) & 0xFF) / 255f) * cellSize;
-
-                float wx = gcx * cellSize + jx;
-                float wz = gcz * cellSize + jz;
-
-                int lx = Mathf.FloorToInt(wx - bx);
-                int lz = Mathf.FloorToInt(wz - bz);
-
-                if (lx < 0 || lx >= w || lz < 0 || lz >= w) continue;
-                if (excluded[lx, lz]) continue;
-
-                float layoutVal = chunk.LayoutMap[lx, lz];
-
-                if (isStructureTier)
+                // =================================================================
+                // LOGICA SPECIALE PER PASSAGGIO 2 (PROP RELAZIONALI AGGANCIATI)
+                // =================================================================
+                // Se siamo al Pass 2 e ci sono strutture (Pass 1) piazzate nel chunk,
+                // i prop nascono in conseguenza ad esse, ma la quantità è regolata dalla rarità del prop.
+                if (currentPriority == 2 && placedStructures.Count > 0)
                 {
-                    if (layoutVal <= cfg.objectDensityThreshold) continue;
+                    foreach (var structure in placedStructures)
+                    {
+                        // Roll probabilistico deterministico basato sul nome del prop e sulla casa
+                        int propSeed = PlacementHash(Mathf.RoundToInt(structure.position.x), Mathf.RoundToInt(structure.position.z), name.GetHashCode());
+                        float spawnRoll = (propSeed & 0xFFFF) / 65535f;
+                        
+                        // Il prop decide se nascere vicino a QUESTA casa solo in base alla PROPRIA rarità
+                        if (!isUnique && spawnRoll > fc) continue;
+                        if (isUnique && _uniqueSpawned.Contains(name)) continue;
+
+                        // Scegliamo un lato cardinale adiacente alla struttura
+                        int side = Mathf.Abs(propSeed) % 4;
+                        float offsetDistance = (structure.scale * 0.5f) + 1.2f;
+                        Vector3 offsetDir = side switch {
+                            0 => Vector3.forward, 1 => Vector3.right, 2 => Vector3.back, _ => Vector3.left
+                        };
+
+                        Vector3 propWorldPos = structure.position + offsetDir * offsetDistance;
+                        int plx = Mathf.FloorToInt(propWorldPos.x - bx);
+                        int plz = Mathf.FloorToInt(propWorldPos.z - bz);
+
+                        if (plx >= 0 && plx < w && plz >= 0 && plz < w)
+                        {
+                            if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel) continue;
+
+                            float pScale = _objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
+                            float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
+
+                            float rotZ = (propSeed >> 16 & 0xFF) / 255f * 360f;
+                        InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, rotZ);
+                            excluded[plx, plz] = true; // Blocca il punto
+                            
+                            if (isUnique) _uniqueSpawned.Add(name);
+                        }
+                    }
+                    continue; // Passa al prossimo oggetto di priorità 2
                 }
-                else
+
+                // =================================================================
+                // PASSO STANDARD SULLA GRIGLIA (PASS 1, 3, 4 E FALLBACK PASS 2)
+                // =================================================================
+                // Determiniamo la dimensione della cella UNICAMENTE in base alla rarità del singolo oggetto
+                int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
+
+                int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
+                int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
+                int gcx1 = Mathf.FloorToInt((float)(bx + w - 1) / cellSize);
+                int gcz1 = Mathf.FloorToInt((float)(bz + w - 1) / cellSize);
+
+                for (int gcx = gcx0; gcx <= gcx1; gcx++)
+                for (int gcz = gcz0; gcz <= gcz1; gcz++)
                 {
-                    if (layoutVal > 0.75f || layoutVal <= 0.15f) continue;
+                    if (isUnique && _uniqueSpawned.Contains(name)) continue;
+
+                    // Seed deterministico basato sulla cella e sul nome dell'oggetto specifico
+                    int cellHash = PlacementHash(gcx, gcz, name.GetHashCode());
+                    
+                    // CONTROLLO RARITÀ ASSOLUTO: Ogni oggetto lancia il proprio roll indipendente
+                    float spawnRoll = (cellHash & 0xFFFF) / 65535f;
+                    if (!isUnique && spawnRoll > fc) continue;
+
+                    // Jitter di distorsione per rendere il posizionamento naturale
+                    float jx = ((cellHash & 0xFF) / 255f) * cellSize;
+                    float jz = (((cellHash >> 8) & 0xFF) / 255f) * cellSize;
+
+                    float wx = gcx * cellSize + jx;
+                    float wz = gcz * cellSize + jz;
+
+                    int lx = Mathf.FloorToInt(wx - bx);
+                    int lz = Mathf.FloorToInt(wz - bz);
+
+                    if (lx < 0 || lx >= w || lz < 0 || lz >= w) continue;
+                    if (excluded[lx, lz]) continue; // Salta se occupato da priorità superiori
+
+                    float layoutVal = chunk.LayoutMap[lx, lz];
+                    
+                    // Le strutture (Pass 1) usano la soglia di densità, la natura (Pass 3 e 4) usa le bande sfumate
+                    if (currentPriority == 1)
+                    {
+                        if (layoutVal <= cfg.objectDensityThreshold) continue;
+                    }
+                    else
+                    {
+                        float minLayout = currentPriority == 4 ? 0.10f : 0.15f;
+                        float maxLayout = currentPriority == 4 ? 0.90f : 0.85f;
+                        if (layoutVal <= minLayout || layoutVal > maxLayout) continue;
+                    }
+                    
                     if (chunk.HeightMap[lx, lz] <= cfg.waterLevel) continue;
-                }
 
-                if (isUnique) _uniqueSpawned.Add(name);
+                    float scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
+                    float groundY = GetGroundY(wx, wz, chunk.HeightMap[lx, lz]);
 
-                if (exclRadius > 0)
-                {
-                    for (int dx = -exclRadius; dx <= exclRadius; dx++)
-                    for (int dz = -exclRadius; dz <= exclRadius; dz++)
+                    float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
+                    InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, rotZ);
+
+                    // Scaviamo l'impronta geometrica sulla matrice di esclusione per evitare compenetrazioni
+                    int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
+                    for (int dx = -footRadius; dx <= footRadius; dx++)
+                    for (int dz = -footRadius; dz <= footRadius; dz++)
                     {
                         int nx = lx + dx, nz = lz + dz;
-                        if ((uint)nx < (uint)w && (uint)nz < (uint)w)
-                            excluded[nx, nz] = true;
+                        if ((uint)nx < (uint)w && (uint)nz < (uint)w) excluded[nx, nz] = true;
+                    }
+
+                    if (isUnique) _uniqueSpawned.Add(name);
+
+                    // Se abbiamo posizionato una struttura primaria (Pass 1), la registriamo come ancora per i prop (Pass 2)
+                    if (currentPriority == 1)
+                    {
+                        placedStructures.Add(new StructureAnchor {
+                            position = new Vector3(wx, groundY, wz),
+                            assetName = name,
+                            scale = scaleFactor
+                        });
                     }
                 }
-
-                float scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
-                float groundY = GetGroundY(wx, wz, chunk.HeightMap[lx, lz]);
-
-                // COMPATIBILITÀ CRUCIALE STANDALONE BUILD:
-                // Canale A: Legge il prefabbricato pronto dall'Editor (se disponibile)
-                if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
-                {
-                    var obj = Instantiate(prefab, new Vector3(wx, groundY, wz), Quaternion.Euler(-90f, 0f, 0f), chunk.transform);
-                    obj.transform.localScale = Vector3.one * scaleFactor;
-                    var rend = obj.GetComponentInChildren<Renderer>();
-                    if (rend != null)
-                        obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
-                }
-                // Canale B: Legge direttamente la RAM (Sblocca il funzionamento nelle build compile ed eseguite)
-                else if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh))
-                {
-                    GameObject obj = new GameObject(name);
-                    obj.transform.SetParent(chunk.transform);
-                    obj.transform.position = new Vector3(wx, groundY, wz);
-                    obj.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
-
-                    var mf = obj.AddComponent<MeshFilter>();
-                    mf.sharedMesh = runtimeMesh;
-
-                    var mr = obj.AddComponent<MeshRenderer>();
-                    mr.sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
-
-                    var mc = obj.AddComponent<MeshCollider>();
-                    mc.sharedMesh = runtimeMesh;
-
-                    obj.transform.localScale = Vector3.one * scaleFactor;
-                    var rend = obj.GetComponentInChildren<Renderer>();
-                    if (rend != null)
-                        obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
-                }
-                // Canale C: Asset non ancora generato da Trellis, spawna l'ancora/cartellone temporaneo
-                else
-                {
-                    float fc2 = _objectFreqChances.TryGetValue(name, out float fv) ? fv : 0.5f;
-                    bool showBillboard = fc2 > 0.10f; 
-                    SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), chunk.transform, scaleFactor, showBillboard);
-                }
             }
+        }
+    }/// <summary>
+    /// Core abstraction helper managing dual hardware execution modes (RAM Mesh generation vs Prebuilt disk Prefabs).
+    /// </summary>
+    void InstantiateAssetPrimitive(string name, float wx, float groundY, float wz, float scaleFactor, Transform parent, float rotZ = 0f)
+    {
+        if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
+        {
+            var obj = Instantiate(prefab, new Vector3(wx, groundY, wz), Quaternion.Euler(-90f, 0f, rotZ), parent);
+            obj.transform.localScale = Vector3.one * scaleFactor;
+            var rend = obj.GetComponentInChildren<Renderer>();
+            if (rend != null)
+                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+        }
+        else if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh))
+        {
+            GameObject obj = new GameObject(name);
+            obj.transform.SetParent(parent);
+            obj.transform.position = new Vector3(wx, groundY, wz);
+            obj.transform.localRotation = Quaternion.Euler(-90f, 0f, rotZ);
+
+            obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
+            obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
+            obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
+
+            obj.transform.localScale = Vector3.one * scaleFactor;
+            var rend = obj.GetComponentInChildren<Renderer>();
+            if (rend != null)
+                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+        }
+        else
+        {
+            float fc2 = _objectFreqChances.TryGetValue(name, out float fv) ? fv : 0.5f;
+            bool showBillboard = fc2 > 0.10f; 
+            SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, showBillboard);
         }
     }
 
@@ -520,6 +588,8 @@ public class WorldManager : MonoBehaviour
         foreach (var (pos, parent) in toSpawn)
         {
             float groundY = pos.y - scaleFactor * 0.5f;
+            int posHash = PlacementHash(Mathf.RoundToInt(pos.x), Mathf.RoundToInt(pos.z), objectName.GetHashCode());
+            float rotZ = ((posHash >> 16) & 0xFF) / 255f * 360f;
             GameObject obj;
 
             // CANALE RUNTIME / COMPILATO: Se la mesh è presente nella cache volatile della RAM (Funziona ovunque!)
@@ -528,7 +598,7 @@ public class WorldManager : MonoBehaviour
                 obj = new GameObject(objectName);
                 obj.transform.SetParent(parent);
                 obj.transform.position = new Vector3(pos.x, groundY, pos.z);
-                obj.transform.localRotation = Quaternion.Euler(-90f, 0f, 0f);
+                obj.transform.localRotation = Quaternion.Euler(-90f, 0f, rotZ);
 
                 // Assegna la mesh al volo in memoria
                 var mf = obj.AddComponent<MeshFilter>();
@@ -545,7 +615,7 @@ public class WorldManager : MonoBehaviour
             // CANALE EDITOR / FALLBACK: Se il file .prefab su disco è pronto e accessibile
             else if (prefab != null)
             {
-                obj = Instantiate(prefab, new Vector3(pos.x, groundY, pos.z), Quaternion.Euler(-90f, 0f, 0f), parent);
+                obj = Instantiate(prefab, new Vector3(pos.x, groundY, pos.z), Quaternion.Euler(-90f, 0f, rotZ), parent);
             }
             else
             {
@@ -595,12 +665,19 @@ public class WorldManager : MonoBehaviour
     /// <summary>
     /// Reads environmental tracking parameters to sync current target objectives.
     /// </summary>
+    /// <summary>
+    /// Reads environmental tracking parameters to sync current target objectives.
+    /// Parses extended metadata hierarchy (size, frequency, type, priority) directly from JSON.
+    /// </summary>
     void LoadBiomePrefabs()
     {
+        // 1. RESET RUNTIME TRACKING COLLECTIONS
         _readyPrefabs.Clear();
         _pendingObjectNames.Clear();
         _objectScaleFactors.Clear();
         _objectFreqChances.Clear();
+        _objectTypes.Clear();       // Reset structural behavior types
+        _objectPriorities.Clear();  // Reset numeric hierarchy passes
         _uniqueSpawned.Clear();
         _placeholders.Clear();
 
@@ -616,20 +693,30 @@ public class WorldManager : MonoBehaviour
 
         try
         {
+            // 2. PARSE EXTENDED METADATA MATRIX
             var root = JObject.Parse(File.ReadAllText(path));
             foreach (var entry in root)
             {
                 string name = entry.Key;
                 float scaleF = 1f, freqC = 1f;
+                string typeStr = "vegetation";
+                int priorityVal = 3;
 
                 if (entry.Value?.Type == JTokenType.Object)
                 {
                     scaleF = SizeToScale(entry.Value["size"]?.ToString() ?? "big");
                     freqC = FreqToChance(entry.Value["frequency"]?.ToString() ?? "common");
+                    typeStr = entry.Value["type"]?.ToString() ?? "vegetation";
+                    priorityVal = entry.Value["priority"]?.Value<int>() ?? 3;
                 }
+                
+                // Cache parsed metadata properties into global tracking registries
                 _objectScaleFactors[name] = scaleF;
                 _objectFreqChances[name] = freqC;
+                _objectTypes[name] = typeStr;
+                _objectPriorities[name] = priorityVal;
 
+                // 3. CHECK DISK AVAILABILITY AND REGISTER ASSETS
                 string prefabPath = $"Assets/GeneratedAsset/{name}.prefab";
                 string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
 #if UNITY_EDITOR
@@ -637,14 +724,17 @@ public class WorldManager : MonoBehaviour
                 {
                     AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceSynchronousImport);
                     var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (prefab != null) _readyPrefabs[name] = prefab;
-                    else _pendingObjectNames.Add(name);
+                    if (prefab != null) 
+                        _readyPrefabs[name] = prefab;
+                    else 
+                        _pendingObjectNames.Add(name);
                 }
                 else
                 {
                     _pendingObjectNames.Add(name);
                 }
 #else
+                // Standalone builds dynamically rely on Runtime Volatile RAM Mesh Bridges
                 _pendingObjectNames.Add(name);
 #endif
             }
@@ -654,14 +744,16 @@ public class WorldManager : MonoBehaviour
             Debug.LogError($"[WorldManager] Parsing current_objects.json failed: {e.Message}");
         }
 
+        // Fallback boundary safety check to avoid complete world omission states
         if (_readyPrefabs.Count == 0 && _pendingObjectNames.Count == 0 && defaultObjectPrefab != null)
             _readyPrefabs["__default__"] = defaultObjectPrefab;
     }
-
+    
     float SizeToScale(string size) => size switch
     {
         "huge" => scaleHuge,
         "big" => scaleBig,
+        "normal" => scaleNormal,
         "small" => scaleSmall,
         "tiny" => scaleTiny,
         _ => scaleDefault

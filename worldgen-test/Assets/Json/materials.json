@@ -1,10 +1,16 @@
 {
-  "lush_grass": 0,
-  "rich_topsoil": 1,
-  "clay_loam": 2,
+  "simple_grass": 0,
+  "grass_with_dirt_patches": 1,
+  "rocky_terrain": 2,
   "fresh_water": 3,
-  "wild_flowers": 4,
-  "hedgerow_bush": 5,
-  "grey_boulder": 6,
-  "stone": 7
+  "grass_with_flowers_patch": 4,
+  "ground_dirt": 5,
+  "autumn_grass": 6,
+  "desert_sand": 7,
+  "snow": 8,
+  "iced_water": 9,
+  "rich_soil": 10,
+  "stone": 11,
+  "yellow_flower": 12,
+  "green_bush": 13
 }

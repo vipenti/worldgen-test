@@ -224,8 +224,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LLMWorldDirector
   inputField: {fileID: 0}
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
-  modelId: qwen/qwen3.5-9b
-  maxTokens: 1024
+  modelId: qwen/qwen3.6-27b
+  maxTokens: 12228
   thinkingForParams: 0
   generateTexture: {fileID: 226235707}
   generateAsset: {fileID: 226235708}
@@ -258,8 +258,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: house
-  stylePrompt: A house made only of cubes in Minecraft style on a neutral background.
-    Low cube resolution, isometric view, studio lighting.
+  stylePrompt: A house made only of cubes in Minecraft style on a neutral background
+    on a super thin white plane. Low cube resolution, frontal view, studio lighting.
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   quality: 1
@@ -285,6 +285,8 @@ MonoBehaviour:
   defaultVoxelSize: 1
   defaultColor: {r: 1, g: 1, b: 1, a: 1}
   assetFolder: Assets/GeneratedAsset
+  voxelMaterialTemplate: {fileID: 0}
+  baseBlocksToRemove: 0
 --- !u!114 &226235713
 MonoBehaviour:
   m_ObjectHideFlags: 0
