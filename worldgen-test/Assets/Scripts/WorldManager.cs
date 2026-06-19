@@ -9,10 +9,6 @@ using Newtonsoft.Json.Linq;
 using UnityEditor;
 #endif
 
-/// <summary>
-/// Coordinates the generation, dynamic updating, asset distribution, 
-/// and lifecycle of procedural chunks based on runtime LLM outputs.
-/// </summary>
 public class WorldManager : MonoBehaviour
 {
     [Header("Core References")]
@@ -24,19 +20,16 @@ public class WorldManager : MonoBehaviour
     public int viewDistance = 4;
     [Tooltip("Duration of the smooth interpolation blend between biomes measured in chunks.")]
     public int blendDistance = 10; 
-    [Tooltip("Cuscinetto extra (in metri) oltre il cono visivo per attivare i chunk in anticipo ed eliminare il pop-in visivo.")]
+    [Tooltip("Moltiplicatore di velocità per l'avanzamento della transizione basata sul cammino.")]
+    public float transitionSpeedMultiplier = 1.0f;
+    [Tooltip("Cuscinetto extra (in metri) oltre il cono visivo per attivare i chunk in anticipo.")]
     public float frustumPadding = 24f;
 
-    [Header("Per-Size Rendering Distances")]
-    [Tooltip("Distanza massima in metri a cui si vedono gli asset enormi (es. grattacieli).")]
+    [Header("Per-Size Rendering Distances (LOD)")]
     public float renderDistHuge = 250f;
-    [Tooltip("Distanza massima in metri a cui si vedono gli asset grandi (es. case, grandi alberi).")]
     public float renderDistBig = 90f;
-    [Tooltip("Distanza massima in metri a cui si vedono gli asset normali (es. alberi medi).")]
     public float renderDistNormal = 60f;
-    [Tooltip("Distanza massima in metri a cui si vedono gli asset piccoli (es. cespugli, panchine).")]
     public float renderDistSmall = 35f;
-    [Tooltip("Distanza massima in metri a cui si vedono gli asset minuscoli (es. fiori, funghi, sassi).")]
     public float renderDistTiny = 15f;
 
     [Header("Path / Road Alignment")]
@@ -60,16 +53,16 @@ public class WorldManager : MonoBehaviour
     public float scaleDefault = 5f;
 
     [Header("Object Spacing (Jittered Grid)")]
-    [Tooltip("Grid cell sizes. Determines minimum boundaries and padding between assets.")]
     public int cellVeryCommon = 3;
     public int cellCommon = 5;
     public int cellRare = 10;
     public int cellSuperRare = 20;
     public int cellUnique = 32;
-    [Tooltip("Radius around unique macro-structures where low-priority assets are suppressed.")]
     public int uniqueExclusionRadius = 12;
 
-    // Runtime tracking collections for asset streaming
+    // FLAG DI SICUREZZA: Blocca gli aggiornamenti grafici del mondo durante la generazione background
+    [HideInInspector] public bool holdChunkUpdates = false;
+
     private Dictionary<string, GameObject> _readyPrefabs = new Dictionary<string, GameObject>();
     private List<string> _pendingObjectNames = new List<string>();
     private Dictionary<string, List<BillboardPlaceholder>> _placeholders = new Dictionary<string, List<BillboardPlaceholder>>();
@@ -77,9 +70,9 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, float> _objectFreqChances = new Dictionary<string, float>();
     private Dictionary<string, string> _objectTypes = new Dictionary<string, string>();
     private Dictionary<string, int> _objectPriorities = new Dictionary<string, int>();
-    private Dictionary<string, string> _objectSizes = new Dictionary<string, string>(); // Traccia la stringa di dimensione originaria
+    private Dictionary<string, string> _objectSizes = new Dictionary<string, string>(); 
     private HashSet<string> _uniqueSpawned = new HashSet<string>();
-    private Quaternion lastCameraRotation;
+    private Quaternion lastCameraRotation; 
 
     [Header("Debug & Map Visualization")]
     public MapVisualizer mapVisualizer;
@@ -91,6 +84,18 @@ public class WorldManager : MonoBehaviour
     private BiomeConfig targetConfig;
     private bool isTransitioning = false;
     private Vector2Int transitionStartCoord;
+    private float transitionInnerRadius = 0f;
+    private Vector3 lastPlayerPositionForTransition;
+    private float lastUpdatedRadius;
+
+    private Dictionary<string, GameObject> _oldReadyPrefabs = new Dictionary<string, GameObject>();
+    private List<string> _oldPendingObjectNames = new List<string>();
+    private Dictionary<string, float> _oldObjectScaleFactors = new Dictionary<string, float>();
+    private Dictionary<string, float> _oldObjectFreqChances = new Dictionary<string, float>();
+    private Dictionary<string, string> _oldObjectTypes = new Dictionary<string, string>();
+    private Dictionary<string, int> _oldObjectPriorities = new Dictionary<string, int>();
+    private Dictionary<string, string> _oldObjectSizes = new Dictionary<string, string>(); 
+    private Dictionary<Vector2Int, bool> chunkIsNewBiome = new Dictionary<Vector2Int, bool>();
 
     private Texture2D atlasTexture;
     private Material sharedChunkMaterial;
@@ -113,13 +118,6 @@ public class WorldManager : MonoBehaviour
             sharedChunkMaterial = new Material(prefabRenderer.sharedMaterial);
         else
             Debug.LogError("[WorldManager] ChunkPrefab is missing a MeshRenderer component.");
-
-        string atlasPath = Path.Combine(Application.dataPath, "GeneratedTexture", "TextureAtlas.png");
-        if (!File.Exists(atlasPath) && atlasManager != null && atlasManager.HasMaterials)
-        {
-            Debug.Log("<color=cyan>[WorldManager]</color> Atlas file missing. Rebuilding from available source imagery...");
-            atlasManager.RebuildAtlasFromFiles();
-        }
 
         LoadAtlasTexture();
         
@@ -155,23 +153,42 @@ public class WorldManager : MonoBehaviour
             atlasTexture ??= new Texture2D(2, 2);
             atlasTexture.LoadImage(File.ReadAllBytes(albedoPath));
             sharedChunkMaterial?.SetTexture("_BaseMap", atlasTexture);
-            Debug.Log("[WorldManager] Successfully bounded shared albedo texture atlas to rendering layer.");
         }
     }
 
     public IEnumerator SpawnPlayer()
     {
-        yield return null;
-
+        yield return null; 
         Vector3 rayOrigin = new Vector3(player.position.x, 500f, player.position.z);
         if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit, 1000f))
             player.position = new Vector3(player.position.x, hit.point.y + 1.5f, player.position.z);
-
         player.gameObject.SetActive(true);
     }
 
     void Update()
     {
+        // Se la pipeline sta pre-allocando gli asset in RAM, congeliamo l'aggiornamento dei chunk
+        if (holdChunkUpdates) return;
+
+        // Gestione transizione basata sul movimento del giocatore
+        if (isTransitioning)
+        {
+            Vector3 currentPos = player.position;
+            float movedDistance = Vector2.Distance(new Vector2(currentPos.x, currentPos.z), new Vector2(lastPlayerPositionForTransition.x, lastPlayerPositionForTransition.z));
+            movedDistance = Mathf.Min(movedDistance, 1.0f); // Previene enormi sbalzi dovuti a frame improvvisi o micro-snap
+            lastPlayerPositionForTransition = currentPos;
+
+            // Incrementa il raggio di transizione in base allo spostamento reale del giocatore (in chunk)
+            transitionInnerRadius += (movedDistance / targetConfig.chunkWidth) * transitionSpeedMultiplier;
+
+            // Aggiorna l'interpolazione solo se il raggio è avanzato di almeno 0.05 chunk (circa 0.8 metri)
+            if (transitionInnerRadius - lastUpdatedRadius >= 0.05f)
+            {
+                lastUpdatedRadius = transitionInnerRadius;
+                UpdateTransitionProgress();
+            }
+        }
+
         int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
         int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
         Vector2Int currentPlayerChunk = new Vector2Int(pX, pZ);
@@ -180,37 +197,15 @@ public class WorldManager : MonoBehaviour
 
         if (currentPlayerChunk != lastPlayerChunk || Quaternion.Angle(currentCamRot, lastCameraRotation) > 4f)
         {
-            CheckForConfigChange(currentPlayerChunk);
             UpdateChunks();
             lastPlayerChunk = currentPlayerChunk;
             lastCameraRotation = currentCamRot;
         }
     }
 
-    void CheckForConfigChange(Vector2Int currentCoord)
-    {
-        if (GenerateAsset.IsGenerating) return;
-
-        BiomeConfig freshConfig = LoadLatestConfig();
-
-        if (freshConfig.perlinScale != targetConfig.perlinScale || freshConfig.surfaceTileID != targetConfig.surfaceTileID)
-        {
-            Debug.Log("<color=orange>[WorldManager]</color> Dynamic biome modification detected. Initializing spatial interpolation...");
-
-            oldConfig = targetConfig;
-            targetConfig = freshConfig;
-            transitionStartCoord = currentCoord;
-            isTransitioning = true;
-
-            mapVisualizer?.GenerateMaps(targetConfig);
-            LoadBiomePrefabs();
-        }
-    }
-
     BiomeConfig LoadLatestConfig()
     {
         string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
-
         if (File.Exists(path))
             return JsonUtility.FromJson<BiomeConfig>(File.ReadAllText(path));
 
@@ -222,21 +217,14 @@ public class WorldManager : MonoBehaviour
         };
     }
 
-    /// <summary>
-    /// Gestisce la scoperta e lo stato di attivazione dei chunk basandosi interamente
-    /// sui piani di frustum della telecamera attiva, ottimizzando le performance.
-    /// FIX: Allineata la logica di controllo quadrata per evitare il ciclo infinito di Creazione/Distruzione.
-    /// </summary>
     void UpdateChunks()
     {
         int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
         int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
         float cSize = targetConfig.chunkWidth;
 
-        // Calcoliamo i 6 piani del cono visivo della telecamera
         Plane[] cameraPlanes = Camera.main != null ? GeometryUtility.CalculateFrustumPlanes(Camera.main) : null;
 
-        // FASE 1: ASSICURIAMO LA CREAZIONE DI TUTTI I CHUNK NEL RAGGIO DI VISIONE QUADRATO
         for (int x = -viewDistance; x <= viewDistance; x++)
         {
             for (int z = -viewDistance; z <= viewDistance; z++)
@@ -249,20 +237,15 @@ public class WorldManager : MonoBehaviour
             }
         }
 
-        // FASE 2: ATTIVAZIONE / DISATTIVAZIONE ULTRA-RAPIDA (CULLING DIREZIONALE)
         foreach (var kvp in activeChunks)
         {
             if (kvp.Value == null) continue;
 
             Vector2Int chunkCoord = kvp.Key;
-            
-            // Sicurezza: Se il chunk è già fuori dal perimetro quadrato a causa di un movimento, saltiamo il culling visivo
             int distX = Mathf.Abs(chunkCoord.x - pX);
             int distZ = Mathf.Abs(chunkCoord.y - pZ);
-            if (distX > viewDistance || distZ > viewDistance)
-                continue;
+            if (distX > viewDistance || distZ > viewDistance) continue;
 
-            // Area di totale sicurezza sotto i piedi (raggio stretto 1 chunk) sempre accesa
             bool isCloseSafety = distX <= 1 && distZ <= 1;
             bool isInsideFrustum = false;
 
@@ -271,8 +254,6 @@ public class WorldManager : MonoBehaviour
                 Vector3 center = new Vector3(chunkCoord.x * cSize + cSize * 0.5f, targetConfig.chunkHeight * 0.5f, chunkCoord.y * cSize + cSize * 0.5f);
                 Vector3 size = new Vector3(cSize, targetConfig.chunkHeight, cSize);
                 Bounds chunkBounds = new Bounds(center, size);
-
-                // Espandiamo i confini virtuali del chunk per attivarlo in anticipo ed eliminare il pop-in
                 chunkBounds.Expand(frustumPadding);
                 isInsideFrustum = GeometryUtility.TestPlanesAABB(cameraPlanes, chunkBounds);
             }
@@ -283,30 +264,19 @@ public class WorldManager : MonoBehaviour
                 kvp.Value.gameObject.SetActive(shouldBeActive);
             }
         }
-        
         RemoveFarChunks(new Vector2Int(pX, pZ));
     }
 
-    /// <summary>
-    /// Rimuove i chunk dalla memoria solo se escono rigorosamente dal quadrato di visione massimo (Chebyshev Distance).
-    /// </summary>
     void RemoveFarChunks(Vector2Int playerChunkPos)
     {
         List<Vector2Int> coordsToRemove = new List<Vector2Int>();
-
         foreach (var chunk in activeChunks)
         {
-            // Calcoliamo la distanza a griglia quadrata invece che sferica
             int distX = Mathf.Abs(chunk.Key.x - playerChunkPos.x);
             int distZ = Mathf.Abs(chunk.Key.y - playerChunkPos.y);
-
-            // Il chunk viene rimosso solo se supera il raggio del quadrato di generazione (+ 1 di tolleranza per lo shifting)
             if (distX > viewDistance + 1 || distZ > viewDistance + 1)
-            {
                 coordsToRemove.Add(chunk.Key);
-            }
         }
-
         foreach (Vector2Int coord in coordsToRemove)
         {
             if (activeChunks.ContainsKey(coord))
@@ -329,11 +299,25 @@ public class WorldManager : MonoBehaviour
                 newChunkGO.GetComponent<MeshRenderer>().sharedMaterial = sharedChunkMaterial;
 
             Vector2 tCenter = isTransitioning ? (Vector2)transitionStartCoord : new Vector2(-99999f, -99999f);
-            float innerRadius = isTransitioning ? (float)viewDistance : 0f;
+            float innerRadius = isTransitioning ? transitionInnerRadius : 0f;
 
             chunkScript.Initialize(coord, oldConfig, targetConfig, tCenter, innerRadius, blendDistance, pathWidth * 0.5f, pathBlendWidth, pathLevel);
             activeChunks.Add(coord, chunkScript);
-            SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
+
+            // Determine which biome objects to spawn based on t
+            float dist = isTransitioning ? Vector2.Distance(coord, tCenter) : 99999f;
+            float t = isTransitioning ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - innerRadius) / blendDistance)) : 1f;
+
+            if (t < 0.5f && isTransitioning)
+            {
+                SpawnOldLayoutObjects(chunkScript, worldPos, oldConfig);
+                chunkIsNewBiome[coord] = false;
+            }
+            else
+            {
+                SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
+                chunkIsNewBiome[coord] = true;
+            }
         }
     }
 
@@ -394,7 +378,6 @@ public class WorldManager : MonoBehaviour
                             float rotZ = (propSeed >> 16 & 0xFF) / 255f * 360f;
                             InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, rotZ);
                             excluded[plx, plz] = true; 
-                            
                             if (isUnique) _uniqueSpawned.Add(name);
                         }
                     }
@@ -402,7 +385,6 @@ public class WorldManager : MonoBehaviour
                 }
 
                 int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
-
                 int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
                 int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
                 int gcx1 = Mathf.FloorToInt((float)(bx + w - 1) / cellSize);
@@ -412,7 +394,6 @@ public class WorldManager : MonoBehaviour
                 for (int gcz = gcz0; gcz <= gcz1; gcz++)
                 {
                     if (isUnique && _uniqueSpawned.Contains(name)) continue;
-
                     int cellHash = PlacementHash(gcx, gcz, name.GetHashCode());
                     
                     float spawnRoll = (cellHash & 0xFFFF) / 65535f;
@@ -420,7 +401,6 @@ public class WorldManager : MonoBehaviour
 
                     float jx = ((cellHash & 0xFF) / 255f) * cellSize;
                     float jz = (((cellHash >> 8) & 0xFF) / 255f) * cellSize;
-
                     float wx = gcx * cellSize + jx;
                     float wz = gcz * cellSize + jz;
 
@@ -431,7 +411,6 @@ public class WorldManager : MonoBehaviour
                     if (excluded[lx, lz]) continue; 
 
                     float layoutVal = chunk.LayoutMap[lx, lz];
-                    
                     if (currentPriority == 1)
                     {
                         if (layoutVal <= cfg.objectDensityThreshold) continue;
@@ -460,13 +439,10 @@ public class WorldManager : MonoBehaviour
                     }
 
                     if (isUnique) _uniqueSpawned.Add(name);
-
                     if (currentPriority == 1)
                     {
                         placedStructures.Add(new StructureAnchor {
-                            position = new Vector3(wx, groundY, wz),
-                            assetName = name,
-                            scale = scaleFactor
+                            position = new Vector3(wx, groundY, wz), assetName = name, scale = scaleFactor
                         });
                     }
                 }
@@ -479,15 +455,7 @@ public class WorldManager : MonoBehaviour
         GameObject obj = null;
         float maxDist = GetRenderDistance(name);
 
-        if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
-        {
-            obj = Instantiate(prefab, new Vector3(wx, groundY, wz), Quaternion.Euler(-90f, 0f, rotZ), parent);
-            obj.transform.localScale = Vector3.one * scaleFactor;
-            var rend = obj.GetComponentInChildren<Renderer>();
-            if (rend != null)
-                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
-        }
-        else if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh))
+        if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh) && runtimeMesh != null)
         {
             obj = new GameObject(name);
             obj.transform.SetParent(parent);
@@ -496,24 +464,30 @@ public class WorldManager : MonoBehaviour
 
             obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
             obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
-            obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
 
+            if (!_objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
+            if (sizeStr == "huge" || sizeStr == "big")
+            {
+                obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
+            }
+        }
+        else if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
+        {
+            obj = Instantiate(prefab, new Vector3(wx, groundY, wz), Quaternion.Euler(-90f, 0f, rotZ), parent);
+        }
+        else
+        {
+            SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, visible: false);
+            return;
+        }
+
+        if (obj != null)
+        {
             obj.transform.localScale = Vector3.one * scaleFactor;
             var rend = obj.GetComponentInChildren<Renderer>();
             if (rend != null)
                 obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
-        }
-        else
-        {
-            float fc2 = _objectFreqChances.TryGetValue(name, out float fv) ? fv : 0.5f;
-            bool showBillboard = fc2 > 0.10f; 
-            SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, showBillboard);
-            return;
-        }
 
-        // Iniettiamo il culler se l'oggetto 3D reale è stato creato con successo
-        if (obj != null)
-        {
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist);
         }
     }
@@ -521,33 +495,24 @@ public class WorldManager : MonoBehaviour
     float GetRenderDistance(string assetName)
     {
         if (!_objectSizes.TryGetValue(assetName, out string size)) size = "big";
-        return size switch
-        {
-            "huge" => renderDistHuge,
-            "big" => renderDistBig,
-            "normal" => renderDistNormal,
-            "small" => renderDistSmall,
-            "tiny" => renderDistTiny,
-            _ => renderDistBig
+        return size switch {
+            "huge" => renderDistHuge, "big" => renderDistBig, "normal" => renderDistNormal,
+            "small" => renderDistSmall, "tiny" => renderDistTiny, _ => renderDistBig
         };
     }
 
     static int PlacementHash(int x, int z, int seed)
     {
-        unchecked
-        {
+        unchecked {
             int h = x * 374761393 + z * 668265263 + seed;
-            h ^= h >> 13;
-            h *= 1274126177;
-            return h ^ (h >> 16);
+            h ^= h >> 13; h *= 1274126177; return h ^ (h >> 16);
         }
     }
 
     float GetGroundY(float wx, float wz, int fallbackY)
     {
         var origin = new Vector3(wx, fallbackY + 10f, wz);
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 30f))
-            return hit.point.y;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 30f)) return hit.point.y;
         return fallbackY;
     }
 
@@ -557,36 +522,14 @@ public class WorldManager : MonoBehaviour
         quad.transform.SetParent(parent);
         quad.transform.position = pos;
         quad.transform.localScale = Vector3.one * scaleFactor;
-        
         Destroy(quad.GetComponent<MeshCollider>());
-        if (!visible) quad.GetComponent<MeshRenderer>().enabled = false;
+        quad.GetComponent<MeshRenderer>().enabled = visible;
 
         var placeholder = quad.AddComponent<BillboardPlaceholder>();
         placeholder.objectName = objName;
 
-        if (!_placeholders.ContainsKey(objName))
-            _placeholders[objName] = new List<BillboardPlaceholder>();
+        if (!_placeholders.ContainsKey(objName)) _placeholders[objName] = new List<BillboardPlaceholder>();
         _placeholders[objName].Add(placeholder);
-    }
-
-    public void UpdatePlaceholderTexture(string objectName, byte[] pngBytes)
-    {
-        if (!_placeholders.TryGetValue(objectName, out var list)) return;
-        var tex = new Texture2D(2, 2, TextureFormat.RGBA32, false);
-        tex.LoadImage(pngBytes);
-        
-        var pixels = tex.GetPixels();
-        for (int i = 0; i < pixels.Length; i++)
-        {
-            Color c = pixels[i];
-            if (c.r > 0.85f && c.g > 0.85f && c.b > 0.85f)
-                pixels[i].a = 0f;
-        }
-        tex.SetPixels(pixels);
-        tex.Apply();
-        
-        foreach (var p in list)
-            if (p != null) p.SetTexture(tex);
     }
 
     void HandlePrefabSaved(string name, GameObject prefab)
@@ -614,15 +557,8 @@ public class WorldManager : MonoBehaviour
         if (!_placeholders.TryGetValue(objectName, out var list)) return;
 
         var toSpawn = new List<(Vector3 pos, Transform parent)>();
-        foreach (var p in list)
-        {
-            if (p != null) toSpawn.Add((p.transform.position, p.transform.parent));
-        }
-
-        foreach (var p in list)
-        {
-            if (p != null) Destroy(p.gameObject);
-        }
+        foreach (var p in list) if (p != null) toSpawn.Add((p.transform.position, p.transform.parent));
+        foreach (var p in list) if (p != null) Destroy(p.gameObject);
         _placeholders.Remove(objectName);
 
         foreach (var (pos, parent) in toSpawn)
@@ -632,90 +568,177 @@ public class WorldManager : MonoBehaviour
             float rotZ = ((posHash >> 16) & 0xFF) / 255f * 360f;
             GameObject obj = null;
 
-            if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh runtimeMesh))
+            if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh runtimeMesh) && runtimeMesh != null)
             {
                 obj = new GameObject(objectName);
                 obj.transform.SetParent(parent);
                 obj.transform.position = new Vector3(pos.x, groundY, pos.z);
                 obj.transform.localRotation = Quaternion.Euler(-90f, 0f, rotZ);
 
-                var mf = obj.AddComponent<MeshFilter>();
-                mf.sharedMesh = runtimeMesh;
+                obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
+                obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
 
-                var mr = obj.AddComponent<MeshRenderer>();
-                mr.sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
-
-                var mc = obj.AddComponent<MeshCollider>();
-                mc.sharedMesh = runtimeMesh;
+                if (!_objectSizes.TryGetValue(objectName, out string sizeStr)) sizeStr = "big";
+                if (sizeStr == "huge" || sizeStr == "big")
+                {
+                    obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
+                }
             }
             else if (prefab != null)
             {
                 obj = Instantiate(prefab, new Vector3(pos.x, groundY, pos.z), Quaternion.Euler(-90f, 0f, rotZ), parent);
             }
-            else
-            {
-                continue;
-            }
+            else continue;
 
             obj.transform.localScale = Vector3.one * scaleFactor;
-
             var rend = obj.GetComponentInChildren<Renderer>();
-            if (rend != null)
-            {
-                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
-            }
+            if (rend != null) obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
 
-            // Iniettiamo il culler anche in fase di rimpiazzo runtime dei billboard
-            if (obj != null)
-            {
-                obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist);
-            }
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist);
         }
     }
 
-    public void ReloadBiomePrefabs()
+    public void ReloadBiomePrefabs() => LoadBiomePrefabs();
+
+    public void BackupOldBiome()
     {
-#if UNITY_EDITOR
-        AssetDatabase.Refresh();
-#endif
-        LoadBiomePrefabs();
+        _oldReadyPrefabs = new Dictionary<string, GameObject>(_readyPrefabs);
+        _oldPendingObjectNames = new List<string>(_pendingObjectNames);
+        _oldObjectScaleFactors = new Dictionary<string, float>(_objectScaleFactors);
+        _oldObjectFreqChances = new Dictionary<string, float>(_objectFreqChances);
+        _oldObjectTypes = new Dictionary<string, string>(_objectTypes);
+        _oldObjectPriorities = new Dictionary<string, int>(_objectPriorities);
+        _oldObjectSizes = new Dictionary<string, string>(_objectSizes);
+        oldConfig = targetConfig;
+        Debug.Log("<color=orange>[WorldManager]</color> Backup del vecchio bioma eseguito con successo.");
     }
 
+    // FIX TOTALE TRANSITION: Rimossa la condizione bloccante per garantire l'avvio dell'interpolazione
     public void ApplyNewConfig()
     {
-        BiomeConfig freshConfig = LoadLatestConfig();
-        if (freshConfig.perlinScale == targetConfig.perlinScale && freshConfig.surfaceTileID != targetConfig.surfaceTileID)
-            return;
-        oldConfig = targetConfig;
-        targetConfig = freshConfig;
+        // Se per qualche motivo il backup non è ancora stato effettuato, lo eseguiamo come fallback di emergenza
+        if (_oldReadyPrefabs == null || _oldReadyPrefabs.Count == 0)
+        {
+            BackupOldBiome();
+        }
+
+        targetConfig = LoadLatestConfig();
+        
         int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
         int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
         transitionStartCoord = new Vector2Int(pX, pZ);
         isTransitioning = true;
+        
+        // Inizializza i tracciatori per la transizione basata sul movimento del giocatore
+        transitionInnerRadius = -blendDistance;
+        lastUpdatedRadius = transitionInnerRadius;
+        lastPlayerPositionForTransition = player.position;
+
+        chunkIsNewBiome.Clear(); // Pulisce i tracciamenti dei biomi dei chunk per la nuova transizione
+
+        Debug.Log("<color=orange>[WorldManager]</color> Interpolazione del terreno basata sul movimento avviata correttamente.");
         mapVisualizer?.GenerateMaps(targetConfig);
+    }
+
+    void UpdateTransitionProgress()
+    {
+        float targetRadius = viewDistance + 2f;
+        if (transitionInnerRadius >= targetRadius)
+        {
+            isTransitioning = false;
+            oldConfig = targetConfig;
+            transitionInnerRadius = 0f;
+            RegenerateAllChunks();
+            Debug.Log("<color=orange>[WorldManager]</color> Terrain transition completed successfully.");
+            return;
+        }
+
+        Vector2 tCenter = (Vector2)transitionStartCoord;
+        // Aggiorna l'altezza di tutti i chunk attivi in base al nuovo raggio di transizione
+        foreach (var kvp in activeChunks)
+        {
+            if (kvp.Value != null)
+            {
+                Vector2Int coord = kvp.Key;
+                kvp.Value.UpdateInterpolation(transitionInnerRadius);
+
+                // Controlla se il chunk ha varcato la soglia di transizione del bioma (t >= 0.5f)
+                float dist = Vector2.Distance(coord, tCenter);
+                float t = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - transitionInnerRadius) / blendDistance));
+                bool isNew = t >= 0.5f;
+
+                if (!chunkIsNewBiome.TryGetValue(coord, out bool wasNew)) wasNew = false;
+
+                if (isNew != wasNew)
+                {
+                    chunkIsNewBiome[coord] = isNew;
+                    RespawnObjectsForChunk(kvp.Value, isNew ? targetConfig : oldConfig, isNew);
+                }
+            }
+        }
+    }
+
+    void SpawnOldLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
+    {
+        var tempPrefabs = _readyPrefabs;
+        var tempPending = _pendingObjectNames;
+        var tempScaleFactors = _objectScaleFactors;
+        var tempFreqChances = _objectFreqChances;
+        var tempTypes = _objectTypes;
+        var tempPriorities = _objectPriorities;
+        var tempSizes = _objectSizes;
+
+        _readyPrefabs = _oldReadyPrefabs;
+        _pendingObjectNames = _oldPendingObjectNames;
+        _objectScaleFactors = _oldObjectScaleFactors;
+        _objectFreqChances = _oldObjectFreqChances;
+        _objectTypes = _oldObjectTypes;
+        _objectPriorities = _oldObjectPriorities;
+        _objectSizes = _oldObjectSizes;
+
+        SpawnLayoutObjects(chunk, worldPos, cfg);
+
+        _readyPrefabs = tempPrefabs;
+        _pendingObjectNames = tempPending;
+        _objectScaleFactors = tempScaleFactors;
+        _objectFreqChances = tempFreqChances;
+        _objectTypes = tempTypes;
+        _objectPriorities = tempPriorities;
+        _objectSizes = tempSizes;
+    }
+
+    void RespawnObjectsForChunk(Chunk chunk, BiomeConfig cfg, bool useNewBiome)
+    {
+        // Cattura e distruggi tutti i vecchi prefabbricati posizionati nel chunk
+        List<GameObject> childrenToDestroy = new List<GameObject>();
+        foreach (Transform child in chunk.transform)
+        {
+            childrenToDestroy.Add(child.gameObject);
+        }
+        foreach (var child in childrenToDestroy)
+        {
+            Destroy(child);
+        }
+
+        Vector3 worldPos = new Vector3(chunk.transform.position.x, 0, chunk.transform.position.z);
+        if (useNewBiome)
+        {
+            SpawnLayoutObjects(chunk, worldPos, cfg);
+        }
+        else
+        {
+            SpawnOldLayoutObjects(chunk, worldPos, cfg);
+        }
     }
 
     void LoadBiomePrefabs()
     {
-        _readyPrefabs.Clear();
-        _pendingObjectNames.Clear();
-        _objectScaleFactors.Clear();
-        _objectFreqChances.Clear();
-        _objectTypes.Clear();       
-        _objectPriorities.Clear();  
-        _objectSizes.Clear(); // Pulizia dizionario dimensioni
-        _uniqueSpawned.Clear();
-        _placeholders.Clear();
+        _readyPrefabs.Clear(); _pendingObjectNames.Clear(); _objectScaleFactors.Clear();
+        _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();  
+        _objectSizes.Clear(); _uniqueSpawned.Clear(); _placeholders.Clear();
 
         string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
-        if (!File.Exists(path))
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, "{}");
-        }
-#if UNITY_EDITOR
-        AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
-#endif
+        if (!File.Exists(path)) return;
 
         try
         {
@@ -723,80 +746,42 @@ public class WorldManager : MonoBehaviour
             foreach (var entry in root)
             {
                 string name = entry.Key;
-                float scaleF = 1f, freqC = 1f;
-                string typeStr = "vegetation";
-                string sizeStr = "big";
-                int priorityVal = 3;
-
-                if (entry.Value?.Type == JTokenType.Object)
-                {
-                    sizeStr = entry.Value["size"]?.ToString() ?? "big";
-                    scaleF = SizeToScale(sizeStr);
-                    freqC = FreqToChance(entry.Value["frequency"]?.ToString() ?? "common");
-                    typeStr = entry.Value["type"]?.ToString() ?? "vegetation";
-                    priorityVal = entry.Value["priority"]?.Value<int>() ?? 3;
-                }
-                
-                _objectScaleFactors[name] = scaleF;
-                _objectFreqChances[name] = freqC;
-                _objectTypes[name] = typeStr;
-                _objectPriorities[name] = priorityVal;
-                _objectSizes[name] = sizeStr; // Registriamo il tag stringa
+                string sizeStr = entry.Value["size"]?.ToString() ?? "big";
+                _objectScaleFactors[name] = SizeToScale(sizeStr);
+                _objectFreqChances[name] = FreqToChance(entry.Value["frequency"]?.ToString() ?? "common");
+                _objectTypes[name] = entry.Value["type"]?.ToString() ?? "vegetation";
+                _objectPriorities[name] = entry.Value["priority"]?.Value<int>() ?? 3;
+                _objectSizes[name] = sizeStr;
 
                 string prefabPath = $"Assets/GeneratedAsset/{name}.prefab";
                 string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
 #if UNITY_EDITOR
                 if (File.Exists(prefabDiskPath))
                 {
-                    AssetDatabase.ImportAsset(prefabPath, ImportAssetOptions.ForceSynchronousImport);
                     var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (prefab != null) 
-                        _readyPrefabs[name] = prefab;
-                    else 
-                        _pendingObjectNames.Add(name);
+                    if (prefab != null) _readyPrefabs[name] = prefab;
+                    else _pendingObjectNames.Add(name);
                 }
-                else
-                {
-                    _pendingObjectNames.Add(name);
-                }
+                else _pendingObjectNames.Add(name);
 #else
                 _pendingObjectNames.Add(name);
 #endif
             }
         }
-        catch (System.Exception e)
-        {
-            Debug.LogError($"[WorldManager] Parsing current_objects.json failed: {e.Message}");
-        }
-
-        if (_readyPrefabs.Count == 0 && _pendingObjectNames.Count == 0 && defaultObjectPrefab != null)
-            _readyPrefabs["__default__"] = defaultObjectPrefab;
+        catch (System.Exception e) { Debug.LogError($"Parsing current_objects failed: {e.Message}"); }
     }
     
-    float SizeToScale(string size) => size switch
-    {
-        "huge" => scaleHuge,
-        "big" => scaleBig,
-        "normal" => scaleNormal,
-        "small" => scaleSmall,
-        "tiny" => scaleTiny,
-        _ => scaleDefault
+    float SizeToScale(string size) => size switch {
+        "huge" => scaleHuge, "big" => scaleBig, "normal" => scaleNormal, "small" => scaleSmall, "tiny" => scaleTiny, _ => scaleDefault
     };
 
-    float FreqToChance(string freq) => freq switch
-    {
-        "very_common" => 1.00f,
-        "common" => 0.50f,
-        "rare" => 0.10f,
-        "super_rare" => 0.03f,
-        "unique" => -1f,
-        _ => 0.50f
+    float FreqToChance(string freq) => freq switch {
+        "very_common" => 1.00f, "common" => 0.50f, "rare" => 0.10f, "super_rare" => 0.03f, "unique" => -1f, _ => 0.50f
     };
 
     public void RegenerateAllChunks()
     {
-        foreach (var kvp in activeChunks)
-            if (kvp.Value != null) Destroy(kvp.Value.gameObject);
+        foreach (var kvp in activeChunks) if (kvp.Value != null) Destroy(kvp.Value.gameObject);
         activeChunks.Clear();
         _uniqueSpawned.Clear();
         UpdateChunks();

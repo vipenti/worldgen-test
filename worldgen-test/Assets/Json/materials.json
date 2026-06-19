@@ -12,5 +12,7 @@
   "rich_soil": 10,
   "stone": 11,
   "yellow_flower": 12,
-  "green_bush": 13
+  "green_bush": 13,
+  "none": 14,
+  "dry_shrub": 15
 }

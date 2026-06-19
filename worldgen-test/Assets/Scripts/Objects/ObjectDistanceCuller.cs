@@ -13,6 +13,8 @@ public class ObjectDistanceCuller : MonoBehaviour
     private bool isCurrentlyVisible = true;
     private float checkInterval = 0.25f; // Esegue il controllo solo 4 volte al secondo
 
+    private Coroutine cullCoroutine;
+
     public void Initialize(Transform playerTransform, float maxDistance)
     {
         player = playerTransform;
@@ -22,15 +24,37 @@ public class ObjectDistanceCuller : MonoBehaviour
         // Eseguiamo un primo controllo immediato
         UpdateVisibility();
         
-        // Avviamo la coroutine asincrona distribuita
-        StartCoroutine(CullRoutine());
+        // Avviamo la coroutine solo se il GameObject è attivo in gerarchia
+        if (gameObject.activeInHierarchy)
+        {
+            if (cullCoroutine != null) StopCoroutine(cullCoroutine);
+            cullCoroutine = StartCoroutine(CullRoutine());
+        }
+    }
+
+    void OnEnable()
+    {
+        if (player != null && gameObject.activeInHierarchy)
+        {
+            if (cullCoroutine != null) StopCoroutine(cullCoroutine);
+            cullCoroutine = StartCoroutine(CullRoutine());
+        }
+    }
+
+    void OnDisable()
+    {
+        if (cullCoroutine != null)
+        {
+            StopCoroutine(cullCoroutine);
+            cullCoroutine = null;
+        }
     }
 
     IEnumerator CullRoutine()
     {
         // Applichiamo un piccolo ritardo iniziale casuale (Dithering) per evitare 
         // che migliaia di oggetti esguano il calcolo nello stesso identico frame
-        yield return new WaitForSeconds(Random.Range(0f, checkInterval));
+        yield return new WaitForSeconds(UnityEngine.Random.Range(0f, checkInterval));
 
         while (true)
         {

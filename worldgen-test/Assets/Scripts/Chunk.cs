@@ -74,6 +74,16 @@ public class Chunk : MonoBehaviour
     public float[,] LayoutMap { get; private set; }
     public int[,]   HeightMap { get; private set; }
 
+    // Saved properties for dynamic interpolation updating
+    private Vector2Int chunkPos;
+    private BiomeConfig oldConfig;
+    private BiomeConfig targetConfig;
+    private Vector2 transitionCenter;
+    private float blendDistance;
+    private float pathHalfWidth;
+    private float pathBlendWidth;
+    private int pathLevel;
+
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
     public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
     {
@@ -83,11 +93,31 @@ public class Chunk : MonoBehaviour
         map       = new byte[chunkWidth, 256, chunkWidth];
         HeightMap = new int[chunkWidth, chunkWidth];
         LayoutMap = new float[chunkWidth, chunkWidth];
-        mesh = new Mesh();
-        GetComponent<MeshFilter>().mesh = mesh;
+        
+        if (mesh == null)
+        {
+            mesh = new Mesh();
+            GetComponent<MeshFilter>().mesh = mesh;
+        }
+
+        // Save parameters for runtime interpolation updating
+        this.chunkPos = pos;
+        this.oldConfig = oldBinary;
+        this.targetConfig = targetBinary;
+        this.transitionCenter = transitionCenter;
+        this.blendDistance = blendDist;
+        this.pathHalfWidth = pathHalfWidth;
+        this.pathBlendWidth = pathBlendWidth;
+        this.pathLevel = pathLevel;
 
         GenerateMapDataInterpolated(pos, oldBinary, targetBinary, transitionCenter, innerRadius, blendDist, pathHalfWidth, pathBlendWidth, pathLevel);
         ComputeLayoutMap(pos, targetBinary);
+        GenerateMesh();
+    }
+
+    public void UpdateInterpolation(float innerRadius)
+    {
+        GenerateMapDataInterpolated(chunkPos, oldConfig, targetConfig, transitionCenter, innerRadius, blendDistance, pathHalfWidth, pathBlendWidth, pathLevel);
         GenerateMesh();
     }
 
@@ -244,6 +274,8 @@ public class Chunk : MonoBehaviour
 
     void GenerateMapDataInterpolated(Vector2Int pos, BiomeConfig old, BiomeConfig target, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
     {
+        bool hasTransition = transitionCenter.x > -90000f;
+
         for (int x = 0; x < chunkWidth; x++)
         {
             for (int z = 0; z < chunkWidth; z++)
@@ -251,11 +283,17 @@ public class Chunk : MonoBehaviour
                 float worldX = pos.x * chunkWidth + x;
                 float worldZ = pos.y * chunkWidth + z;
 
-                float colX        = pos.x + (float)x / chunkWidth;
-                float colZ        = pos.y + (float)z / chunkWidth;
-                float dist        = Vector2.Distance(new Vector2(colX, colZ), transitionCenter);
-                float adjustedDist = Mathf.Max(0f, dist - innerRadius);
-                float t           = Mathf.SmoothStep(0f, 1f, Mathf.Clamp01(adjustedDist / blendDist));
+                float t = 1f; // Default: 100% target config
+                if (hasTransition)
+                {
+                    float colX        = pos.x + (float)x / chunkWidth;
+                    float colZ        = pos.y + (float)z / chunkWidth;
+                    float dist        = Vector2.Distance(new Vector2(colX, colZ), transitionCenter);
+                    
+                    // Inverted transition: t = 1 (new biome) at dist <= innerRadius (center),
+                    // transitioning to t = 0 (old biome) at dist >= innerRadius + blendDist
+                    t = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - innerRadius) / blendDist));
+                }
 
                 float rawOld, rawTarget;
                 if (target.scaleMacro > 0f)

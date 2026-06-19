@@ -9,6 +9,7 @@ using System.Text;
 using UnityEngine.InputSystem;
 using UnityEngine.EventSystems;
 using Newtonsoft.Json.Linq;
+
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
@@ -39,6 +40,24 @@ public class LLMWorldDirector : MonoBehaviour
     public static event Action<string, float> OnGenerationProgress;
     public static event Action                OnTerrainPipelineDone;
     public static event Action<string>        OnGenerationFailed;
+
+    void Awake()
+    {
+        if (generateAsset == null) generateAsset = FindAnyObjectByType<GenerateAsset>();
+        if (worldManager == null) worldManager = FindAnyObjectByType<WorldManager>();
+        if (generateTexture == null) generateTexture = FindAnyObjectByType<GenerateTexture>();
+    }
+
+    void OnEnable()
+    {
+        // Ci agganciamo all'evento di sblocco della Coda A degli asset critici
+        GenerateAsset.OnCriticalAssetsReady += TriggerTerrainTransition;
+    }
+
+    void OnDisable()
+    {
+        GenerateAsset.OnCriticalAssetsReady -= TriggerTerrainTransition;
+    }
 
     string BuildSystemPrompt()
     {
@@ -75,10 +94,7 @@ public class LLMWorldDirector : MonoBehaviour
 
     IEnumerator PostRequestCoroutine(string userText)
     {
-        // ── STEP 1: expand user concept into a rich world description ──────────
         OnGenerationProgress?.Invoke("Designing your world...", 0.05f);
-        Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 1 — generazione descrizione mondo...");
-
         var step1 = new string[] { "" };
         yield return StartCoroutine(CallLLM(
             Prompts.DescriptionSystem(),
@@ -94,16 +110,11 @@ public class LLMWorldDirector : MonoBehaviour
         string worldDescription = step1[0];
         if (string.IsNullOrEmpty(worldDescription))
         {
-            Debug.LogError("LLMWorldDirector: Step 1 fallito — nessuna descrizione ricevuta.");
             OnGenerationFailed?.Invoke("World description failed.");
             yield break;
         }
-        Debug.Log("<color=cyan>LLMWorldDirector:</color> Descrizione mondo generata:\n" + worldDescription);
 
-        // ── STEP 2 + 3 in parallelo (entrambi dipendono da worldDescription) ──
         OnGenerationProgress?.Invoke("Planning biome and assets...", 0.15f);
-        Debug.Log("<color=cyan>LLMWorldDirector:</color> Steps 2+3 — parametri bioma e lista asset...");
-
         bool step2Done = false, step3Done = false;
         var r2 = new string[] { "" };
         var r3 = new string[] { "" };
@@ -125,30 +136,22 @@ public class LLMWorldDirector : MonoBehaviour
 
         if (!string.IsNullOrEmpty(r2[0]))
             yield return StartCoroutine(ProcessResponseCoroutine(r2[0]));
-        else
-            Debug.LogError("LLMWorldDirector: Step 2 fallito — nessuna risposta parametri.");
 
         List<string>            newObjects     = null;
         Dictionary<string, int> currentObjects = null;
         if (!string.IsNullOrEmpty(r3[0]))
             ProcessAssetList(r3[0], out newObjects, out currentObjects);
-        else
-            Debug.LogWarning("LLMWorldDirector: Step 3 fallito — nessuna lista asset.");
 
         OnGenerationProgress?.Invoke("Analyzing object properties...", 0.50f);
 
-        // ── STEP 4: Four-Pass Sequential Pipeline ──────────────────────────────
         if (currentObjects != null && currentObjects.Count > 0)
         {
-            Debug.Log("<color=cyan>LLMWorldDirector:</color> Step 4 — Avvio pipeline sequenziale a 4 passaggi...");
             OnGenerationProgress?.Invoke("Finalizing world layout...", 0.55f);
             yield return StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
         }
         else
         {
-            OnGenerationProgress?.Invoke("Building terrain...", 0.60f);
-            worldManager?.ReloadBiomePrefabs();
-            worldManager?.RegenerateAllChunks();
+            TriggerTerrainTransition();
         }
         OnTerrainPipelineDone?.Invoke();
     }
@@ -181,13 +184,7 @@ public class LLMWorldDirector : MonoBehaviour
             yield return request.SendWebRequest();
 
             if (request.result == UnityWebRequest.Result.Success)
-            {
                 onSuccess(request.downloadHandler.text);
-            }
-            else
-            {
-                Debug.LogError($"Errore API di chiamata LLM: {request.error} | Content: {request.downloadHandler.text}");
-            }
         }
     }
 
@@ -218,21 +215,11 @@ public class LLMWorldDirector : MonoBehaviour
         try
         {
             string assistantText = ExtractAssistantContent(rawResponse);
-            if (string.IsNullOrWhiteSpace(assistantText))
-                throw new Exception("Impossibile estrarre content logico.");
-
             assistantText = StripMarkdownCodeFence(assistantText).Trim();
             assistantText = StripThinkingTags(assistantText);
             cleanJson = ExtractFirstJsonObject(assistantText);
-            
-            if (string.IsNullOrWhiteSpace(cleanJson))
-                throw new Exception("Nessun oggetto JSON trovato nella risposta pulita dell'LLM.");
         }
-        catch (Exception e)
-        {
-            Debug.LogError("Errore estrazione JSON dall'LLM: " + e.Message + " -> Risposta Raw ricevuta: " + rawResponse);
-            yield break;
-        }
+        catch (Exception) { yield break; }
 
         var materials = LoadMaterials();
         var resolved  = new Dictionary<string, int>();
@@ -241,13 +228,11 @@ public class LLMWorldDirector : MonoBehaviour
         {
             string matName = ExtractStringField(cleanJson, llmField);
             if (string.IsNullOrEmpty(matName)) continue;
-
             matName = matName.Trim().ToLowerInvariant().Replace(" ", "_");
 
             if (!materials.ContainsKey(matName))
             {
-                if (generateTexture == null) {continue;}
-                Debug.Log($"<color=orange>LLMWorldDirector:</color> Generazione texture per nuovo materiale: '{matName}'...");
+                if (generateTexture == null) continue;
                 yield return StartCoroutine(GenerateAndWait(matName));
                 materials = LoadMaterials();
             }
@@ -258,27 +243,25 @@ public class LLMWorldDirector : MonoBehaviour
 
         string finalJson = BuildFinalJson(cleanJson, resolved);
         string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
-        
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, finalJson);
-
-        Debug.Log("<color=green>LLMWorldDirector: Configurazione Bioma e Texture salvata con successo!</color>");
     }
 
     void ProcessAssetList(string raw, out List<string> newObjects, out Dictionary<string, int> currentObjects)
     {
         newObjects     = new List<string>();
-        currentObjects = new Dictionary<string, int>();
+        currentObjects = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
         string text = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
         List<string> names = ParseStringArray(text);
-        if (names.Count == 0) { Debug.LogWarning("[LLMWorldDirector] Asset list vuota."); return; }
 
         var allObjects = LoadObjectRegistry();
         int nextId = allObjects.Count;
 
-        foreach (string name in names)
+        foreach (string rawName in names)
         {
+            string name = rawName.Trim().ToLowerInvariant().Replace('_', ' ');
+            if (string.IsNullOrEmpty(name)) continue;
+
             if (!allObjects.ContainsKey(name))
             {
                 allObjects[name] = nextId++;
@@ -288,7 +271,6 @@ public class LLMWorldDirector : MonoBehaviour
         }
 
         string baseDir = Path.Combine(Application.dataPath, "Json");
-        Directory.CreateDirectory(baseDir);
         SaveObjectRegistry(allObjects, Path.Combine(baseDir, "all_objects.json"));
         SaveObjectRegistry(currentObjects, Path.Combine(baseDir, "current_objects.json"));
 #if UNITY_EDITOR
@@ -296,46 +278,55 @@ public class LLMWorldDirector : MonoBehaviour
 #endif
     }
 
-    /// <summary>
-    /// Refactored Four-Pass Sequential Pipeline. 
-    /// Fires 4 isolated discrete calls to populate each tag metadata parameter on its own layer.
-    /// </summary>
     IEnumerator SizeFrequencyCoroutine(string worldDesc, Dictionary<string, int> currentObjects, List<string> newObjects)
     {
         string nameList = string.Join(", ", new List<string>(currentObjects.Keys).ConvertAll(k => $"\"{k}\""));
         
-        // PASS 1: Size Extraction
         var resSize = new string[] { "" };
         yield return StartCoroutine(CallLLM(Prompts.SizeSystem(nameList), worldDesc, raw => { resSize[0] = raw; }, disableThinking: true));
 
-        // PASS 2: Frequency Extraction
         var resFreq = new string[] { "" };
         yield return StartCoroutine(CallLLM(Prompts.FrequencySystem(nameList), worldDesc, raw => { resFreq[0] = raw; }, disableThinking: true));
 
-        // PASS 3: Type Extraction
         var resType = new string[] { "" };
         yield return StartCoroutine(CallLLM(Prompts.TypeSystem(nameList), worldDesc, raw => { resType[0] = raw; }, disableThinking: true));
 
-        // PASS 4: Priority Extraction
         var resPriority = new string[] { "" };
         yield return StartCoroutine(CallLLM(Prompts.PrioritySystem(nameList), worldDesc, raw => { resPriority[0] = raw; }, disableThinking: true));
 
-        // Compilation and compilation injection
+        // Salva i dati dei metadati su disco
         ParseAndSaveFourPassMetadata(resSize[0], resFreq[0], resType[0], resPriority[0], currentObjects);
 
-        OnGenerationProgress?.Invoke("Building terrain...", 0.58f);
-        if (worldManager != null) worldManager.ApplyNewConfig();
-        worldManager?.ReloadBiomePrefabs();
-        worldManager?.RegenerateAllChunks();
+        // MODIFICA PRO-SYNCHRONIZATION: Congeliamo immediatamente gli aggiornamenti dei chunk ed allineiamo la memoria dei prefabbricati
+        if (worldManager != null)
+        {
+            worldManager.holdChunkUpdates = true; 
+            worldManager.BackupOldBiome(); // Salva lo stato dei vecchi prefabbricati prima di ricaricare i nuovi
+            worldManager.ReloadBiomePrefabs(); // Forza WorldManager ad imparare subito le scale corrette dei nuovi oggetti!
+        }
 
-        OnGenerationProgress?.Invoke("Generating 3D models...", 0.65f);
+        OnGenerationProgress?.Invoke("Pre-allocating biome guardian meshes...", 0.65f);
         if (currentObjects != null && currentObjects.Count > 0)
             generateAsset?.GenerateNew(new List<string>(currentObjects.Keys));
     }
 
     /// <summary>
-    /// Processes and merges 4 independent raw LLM responses securely into current_objects.json.
+    /// Attiva la ricostruzione e l'interpolazione progressiva dei chunk a livello visivo.
+    /// Invocato unicamente quando la Coda A di GenerateAsset ha dato l'ok.
     /// </summary>
+    void TriggerTerrainTransition()
+    {
+        Debug.Log("<color=green>[LLMWorldDirector]</color> Gating superato con successo. Iniezione dati e avvio interpolazione.");
+        OnGenerationProgress?.Invoke("Building terrain maps...", 0.75f);
+
+        if (worldManager != null) worldManager.ApplyNewConfig();
+        worldManager?.ReloadBiomePrefabs();
+        worldManager?.RegenerateAllChunks();
+
+        // Sblocco aggiornamenti chunk: senza questo il mondo rimane congelato dopo la transizione
+        if (worldManager != null) worldManager.holdChunkUpdates = false;
+    }
+
     void ParseAndSaveFourPassMetadata(string rawSize, string rawFreq, string rawType, string rawPriority, Dictionary<string, int> currentObjects)
     {
         var sizes = ExtractTagValues(rawSize, "size");
@@ -363,20 +354,15 @@ public class LLMWorldDirector : MonoBehaviour
         sb.Append("}");
 
         string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
-        Directory.CreateDirectory(Path.GetDirectoryName(path));
         File.WriteAllText(path, sb.ToString());
 #if UNITY_EDITOR
         AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
 #endif
-        Debug.Log($"<color=green>[LLMWorldDirector]</color> Pipeline a 4 passaggi completata con successo per {currentObjects.Count} oggetti.");
     }
 
-    /// <summary>
-    /// Flexible parsing utility parsing both flat raw string json maps and wrapped key-value schemas.
-    /// </summary>
     Dictionary<string, string> ExtractTagValues(string raw, string fieldName)
     {
-        var dict = new Dictionary<string, string>();
+        var dict = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
         string text = StripThinkingTags(StripMarkdownCodeFence(ExtractAssistantContent(raw)).Trim());
         string jsonObj = ExtractFirstJsonObject(text);
         if (string.IsNullOrEmpty(jsonObj)) return dict;
@@ -386,18 +372,19 @@ public class LLMWorldDirector : MonoBehaviour
             var root = JObject.Parse(jsonObj);
             foreach (var entry in root)
             {
+                string key = entry.Key.Trim().ToLowerInvariant().Replace('_', ' ');
                 if (entry.Value?.Type == JTokenType.Object)
                 {
                     var val = entry.Value[fieldName];
-                    if (val != null) dict[entry.Key] = val.ToString();
+                    if (val != null) dict[key] = val.ToString();
                 }
                 else if (entry.Value != null)
                 {
-                    dict[entry.Key] = entry.Value.ToString();
+                    dict[key] = entry.Value.ToString();
                 }
             }
         }
-        catch (Exception e) { Debug.LogError($"[LLMWorldDirector] Failure during discrete {fieldName} pass extraction: " + e.Message); }
+        catch (Exception) { }
         return dict;
     }
 
@@ -418,14 +405,9 @@ public class LLMWorldDirector : MonoBehaviour
 
     Dictionary<string, int> LoadObjectRegistry()
     {
-        var    dict = new Dictionary<string, int>();
+        var    dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         string path = Path.Combine(Application.dataPath, "Json", "all_objects.json");
-        if (!File.Exists(path))
-        {
-            Directory.CreateDirectory(Path.GetDirectoryName(path));
-            File.WriteAllText(path, "{}");
-            return dict;
-        }
+        if (!File.Exists(path)) return dict;
         string json = File.ReadAllText(path).Trim().Trim('{', '}');
         foreach (string line in json.Split(','))
         {
@@ -433,7 +415,7 @@ public class LLMWorldDirector : MonoBehaviour
             if (string.IsNullOrEmpty(t)) continue;
             int colon = t.IndexOf(':');
             if (colon < 0) continue;
-            string key = t.Substring(0, colon).Trim().Trim('"');
+            string key = t.Substring(0, colon).Trim().Trim('"').Trim().ToLowerInvariant().Replace('_', ' ');
             string val = t.Substring(colon + 1).Trim();
             if (int.TryParse(val, out int id)) dict[key] = id;
         }

@@ -95,6 +95,7 @@ STRICT ARCHITECTURAL & MODULARITY RULES:
 4. GENERIC & REUSABLE: Keep descriptions short, lowercase, and extremely straightforward (e.g., 'medieval house', 'pine tree', 'stone'). Avoid overly complex or specific adjectives to maximize asset reusability across multiple worlds. Always include basic rocks or stones in natural, rural, or outdoor biomes.
 5. NO ARTICLES: Do NOT include articles like 'a', 'an', or 'the' at the beginning of asset names.
 6. NUMBER: You MUST produce a final list containing exactly 10 to 15 assets total in the JSON array.
+7. NO lakes, ponds, tiles or terrain features: Only placeable 3D models that can be spawned above the ground. 
 
 OUTPUT FORMAT PROTOCOL:
 You must strictly follow this two-part output format. No conversational text outside these blocks.
