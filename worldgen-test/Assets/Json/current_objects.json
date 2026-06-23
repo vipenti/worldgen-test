@@ -1,15 +1,12 @@
 {
-  "oak tree": { "id": 58, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "spruce tree": { "id": 95, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "wild fern": { "id": 49, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "tall grass tuft": { "id": 67, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "small wildflower": { "id": 60, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "fallen log": { "id": 52, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "large rock": { "id": 70, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "mossy rock": { "id": 61, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "wild rabbit": { "id": 63, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "pinecone": { "id": 55, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "dry leaf": { "id": 34, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "small stone": { "id": 8, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "beetle shell": { "id": 57, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 }
+  "crystalline willow-fungus": { "id": 13, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "cyan fungal turf": { "id": 14, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "glowing violet moss": { "id": 15, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small slime mold": { "id": 16, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "silt-stalker": { "id": 17, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "mineral rock": { "id": 18, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "damp soil clod": { "id": 19, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "glowing spore": { "id": 20, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "wet pebble": { "id": 21, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "fungal cap": { "id": 22, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 }
 }

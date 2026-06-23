@@ -44,28 +44,84 @@ public class VoxelRenderer : MonoBehaviour
 
     public void Reload()
     {
-        _data = ParseJson(File.ReadAllText(JsonPath));
-        GenerateRuntimeMesh(Path.GetFileNameWithoutExtension(jsonFileName));
-#if UNITY_EDITOR
-        SaveAsAsset();
-#endif
+        string assetName = Path.GetFileNameWithoutExtension(jsonFileName);
+        string jsonPath = JsonPath;
+        if (File.Exists(jsonPath))
+        {
+            string rawJson = File.ReadAllText(jsonPath);
+            ProcessVoxelModel(rawJson, assetName);
+        }
+        else
+        {
+            Debug.LogError($"[VoxelRenderer] File JSON originale non trovato per il reload in: {jsonPath}");
+        }
     }
 
     public void LoadFromJson(string json, string assetName = "object")
     {
         jsonFileName = assetName + ".voxjson";
-        _data = ParseJson(json);
-        GenerateRuntimeMesh(assetName);
+        ProcessVoxelModel(json, assetName);
+    }
+
+    private void ProcessVoxelModel(string rawJson, string assetName)
+    {
+        if (string.IsNullOrEmpty(rawJson)) return;
+
+        // 1. Generazione delle 3 stringhe JSON a risoluzioni diverse usando GenerateResolutions
+        string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
+        string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Medium);
+        string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.High);
+
+        // Salvataggio dei file JSON su disco per ciascuna risoluzione
+        try
+        {
+            string baseFolder = jsonFolder;
+            if (!Directory.Exists(baseFolder)) Directory.CreateDirectory(baseFolder);
+
+            // Salviamo l'originale se non è già presente, e le versioni ridotte
+            File.WriteAllText(Path.Combine(baseFolder, assetName + ".voxjson"), rawJson);
+            File.WriteAllText(Path.Combine(baseFolder, assetName + "_low.voxjson"), jsonLow);
+            File.WriteAllText(Path.Combine(baseFolder, assetName + "_medium.voxjson"), jsonMedium);
+            File.WriteAllText(Path.Combine(baseFolder, assetName + "_high.voxjson"), jsonHigh);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[VoxelRenderer] Errore nel salvataggio dei file voxjson su disco: {ex.Message}");
+        }
+
+        // 2. Parsing dei dati per ciascuna versione
+        VoxelData dataOriginal = ParseJson(rawJson);
+        VoxelData dataLow = ParseJson(jsonLow);
+        VoxelData dataMedium = ParseJson(jsonMedium);
+        VoxelData dataHigh = ParseJson(jsonHigh);
+
+        // Memorizziamo dataOriginal nel campo privato per compatibilità
+        _data = dataOriginal;
+
+        Debug.Log($"[VoxelRenderer] Processato '{assetName}': original={dataOriginal.count} voxels, low={dataLow.count} voxels, medium={dataMedium.count} voxels, high={dataHigh.count} voxels");
+
+        // 3. Generazione delle Mesh a runtime nella cache
+        GenerateRuntimeMeshForData(assetName, dataOriginal);
+        GenerateRuntimeMeshForData(assetName + "_low", dataLow);
+        GenerateRuntimeMeshForData(assetName + "_medium", dataMedium);
+        GenerateRuntimeMeshForData(assetName + "_high", dataHigh);
+
+        // 4. Salvataggio degli Asset Prefab (solo in modalità Editor)
 #if UNITY_EDITOR
-        SaveAsAsset();
+        SaveAsAssetForData(assetName + "_low", dataLow);
+        SaveAsAssetForData(assetName + "_medium", dataMedium);
+        SaveAsAssetForData(assetName + "_high", dataHigh);
+        // Salviamo la versione base originale per ultima in modo che triggeri OnPrefabSaved
+        // per avviare il rimpiazzo nel WorldManager.
+        SaveAsAssetForData(assetName, dataOriginal);
 #endif
     }
 
-    void GenerateRuntimeMesh(string assetName)
+    void GenerateRuntimeMeshForData(string assetName, VoxelData data)
     {
-        if (_data == null) return;
+        if (data == null) return;
 
-        Mesh mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
+        Mesh mesh = BuildOptimizedMesh(data, baseBlocksToRemove);
         mesh.name = assetName;
 
         Mesh runtimeClone = Instantiate(mesh);
@@ -127,16 +183,14 @@ public class VoxelRenderer : MonoBehaviour
     void OnPlayModeChanged(UnityEditor.PlayModeStateChange state)
     {
         if (state != UnityEditor.PlayModeStateChange.ExitingEditMode) return;
-        _data = ParseJson(File.ReadAllText(JsonPath));
-        SaveAsAsset();
+        Reload();
     }
 
-    void SaveAsAsset()
+    void SaveAsAssetForData(string assetName, VoxelData data)
     {
-        if (_data == null) _data = ParseJson(File.ReadAllText(JsonPath));
+        if (data == null) return;
         EnsureFolder(assetFolder);
 
-        var    assetName  = Path.GetFileNameWithoutExtension(jsonFileName);
         string prefabPath = $"{assetFolder}/{assetName}.prefab";
         string vcMatPath  = $"{assetFolder}/VoxelVertexColor.mat";
         
@@ -149,7 +203,7 @@ public class VoxelRenderer : MonoBehaviour
 
         if (!RuntimeMeshCache.TryGetValue(assetName, out Mesh mesh))
         {
-            mesh = BuildOptimizedMesh(_data, baseBlocksToRemove);
+            mesh = BuildOptimizedMesh(data, baseBlocksToRemove);
             mesh.name = assetName;
         }
 
