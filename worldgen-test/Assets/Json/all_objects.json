@@ -83,5 +83,16 @@
   "stone barrel": 81,
   "granite rock": 82,
   "slate shard": 83,
-  "broken shield": 84
+  "broken shield": 84,
+  "single wildflower": 85,
+  "basalt column": 86,
+  "lava rock": 87,
+  "black fern": 88,
+  "obsidian crystal": 89,
+  "ash vent": 90,
+  "volcanic ash pile": 91,
+  "obsidian shard": 92,
+  "cooled lava chunk": 93,
+  "mushroom": 94,
+  "spruce tree": 95
 }

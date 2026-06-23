@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using Newtonsoft.Json.Linq;
+using TMPro;
 
 #if UNITY_EDITOR
 using UnityEditor;
@@ -22,6 +23,8 @@ public class WorldManager : MonoBehaviour
     public int blendDistance = 10; 
     [Tooltip("Moltiplicatore di velocità per l'avanzamento della transizione basata sul cammino.")]
     public float transitionSpeedMultiplier = 1.0f;
+    [Tooltip("Lunghezza in chunk del cammino necessario a completare la transizione globale.")]
+    public int transitionLengthInChunks = 8;
     [Tooltip("Cuscinetto extra (in metri) oltre il cono visivo per attivare i chunk in anticipo.")]
     public float frustumPadding = 24f;
 
@@ -77,16 +80,17 @@ public class WorldManager : MonoBehaviour
     [Header("Debug & Map Visualization")]
     public MapVisualizer mapVisualizer;
     public bool skipInitialPlayerSpawn = false;
+    public TMP_Text infoText;
 
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
     private BiomeConfig oldConfig;
     private BiomeConfig targetConfig;
     private bool isTransitioning = false;
-    private Vector2Int transitionStartCoord;
-    private float transitionInnerRadius = 0f;
+    private Vector2 transitionStartPos2D;
+    private Vector2 transitionDir2D;
     private Vector3 lastPlayerPositionForTransition;
-    private float lastUpdatedRadius;
+    private float lastUpdatedProgress;
 
     private Dictionary<string, GameObject> _oldReadyPrefabs = new Dictionary<string, GameObject>();
     private List<string> _oldPendingObjectNames = new List<string>();
@@ -123,6 +127,11 @@ public class WorldManager : MonoBehaviour
         
         GenerateTexture.OnGenerationComplete += _ => LoadAtlasTexture();
         VoxelRenderer.OnPrefabSaved += HandlePrefabSaved;
+        LLMWorldDirector.OnGenerationProgress += HandleGenerationProgress;
+        LLMWorldDirector.OnTerrainPipelineDone += HandleTerrainPipelineDone;
+        LLMWorldDirector.OnGenerationFailed += HandleGenerationFailed;
+        GenerateAsset.OnAssetProgress += HandleAssetProgress;
+        GenerateAsset.OnCriticalAssetsReady += HandleCriticalAssetsReady;
 
         targetConfig = LoadLatestConfig();
         oldConfig = targetConfig;
@@ -143,6 +152,11 @@ public class WorldManager : MonoBehaviour
     {
         GenerateTexture.OnGenerationComplete -= _ => LoadAtlasTexture();
         VoxelRenderer.OnPrefabSaved -= HandlePrefabSaved;
+        LLMWorldDirector.OnGenerationProgress -= HandleGenerationProgress;
+        LLMWorldDirector.OnTerrainPipelineDone -= HandleTerrainPipelineDone;
+        LLMWorldDirector.OnGenerationFailed -= HandleGenerationFailed;
+        GenerateAsset.OnAssetProgress -= HandleAssetProgress;
+        GenerateAsset.OnCriticalAssetsReady -= HandleCriticalAssetsReady;
     }
 
     void LoadAtlasTexture()
@@ -174,17 +188,19 @@ public class WorldManager : MonoBehaviour
         if (isTransitioning)
         {
             Vector3 currentPos = player.position;
-            float movedDistance = Vector2.Distance(new Vector2(currentPos.x, currentPos.z), new Vector2(lastPlayerPositionForTransition.x, lastPlayerPositionForTransition.z));
-            movedDistance = Mathf.Min(movedDistance, 1.0f); // Previene enormi sbalzi dovuti a frame improvvisi o micro-snap
             lastPlayerPositionForTransition = currentPos;
 
-            // Incrementa il raggio di transizione in base allo spostamento reale del giocatore (in chunk)
-            transitionInnerRadius += (movedDistance / targetConfig.chunkWidth) * transitionSpeedMultiplier;
+            // Calcola la distanza proiettata del giocatore lungo la direzione di transizione
+            Vector2 playerPos2D = new Vector2(player.position.x, player.position.z);
+            float projectedWalk = Vector2.Dot(playerPos2D - transitionStartPos2D, transitionDir2D);
+            float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
+            float playerProgress = Mathf.Clamp01(projectedWalk / totalDist);
 
-            // Aggiorna l'interpolazione solo se il raggio è avanzato di almeno 0.05 chunk (circa 0.8 metri)
-            if (transitionInnerRadius - lastUpdatedRadius >= 0.05f)
+            // Aggiorna la transizione e il testo se il progresso è avanzato dello 0.5%
+            // o se il giocatore ha completato la transizione
+            if (playerProgress - lastUpdatedProgress >= 0.005f || projectedWalk >= totalDist)
             {
-                lastUpdatedRadius = transitionInnerRadius;
+                lastUpdatedProgress = playerProgress;
                 UpdateTransitionProgress();
             }
         }
@@ -247,6 +263,8 @@ public class WorldManager : MonoBehaviour
             if (distX > viewDistance || distZ > viewDistance) continue;
 
             bool isCloseSafety = distX <= 1 && distZ <= 1;
+            kvp.Value.EnsureColliderState(isCloseSafety);
+
             bool isInsideFrustum = false;
 
             if (!isCloseSafety && cameraPlanes != null)
@@ -287,6 +305,23 @@ public class WorldManager : MonoBehaviour
         }
     }
 
+    float GetChunkTransitionT(Vector2Int coord)
+    {
+        if (!isTransitioning) return 1f;
+
+        Vector2 chunkWorldPos = new Vector2(
+            coord.x * targetConfig.chunkWidth + targetConfig.chunkWidth * 0.5f,
+            coord.y * targetConfig.chunkWidth + targetConfig.chunkWidth * 0.5f
+        );
+
+        float startOffset = viewDistance * targetConfig.chunkWidth;
+        Vector2 startPos = transitionStartPos2D + transitionDir2D * startOffset;
+
+        float projectedDist = Vector2.Dot(chunkWorldPos - startPos, transitionDir2D);
+        float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
+        return Mathf.Clamp01(projectedDist / totalDist);
+    }
+
     void CreateChunk(Vector2Int coord)
     {
         Vector3 worldPos = new Vector3(coord.x * targetConfig.chunkWidth, 0, coord.y * targetConfig.chunkWidth);
@@ -298,20 +333,44 @@ public class WorldManager : MonoBehaviour
             if (sharedChunkMaterial != null)
                 newChunkGO.GetComponent<MeshRenderer>().sharedMaterial = sharedChunkMaterial;
 
-            Vector2 tCenter = isTransitioning ? (Vector2)transitionStartCoord : new Vector2(-99999f, -99999f);
-            float innerRadius = isTransitioning ? transitionInnerRadius : 0f;
+            int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
+            int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
+            bool closeToPlayer = Mathf.Abs(coord.x - pX) <= 1 && Mathf.Abs(coord.y - pZ) <= 1;
 
-            chunkScript.Initialize(coord, oldConfig, targetConfig, tCenter, innerRadius, blendDistance, pathWidth * 0.5f, pathBlendWidth, pathLevel);
+            float t = GetChunkTransitionT(coord);
+
+            chunkScript.Initialize(
+                coord, 
+                oldConfig, 
+                targetConfig, 
+                isTransitioning, 
+                transitionStartPos2D + transitionDir2D * (viewDistance * targetConfig.chunkWidth), 
+                transitionDir2D, 
+                transitionLengthInChunks * targetConfig.chunkWidth,
+                pathWidth * 0.5f, 
+                pathBlendWidth, 
+                pathLevel, 
+                closeToPlayer
+            );
             activeChunks.Add(coord, chunkScript);
 
-            // Determine which biome objects to spawn based on t
-            float dist = isTransitioning ? Vector2.Distance(coord, tCenter) : 99999f;
-            float t = isTransitioning ? 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - innerRadius) / blendDistance)) : 1f;
-
-            if (t < 0.5f && isTransitioning)
+            if (isTransitioning)
             {
-                SpawnOldLayoutObjects(chunkScript, worldPos, oldConfig);
-                chunkIsNewBiome[coord] = false;
+                if (t <= 0f)
+                {
+                    SpawnOldLayoutObjects(chunkScript, worldPos, oldConfig);
+                    chunkIsNewBiome[coord] = false;
+                }
+                else if (t >= 1f)
+                {
+                    SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
+                    chunkIsNewBiome[coord] = true;
+                }
+                else
+                {
+                    // No assets spawned in the transition corridor
+                    chunkIsNewBiome[coord] = false;
+                }
             }
             else
             {
@@ -623,59 +682,85 @@ public class WorldManager : MonoBehaviour
         }
 
         targetConfig = LoadLatestConfig();
-        
-        int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
-        int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
-        transitionStartCoord = new Vector2Int(pX, pZ);
         isTransitioning = true;
         
-        // Inizializza i tracciatori per la transizione basata sul movimento del giocatore
-        transitionInnerRadius = -blendDistance;
-        lastUpdatedRadius = transitionInnerRadius;
+        // Record horizontal start pos and forward direction of player
+        transitionStartPos2D = new Vector2(player.position.x, player.position.z);
+        
+        // Forward direction of player or camera
+        Vector3 forward = Camera.main != null ? Camera.main.transform.forward : player.forward;
+        transitionDir2D = new Vector2(forward.x, forward.z).normalized;
+        if (transitionDir2D.sqrMagnitude < 0.01f) transitionDir2D = Vector2.up; // Fallback
+
         lastPlayerPositionForTransition = player.position;
+        lastUpdatedProgress = 0f;
 
         chunkIsNewBiome.Clear(); // Pulisce i tracciamenti dei biomi dei chunk per la nuova transizione
 
-        Debug.Log("<color=orange>[WorldManager]</color> Interpolazione del terreno basata sul movimento avviata correttamente.");
+        Debug.Log("<color=orange>[WorldManager]</color> Interpolazione globale spaziale avviata correttamente.");
         mapVisualizer?.GenerateMaps(targetConfig);
+
+        float startOffset = viewDistance * targetConfig.chunkWidth;
+        float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
+        float totalMeters = startOffset + totalDist;
+        SetStatusText($"[Transition] Biome transition started!\nWalk {viewDistance} chunks (~{startOffset:F0}m) to reach the transition zone.\nOverall: 0% complete");
     }
 
     void UpdateTransitionProgress()
     {
-        float targetRadius = viewDistance + 2f;
-        if (transitionInnerRadius >= targetRadius)
+        Vector2 playerPos2D = new Vector2(player.position.x, player.position.z);
+        float projectedWalk = Vector2.Dot(playerPos2D - transitionStartPos2D, transitionDir2D);
+        float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
+        float startOffset = viewDistance * targetConfig.chunkWidth;
+        float playerProgress = Mathf.Clamp01((projectedWalk - startOffset) / totalDist);
+
+        if (projectedWalk >= startOffset + totalDist)
         {
             isTransitioning = false;
             oldConfig = targetConfig;
-            transitionInnerRadius = 0f;
             RegenerateAllChunks();
             Debug.Log("<color=orange>[WorldManager]</color> Terrain transition completed successfully.");
+            SetStatusText("[Transition] Biome transition completed successfully!");
             return;
         }
 
-        Vector2 tCenter = (Vector2)transitionStartCoord;
-        // Aggiorna l'altezza di tutti i chunk attivi in base al nuovo raggio di transizione
+        int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
+        int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
+
+        // Aggiorna la fisica/collisore solo dei chunk adiacenti se necessario, senza rigenerare meshes per transizione
         foreach (var kvp in activeChunks)
         {
             if (kvp.Value != null)
             {
                 Vector2Int coord = kvp.Key;
-                kvp.Value.UpdateInterpolation(transitionInnerRadius);
+                int distX = Mathf.Abs(coord.x - pX);
+                int distZ = Mathf.Abs(coord.y - pZ);
+                bool closeToPlayer = distX <= 1 && distZ <= 1;
 
-                // Controlla se il chunk ha varcato la soglia di transizione del bioma (t >= 0.5f)
-                float dist = Vector2.Distance(coord, tCenter);
-                float t = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - transitionInnerRadius) / blendDistance));
-                bool isNew = t >= 0.5f;
-
-                if (!chunkIsNewBiome.TryGetValue(coord, out bool wasNew)) wasNew = false;
-
-                if (isNew != wasNew)
-                {
-                    chunkIsNewBiome[coord] = isNew;
-                    RespawnObjectsForChunk(kvp.Value, isNew ? targetConfig : oldConfig, isNew);
-                }
+                kvp.Value.EnsureColliderState(closeToPlayer);
             }
         }
+
+        float metersRemaining = (startOffset + totalDist) - projectedWalk;
+        float chunksRemaining = metersRemaining / targetConfig.chunkWidth;
+        float percent = playerProgress * 100f;
+
+        string statusMsg = "";
+        if (projectedWalk < startOffset)
+        {
+            float metersToStart = startOffset - projectedWalk;
+            float chunksToStart = metersToStart / targetConfig.chunkWidth;
+            statusMsg = $"[Transition] Walking to transition zone: {chunksToStart:F1} chunks (~{metersToStart:F0}m) remaining.\n" +
+                        $"No terrain changes or asset deletions in the current area.";
+        }
+        else
+        {
+            statusMsg = $"[Transition] Blending terrain: {percent:F0}% complete\n" +
+                        $"Walk {chunksRemaining:F1} more chunks (~{metersRemaining:F0}m) to complete.\n" +
+                        $"No 3D assets spawned in the transition corridor.";
+        }
+        
+        SetStatusText(statusMsg);
     }
 
     void SpawnOldLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
@@ -721,13 +806,16 @@ public class WorldManager : MonoBehaviour
         }
 
         Vector3 worldPos = new Vector3(chunk.transform.position.x, 0, chunk.transform.position.z);
-        if (useNewBiome)
+        if (isTransitioning)
         {
-            SpawnLayoutObjects(chunk, worldPos, cfg);
+            if (useNewBiome)
+            {
+                SpawnLayoutObjects(chunk, worldPos, cfg);
+            }
         }
         else
         {
-            SpawnOldLayoutObjects(chunk, worldPos, cfg);
+            SpawnLayoutObjects(chunk, worldPos, cfg);
         }
     }
 
@@ -785,5 +873,40 @@ public class WorldManager : MonoBehaviour
         activeChunks.Clear();
         _uniqueSpawned.Clear();
         UpdateChunks();
+    }
+
+    public void SetStatusText(string text)
+    {
+        if (infoText != null)
+        {
+            infoText.text = text;
+        }
+    }
+
+    void HandleGenerationProgress(string status, float progress)
+    {
+        SetStatusText($"[Pipeline] {status} ({Mathf.RoundToInt(progress * 100)}%)");
+    }
+
+    void HandleTerrainPipelineDone()
+    {
+        SetStatusText("[Pipeline] World design complete! Preparing assets...");
+    }
+
+    void HandleGenerationFailed(string reason)
+    {
+        SetStatusText($"[Pipeline Error] {reason}");
+    }
+
+    void HandleAssetProgress(int done, int total)
+    {
+        if (total <= 0) return;
+        float percent = (float)done / total * 100f;
+        SetStatusText($"[Assets] Creating 3D models: {done}/{total} ({percent:F0}%)");
+    }
+
+    void HandleCriticalAssetsReady()
+    {
+        SetStatusText("[Transition] Critical assets loaded! Interpolation starting.");
     }
 }

@@ -78,14 +78,21 @@ public class Chunk : MonoBehaviour
     private Vector2Int chunkPos;
     private BiomeConfig oldConfig;
     private BiomeConfig targetConfig;
-    private Vector2 transitionCenter;
-    private float blendDistance;
     private float pathHalfWidth;
     private float pathBlendWidth;
     private int pathLevel;
 
+    private bool isTransitioning = false;
+    private Vector2 transitionStartPos2D;
+    private Vector2 transitionDir2D;
+    private float totalDist;
+    private bool hasGeneratedOnce = false;
+    private bool hasColliderBuilt = false;
+
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
-    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
+    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, 
+                           bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist,
+                           float pathHalfWidth, float pathBlendWidth, int pathLevel, bool updateCollider)
     {
         chunkWidth  = targetBinary.chunkWidth;
         chunkHeight = Mathf.Max(oldBinary.chunkHeight, targetBinary.chunkHeight);
@@ -104,21 +111,63 @@ public class Chunk : MonoBehaviour
         this.chunkPos = pos;
         this.oldConfig = oldBinary;
         this.targetConfig = targetBinary;
-        this.transitionCenter = transitionCenter;
-        this.blendDistance = blendDist;
         this.pathHalfWidth = pathHalfWidth;
         this.pathBlendWidth = pathBlendWidth;
         this.pathLevel = pathLevel;
 
-        GenerateMapDataInterpolated(pos, oldBinary, targetBinary, transitionCenter, innerRadius, blendDist, pathHalfWidth, pathBlendWidth, pathLevel);
+        this.isTransitioning = isTransitioning;
+        this.transitionStartPos2D = transitionStartPos2D;
+        this.transitionDir2D = transitionDir2D;
+        this.totalDist = totalDist;
+        hasGeneratedOnce = true;
+
+        GenerateMapDataInterpolated(pos, oldBinary, targetBinary, pathHalfWidth, pathBlendWidth, pathLevel);
         ComputeLayoutMap(pos, targetBinary);
-        GenerateMesh();
+        GenerateMesh(updateCollider);
     }
 
-    public void UpdateInterpolation(float innerRadius)
+    public void UpdateInterpolation(bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist, bool updateCollider)
     {
-        GenerateMapDataInterpolated(chunkPos, oldConfig, targetConfig, transitionCenter, innerRadius, blendDistance, pathHalfWidth, pathBlendWidth, pathLevel);
-        GenerateMesh();
+        if (hasGeneratedOnce && 
+            this.isTransitioning == isTransitioning && 
+            this.transitionStartPos2D == transitionStartPos2D && 
+            this.transitionDir2D == transitionDir2D && 
+            Mathf.Abs(this.totalDist - totalDist) < 0.01f)
+        {
+            EnsureColliderState(updateCollider);
+            return;
+        }
+
+        this.isTransitioning = isTransitioning;
+        this.transitionStartPos2D = transitionStartPos2D;
+        this.transitionDir2D = transitionDir2D;
+        this.totalDist = totalDist;
+        hasGeneratedOnce = true;
+
+        GenerateMapDataInterpolated(chunkPos, oldConfig, targetConfig, pathHalfWidth, pathBlendWidth, pathLevel);
+        GenerateMesh(updateCollider);
+    }
+
+    public void EnsureColliderState(bool closeToPlayer)
+    {
+        var collider = GetComponent<MeshCollider>();
+        if (closeToPlayer)
+        {
+            if (!hasColliderBuilt || collider.sharedMesh != mesh)
+            {
+                collider.sharedMesh = mesh;
+                collider.enabled = true;
+                hasColliderBuilt = true;
+            }
+        }
+        else
+        {
+            if (collider.enabled)
+            {
+                collider.enabled = false;
+                hasColliderBuilt = false;
+            }
+        }
     }
 
     // fBm + ridged noise + domain warping
@@ -272,9 +321,10 @@ public class Chunk : MonoBehaviour
         }
     }
 
-    void GenerateMapDataInterpolated(Vector2Int pos, BiomeConfig old, BiomeConfig target, Vector2 transitionCenter, float innerRadius, float blendDist, float pathHalfWidth, float pathBlendWidth, int pathLevel)
+    void GenerateMapDataInterpolated(Vector2Int pos, BiomeConfig old, BiomeConfig target, float pathHalfWidth, float pathBlendWidth, int pathLevel)
     {
-        bool hasTransition = transitionCenter.x > -90000f;
+        // MODIFICA PRESTAZIONALE: Pulisce nativamente l'array pre-allocato invece di ri-inizializzarlo
+        System.Array.Clear(map, 0, map.Length);
 
         for (int x = 0; x < chunkWidth; x++)
         {
@@ -283,16 +333,11 @@ public class Chunk : MonoBehaviour
                 float worldX = pos.x * chunkWidth + x;
                 float worldZ = pos.y * chunkWidth + z;
 
-                float t = 1f; // Default: 100% target config
-                if (hasTransition)
+                float voxelT = 1f;
+                if (isTransitioning)
                 {
-                    float colX        = pos.x + (float)x / chunkWidth;
-                    float colZ        = pos.y + (float)z / chunkWidth;
-                    float dist        = Vector2.Distance(new Vector2(colX, colZ), transitionCenter);
-                    
-                    // Inverted transition: t = 1 (new biome) at dist <= innerRadius (center),
-                    // transitioning to t = 0 (old biome) at dist >= innerRadius + blendDist
-                    t = 1f - Mathf.SmoothStep(0f, 1f, Mathf.Clamp01((dist - innerRadius) / blendDist));
+                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
+                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
                 }
 
                 float rawOld, rawTarget;
@@ -317,7 +362,7 @@ public class Chunk : MonoBehaviour
                                      * target.billowLayerAmplitude * target.chunkHeight;
                 }
 
-                int finalHeight = Mathf.FloorToInt(Mathf.Lerp(rawOld, rawTarget, t));
+                int finalHeight = Mathf.FloorToInt(Mathf.Lerp(rawOld, rawTarget, voxelT));
 
                 // Appiattimento del path lungo Z (centro a worldX=0)
                 float distFromPath = Mathf.Abs(worldX);
@@ -331,22 +376,22 @@ public class Chunk : MonoBehaviour
                 HeightMap[x, z] = finalHeight;
 
                 float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
-                bool useNew  = dither < t;
+                bool useNew  = dither < voxelT;
                 byte surface = useNew ? target.surfaceTileID : old.surfaceTileID;
                 byte middle  = useNew ? target.middleTileID  : old.middleTileID;
-                byte deep    = useNew ? target.deepTileID    : old.deepTileID;
                 byte liquid  = useNew ? target.liquidTileID  : old.liquidTileID;
-                int waterLevel = Mathf.RoundToInt(Mathf.Lerp(old.waterLevel, target.waterLevel, t));
+                int waterLevel = Mathf.RoundToInt(Mathf.Lerp(old.waterLevel, target.waterLevel, voxelT));
 
-                for (int y = 0; y < 256; y++)
+                int minHeight = Mathf.Max(0, finalHeight - 3);
+                int maxHeight = Mathf.Max(finalHeight, waterLevel);
+                for (int y = minHeight; y <= maxHeight; y++)
                 {
                     if (y > finalHeight)
                     {
-                        map[x, y, z] = (y <= waterLevel) ? liquid : (byte)0;
+                        map[x, y, z] = liquid;
                     }
                     else if (y == finalHeight) map[x, y, z] = surface;
-                    else if (y > finalHeight - 3) map[x, y, z] = middle;
-                    else map[x, y, z] = deep;
+                    else map[x, y, z] = middle;
                 }
             }
         }
@@ -414,7 +459,7 @@ public class Chunk : MonoBehaviour
     }
 
     // --- LOGICA DI RENDERING ---
-    void GenerateMesh()
+    void GenerateMesh(bool updateCollider)
     {
         vertices.Clear(); triangles.Clear(); uvs.Clear();
 
@@ -438,7 +483,7 @@ public class Chunk : MonoBehaviour
                 }
             }
         }
-        UpdateMesh();
+        UpdateMesh(updateCollider);
     }
 
     bool IsTransparent(int x, int y, int z)
@@ -490,13 +535,13 @@ public class Chunk : MonoBehaviour
         triangles.Add(vCount); triangles.Add(vCount + 2); triangles.Add(vCount + 3);
     }
 
-    void UpdateMesh()
+    void UpdateMesh(bool updateCollider)
     {
         mesh.Clear();
         mesh.vertices = vertices.ToArray();
         mesh.uv = uvs.ToArray();
         mesh.triangles = triangles.ToArray();
         mesh.RecalculateNormals();
-        GetComponent<MeshCollider>().sharedMesh = mesh;
+        EnsureColliderState(updateCollider);
     }
 }

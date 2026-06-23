@@ -321,7 +321,6 @@ public class LLMWorldDirector : MonoBehaviour
 
         if (worldManager != null) worldManager.ApplyNewConfig();
         worldManager?.ReloadBiomePrefabs();
-        worldManager?.RegenerateAllChunks();
 
         // Sblocco aggiornamenti chunk: senza questo il mondo rimane congelato dopo la transizione
         if (worldManager != null) worldManager.holdChunkUpdates = false;
