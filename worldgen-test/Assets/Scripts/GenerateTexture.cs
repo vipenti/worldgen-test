@@ -35,18 +35,20 @@ public class GenerateTexture : MonoBehaviour
     [ContextMenu("Genera Texture")]
     public void Generate() => StartCoroutine(GenerateRoutine());
 
-    public void Generate(string name)
+    public void Generate(string name, string paletteColorDescription = "")
     {
         materialName = name;
-        StartCoroutine(GenerateRoutine());
+        StartCoroutine(GenerateRoutine(paletteColorDescription));
     }
 
-    IEnumerator GenerateRoutine()
+    IEnumerator GenerateRoutine(string paletteColorDescription = "")
     {
         string outputDir = Path.Combine(Application.dataPath, "GeneratedTexture");
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
-        string prompt = $"Seamless flat tileable texture of a simple {materialName} surface for a 3D videogame, to be applied on cube faces. It must contain exclusively simple, clean characteristic details of the material. Top-down orthographic 90-degree view.";
+        
+        string palettePrompt = string.IsNullOrEmpty(paletteColorDescription) ? "" : $" The colors must be perfectly coherent with this color palette: {paletteColorDescription}.";
+        string prompt = $"Seamless flat tileable texture of a simple {materialName} surface for a 3D videogame, to be applied on cube faces. It must contain exclusively simple, clean characteristic details of the material. Top-down orthographic 90-degree view.{palettePrompt}";
 
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");

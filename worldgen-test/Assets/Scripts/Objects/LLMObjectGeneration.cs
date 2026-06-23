@@ -61,8 +61,15 @@ public class LLMObjectGeneration : MonoBehaviour
 
     IEnumerator PostRequest()
     {
-        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name}");
-        string json = $"{{\"prompt\": \"{EscapeJson(stylePrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
+        string paletteColorDescription = LoadPaletteColorDescription();
+        string finalPrompt = stylePrompt;
+        if (!string.IsNullOrEmpty(paletteColorDescription))
+        {
+            finalPrompt += $" Coherent with this color palette: {paletteColorDescription}.";
+        }
+
+        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
+        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
         using var req = new UnityWebRequest(serverAddress + "/generate_edit", "POST");
         req.uploadHandler   = new UploadHandlerRaw(bodyRaw);
@@ -127,6 +134,24 @@ public class LLMObjectGeneration : MonoBehaviour
             yield return new WaitUntil(() => !llm3DGeneration.IsGenerating);
 
         IsGenerating = false;
+    }
+
+    string LoadPaletteColorDescription()
+    {
+        try
+        {
+            string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+            if (File.Exists(path))
+            {
+                var root = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(path));
+                return root["palette_color_description"]?.ToString();
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[LLMObjectGeneration] Non è stato possibile caricare la palette dal file JSON: {ex.Message}");
+        }
+        return null;
     }
 
     static string EscapeJson(string s) => s.Replace("\\", "\\\\").Replace("\"", "\\\"").Replace("\n", "\\n");

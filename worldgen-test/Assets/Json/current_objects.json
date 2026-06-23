@@ -1,12 +1,16 @@
 {
-  "crystalline willow-fungus": { "id": 13, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "cyan fungal turf": { "id": 14, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "glowing violet moss": { "id": 15, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "small slime mold": { "id": 16, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "silt-stalker": { "id": 17, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "mineral rock": { "id": 18, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "damp soil clod": { "id": 19, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "glowing spore": { "id": 20, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "wet pebble": { "id": 21, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "fungal cap": { "id": 22, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 }
+  "oak tree": { "id": 0, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "pine tree": { "id": 1, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "wildflower": { "id": 2, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "tall grass tuft": { "id": 3, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 35, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "pond": { "id": 7, "size": "normal", "frequency": "rare", "type": "structure", "priority": 1 },
+  "deer": { "id": 4, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "rabbit": { "id": 5, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "small bird": { "id": 6, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "smooth stone": { "id": 8, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "fallen branch": { "id": 9, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "acorn": { "id": 10, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 11, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "small rock": { "id": 14, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
 }

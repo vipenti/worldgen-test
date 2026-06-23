@@ -2146,17 +2146,19 @@ MonoBehaviour:
   renderDistNormal: 500
   renderDistSmall: 300
   renderDistTiny: 200
+  lodHighPercent: 0.25
+  lodMediumPercent: 0.5
   pathWidth: 0
   pathBlendWidth: 0
   pathLevel: 0
   defaultObjectPrefab: {fileID: 0}
   objectSpawnChance: 0.001
-  objectGroundOffset: -0.6
-  scaleHuge: 50
-  scaleBig: 30
+  objectGroundOffset: -3
+  scaleHuge: 60
+  scaleBig: 40
   scaleNormal: 10
   scaleSmall: 8
-  scaleTiny: 3
+  scaleTiny: 1
   scaleDefault: 5
   cellVeryCommon: 50
   cellCommon: 60

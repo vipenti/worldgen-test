@@ -224,6 +224,8 @@ public class LLMWorldDirector : MonoBehaviour
         var materials = LoadMaterials();
         var resolved  = new Dictionary<string, int>();
 
+        string paletteColorDescription = ExtractStringField(cleanJson, "palette_color_description") ?? "";
+
         foreach (var (llmField, _) in TileFields)
         {
             string matName = ExtractStringField(cleanJson, llmField);
@@ -233,7 +235,7 @@ public class LLMWorldDirector : MonoBehaviour
             if (!materials.ContainsKey(matName))
             {
                 if (generateTexture == null) continue;
-                yield return StartCoroutine(GenerateAndWait(matName));
+                yield return StartCoroutine(GenerateAndWait(matName, paletteColorDescription));
                 materials = LoadMaterials();
             }
 
@@ -436,7 +438,7 @@ public class LLMWorldDirector : MonoBehaviour
         File.WriteAllText(path, sb.ToString());
     }
 
-    IEnumerator GenerateAndWait(string matName)
+    IEnumerator GenerateAndWait(string matName, string paletteColorDescription)
     {
         bool done = false;
         Action<string> onDone = null;
@@ -449,7 +451,7 @@ public class LLMWorldDirector : MonoBehaviour
             }
         };
         GenerateTexture.OnGenerationComplete += onDone;
-        generateTexture.Generate(matName);
+        generateTexture.Generate(matName, paletteColorDescription);
         yield return new WaitUntil(() => done);
     }
 
@@ -523,6 +525,12 @@ public class LLMWorldDirector : MonoBehaviour
         {
             if (resolved.TryGetValue(llmField, out int id))
                 entries.Add($"  \"{configField}\": {id}");
+        }
+        string palette = ExtractStringField(llmJson, "palette_color_description");
+        if (palette != null)
+        {
+            string escapedPalette = palette.Replace("\"", "\\\"");
+            entries.Add($"  \"palette_color_description\": \"{escapedPalette}\"");
         }
         return "{\n" + string.Join(",\n", entries) + "\n}";
     }

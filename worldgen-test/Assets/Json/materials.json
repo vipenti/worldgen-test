@@ -1,18 +1,12 @@
 {
-  "simple_grass": 0,
-  "grass_with_dirt_patches": 1,
-  "rocky_terrain": 2,
+  "lush_grass": 0,
+  "fertile_soil": 1,
+  "stone": 2,
   "fresh_water": 3,
-  "grass_with_flowers_patch": 4,
-  "ground_dirt": 5,
-  "autumn_grass": 6,
-  "desert_sand": 7,
-  "snow": 8,
-  "iced_water": 9,
-  "rich_soil": 10,
-  "stone": 11,
-  "yellow_flower": 12,
-  "green_bush": 13,
-  "none": 14,
-  "dry_shrub": 15
+  "wildflower_cluster": 4,
+  "tall_grass": 5,
+  "hard_rock": 6,
+  "alpine_flora": 7,
+  "dry_shrub": 8,
+  "sharp_rock": 9
 }

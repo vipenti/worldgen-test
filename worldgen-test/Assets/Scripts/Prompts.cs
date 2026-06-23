@@ -57,6 +57,7 @@ NOISE PARAMETERS RULES (MINECRAFT SCALE CONFIGURATIONS):
 - ridgedExponent [1.2 - 2.8]: Sharpness of peaks.
 - warpStrength [0.0 - 25.0]: Organic erosion distortion. 0 for cities, 8-15 for forests.
 - warpScale [15.0 - 50.0]: Scale of coordinates distortion.
+- palette_color_description [string]: A short concise color palette rule for the whole biome (e.g. ""Warm soft colors with earthy tones"", ""Vibrant tropical colors"", ""Pastel hues"") to maintain biome-wide visual coherence in textures and 3D models.
 
 CRITICAL WALKABILITY CONSTRAINTS:
 1. FOR STANDARD FORESTS, PLAINS, AND VILLAGES: The world must be easily explored on foot. Set ampRidged to 0.0. Set ampBillow between 4.0 and 10.0. Set billowExponent to 0.8 to create wide flat spaces.
@@ -69,13 +70,12 @@ OUTPUT: Write <analysis></analysis> containing a verification of the walkability
 
 World: A quiet basic forest with tall trees and flat green grass clearings.
 <analysis>Forest biome requires flat, walkable paths. No jagged mountains allowed: ampRidged=0. Gentle terrain: ampBillow=6, billowExponent=0.8 for flat clearings. Low water dominance: base(22) > waterLevel(10) so pools are rare. Math: 22+6+0=28. chunkHeight(55)>40. OK.</analysis>
-{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""surface"":""mossy_grass"",""middle"":""rich_soil"",""deep"":""stone"",""liquid"":""fresh_water"",""flower"":""yellow_flower"",""bush"":""green_bush""}
+{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""surface"":""mossy_grass"",""middle"":""rich_soil"",""deep"":""stone"",""liquid"":""fresh_water"",""flower"":""yellow_flower"",""bush"":""green_bush"",""palette_color_description"":""Rich warm colors with earthy tones."" }
 
 World: A jagged mountain peak range with vertical stone cliffs.
 <analysis>Mountain biome requires high verticality. ampRidged=65, scaleRidged=60 for massive ranges. macroInfluence=0.85 to allow ridges to dominate high macro zones. Math: 10+10+65=85. chunkHeight(110)>97. OK.</analysis>
-{""scaleMacro"":200.0,""macroInfluence"":0.85,""scaleBillow"":30.0,""ampBillow"":10.0,""billowExponent"":1.1,""scaleRidged"":60.0,""ampRidged"":65.0,""ridgedExponent"":2.2,""warpStrength"":12.0,""warpScale"":25.0,""baseTerrainHeight"":10.0,""waterLevel"":5,""chunkHeight"":110,""chunkWidth"":16,""scaleLayout"":20.0,""objectDensityThreshold"":0.65,""slopeMaxLimit"":2.5,""surface"":""stone"",""middle"":""stone"",""deep"":""hard_rock"",""liquid"":""fresh_water"",""flower"":""alpine_flora"",""bush"":""dry_shrub"",""rock"":""sharp_rock""}
-
-World: ";
+{""scaleMacro"":200.0,""macroInfluence"":0.85,""scaleBillow"":30.0,""ampBillow"":10.0,""billowExponent"":1.1,""scaleRidged"":60.0,""ampRidged"":65.0,""ridgedExponent"":2.2,""warpStrength"":12.0,""warpScale"":25.0,""baseTerrainHeight"":10.0,""waterLevel"":5,""chunkHeight"":110,""chunkWidth"":16,""scaleLayout"":20.0,""objectDensityThreshold"":0.65,""slopeMaxLimit"":2.5,""surface"":""stone"",""middle"":""stone"",""deep"":""hard_rock"",""liquid"":""fresh_water"",""flower"":""alpine_flora"",""bush"":""dry_shrub"",""rock"":""sharp_rock"",""palette_color_description"":""Cold light-greish tones.""}
+";
 
     // ── Step 4: assign size + frequency to each object ───────────────────────
     // objectList: comma-separated quoted names, e.g. "a palm tree"
@@ -93,9 +93,9 @@ STRICT ARCHITECTURAL & MODULARITY RULES:
 2. NO TERRAIN TILES: Every item must be a standalone 3-dimensional model generated ABOVE the ground. No flat pavement, grass tiles, or road blocks.
 3. THE SINGULAR MANDATE (NO CLUSTERS): Every asset MUST be a single, standalone, isolated item. You are strictly FORBIDDEN from using plural forms or collective words. Do NOT use words like: 'clump', 'cluster', 'patch', 'pile', 'stack', 'group', 'set', 'bunch', 'massive', 'collection', or plurals like 'crates', 'barrels', 'stones'. (e.g., never list 'pile of chairs', list 'wooden chair' instead; never list 'bushes', list 'small bush' instead).
 4. GENERIC & REUSABLE: Keep descriptions short, lowercase, and extremely straightforward (e.g., 'medieval house', 'pine tree', 'stone'). Avoid overly complex or specific adjectives to maximize asset reusability across multiple worlds. Always include basic rocks or stones in natural, rural, or outdoor biomes.
-5. NO ARTICLES: Do NOT include articles like 'a', 'an', or 'the' at the beginning of asset names.
 6. NUMBER: You MUST produce a final list containing exactly 10 to 15 assets total in the JSON array.
-7. NO lakes, ponds, tiles or terrain features: Only placeable 3D models that can be spawned above the ground. 
+7. NO MULTIPLE OBJECTS OR AGGREGATIONS: Do NOT include any objects that cannot be placed on the ground. Only include individual, standalone items.
+8. NO TERRAIN ELEMENTS: Dunes, piles, cliffs are not allowed. Only include individual, standalone items that can be placed on the ground.
 
 OUTPUT FORMAT PROTOCOL:
 You must strictly follow this two-part output format. No conversational text outside these blocks.
@@ -142,8 +142,8 @@ Output:
 - Structures: none
 - Buildings/Houses: none
 - Vegetation: forest tree, birch tree, wild fern, small bush, mushroom
-- Environmental Props: wild deer, fallen log, sharp rock, granite stone
-- Micro Details/Clutter: pinecone, wooden stick, dry leaf
+- Environmental Props: wild deer, fallen log, sharp rock
+- Micro Details/Clutter: pinecone, wooden stick
 </analysis>
 [
   ""forest tree"",
@@ -154,10 +154,8 @@ Output:
   ""wild deer"",
   ""fallen log"",
   ""sharp rock"",
-  ""granite stone"",
   ""pinecone"",
-  ""wooden stick"",
-  ""dry leaf""
+  ""wooden stick""
 ]
 
 User description: A flat open grassland featuring a colorful traveling circus area with a main festival ground, scattered props, and animal wagons.
@@ -183,9 +181,7 @@ Output:
   ""circus ticket"",
   ""juggling club"",
   ""small stone""
-]
-
-User description: ";
+]";
 
 // ── Step 4: assign size, frequency, type and placement priority ──────────
 // ── PASS 1: SIZE EXTRACTION ──────────────────────────────────────────────

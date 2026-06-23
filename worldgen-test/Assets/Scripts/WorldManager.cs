@@ -35,6 +35,10 @@ public class WorldManager : MonoBehaviour
     public float renderDistSmall = 35f;
     public float renderDistTiny = 15f;
 
+    [Header("LOD Distance Thresholds")]
+    [Range(0f, 1f)] public float lodHighPercent = 0.25f;
+    [Range(0f, 1f)] public float lodMediumPercent = 0.50f;
+
     [Header("Path / Road Alignment")]
     public float pathWidth = 10f;      
     public float pathBlendWidth = 20f; 
@@ -543,11 +547,12 @@ public class WorldManager : MonoBehaviour
         if (obj != null)
         {
             obj.transform.localScale = Vector3.one * scaleFactor;
-            var rend = obj.GetComponentInChildren<Renderer>();
-            if (rend != null)
-                obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+            if (!_objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
+            float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
+            float calculatedMinY = GetObjectMinY(obj, groundY);
+            obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist);
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent);
         }
     }
 
@@ -572,7 +577,7 @@ public class WorldManager : MonoBehaviour
     {
         var origin = new Vector3(wx, fallbackY + 10f, wz);
         if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 30f)) return hit.point.y;
-        return fallbackY;
+        return fallbackY + 1.0f;
     }
 
     void SpawnBillboard(string objName, Vector3 pos, Transform parent, float scaleFactor = 1f, bool visible = true)
@@ -622,6 +627,8 @@ public class WorldManager : MonoBehaviour
 
         foreach (var (pos, parent) in toSpawn)
         {
+            if (!_objectSizes.TryGetValue(objectName, out string sizeStr)) sizeStr = "big";
+
             float groundY = pos.y - scaleFactor * 0.5f;
             int posHash = PlacementHash(Mathf.RoundToInt(pos.x), Mathf.RoundToInt(pos.z), objectName.GetHashCode());
             float rotZ = ((posHash >> 16) & 0xFF) / 255f * 360f;
@@ -637,7 +644,6 @@ public class WorldManager : MonoBehaviour
                 obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
                 obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
 
-                if (!_objectSizes.TryGetValue(objectName, out string sizeStr)) sizeStr = "big";
                 if (sizeStr == "huge" || sizeStr == "big")
                 {
                     obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
@@ -650,10 +656,11 @@ public class WorldManager : MonoBehaviour
             else continue;
 
             obj.transform.localScale = Vector3.one * scaleFactor;
-            var rend = obj.GetComponentInChildren<Renderer>();
-            if (rend != null) obj.transform.position += Vector3.up * (groundY - rend.bounds.min.y + objectGroundOffset);
+            float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
+            float calculatedMinY = GetObjectMinY(obj, groundY);
+            obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist);
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent);
         }
     }
 
@@ -908,5 +915,47 @@ public class WorldManager : MonoBehaviour
     void HandleCriticalAssetsReady()
     {
         SetStatusText("[Transition] Critical assets loaded! Interpolation starting.");
+    }
+
+    private float GetObjectMinY(GameObject obj, float fallbackY)
+    {
+        var meshFilters = obj.GetComponentsInChildren<MeshFilter>();
+        if (meshFilters == null || meshFilters.Length == 0)
+        {
+            var rend = obj.GetComponentInChildren<Renderer>();
+            if (rend != null) return rend.bounds.min.y;
+            return fallbackY;
+        }
+
+        float minY = float.MaxValue;
+        bool found = false;
+
+        foreach (var mf in meshFilters)
+        {
+            if (mf == null || mf.sharedMesh == null) continue;
+            Mesh mesh = mf.sharedMesh;
+            Bounds localBounds = mesh.bounds;
+            Vector3 center = localBounds.center;
+            Vector3 extents = localBounds.extents;
+
+            for (int x = -1; x <= 1; x += 2)
+            {
+                for (int y = -1; y <= 1; y += 2)
+                {
+                    for (int z = -1; z <= 1; z += 2)
+                    {
+                        Vector3 localCorner = center + new Vector3(x * extents.x, y * extents.y, z * extents.z);
+                        Vector3 worldCorner = mf.transform.TransformPoint(localCorner);
+                        if (worldCorner.y < minY)
+                        {
+                            minY = worldCorner.y;
+                            found = true;
+                        }
+                    }
+                }
+            }
+        }
+
+        return found ? minY : fallbackY;
     }
 }

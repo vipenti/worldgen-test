@@ -54,6 +54,7 @@ public class BiomeConfig
     public float baseTerrainHeight = 15f;  // Y floor before noise layers [5-25]
     public float scaleLayout       = 30f;  // spawn-zone size [10-60]
     public float slopeMaxLimit     = 1.2f; // max slope for object placement [0.5-3]
+    public string palette_color_description;
 }
 
 [RequireComponent(typeof(MeshFilter), typeof(MeshRenderer), typeof(MeshCollider))]
