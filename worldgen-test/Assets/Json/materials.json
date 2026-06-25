@@ -8,5 +8,18 @@
   "hard_rock": 6,
   "alpine_flora": 7,
   "dry_shrub": 8,
-  "sharp_rock": 9
+  "sharp_rock": 9,
+  "packed_snow": 10,
+  "frozen_dirt": 11,
+  "permafrost": 12,
+  "frozen_water": 13,
+  "snowdrop": 14,
+  "frozen_shrub": 15,
+  "ice_block": 16,
+  "coarse_sand": 17,
+  "gravel": 18,
+  "coral_reef": 19,
+  "kelp_plant": 20,
+  "stone_debris": 21,
+  "grey_concrete": 22
 }

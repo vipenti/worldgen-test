@@ -327,6 +327,7 @@ public class Chunk : MonoBehaviour
         // MODIFICA PRESTAZIONALE: Pulisce nativamente l'array pre-allocato invece di ri-inizializzarlo
         System.Array.Clear(map, 0, map.Length);
 
+        // Pass 1: Calcola l'altezza per ciascuna colonna (x, z)
         for (int x = 0; x < chunkWidth; x++)
         {
             for (int z = 0; z < chunkWidth; z++)
@@ -375,13 +376,77 @@ public class Chunk : MonoBehaviour
                 }
 
                 HeightMap[x, z] = finalHeight;
+            }
+        }
+
+        // Pass 2: Popola la voxel map usando le altezze calcolate e calcolando la pendenza per il texturing patchato
+        for (int x = 0; x < chunkWidth; x++)
+        {
+            for (int z = 0; z < chunkWidth; z++)
+            {
+                float worldX = pos.x * chunkWidth + x;
+                float worldZ = pos.y * chunkWidth + z;
+
+                float voxelT = 1f;
+                if (isTransitioning)
+                {
+                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
+                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
+                }
+
+                int finalHeight = HeightMap[x, z];
 
                 float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
                 bool useNew  = dither < voxelT;
+
                 byte surface = useNew ? target.surfaceTileID : old.surfaceTileID;
                 byte middle  = useNew ? target.middleTileID  : old.middleTileID;
                 byte liquid  = useNew ? target.liquidTileID  : old.liquidTileID;
+                byte flower  = useNew ? target.flowerTileID  : old.flowerTileID;
+                byte bush    = useNew ? target.bushTileID    : old.bushTileID;
+                byte rock    = useNew ? (target.rockTileID != 0 ? target.rockTileID : target.deepTileID) 
+                                      : (old.rockTileID != 0 ? old.rockTileID : old.deepTileID);
+
                 int waterLevel = Mathf.RoundToInt(Mathf.Lerp(old.waterLevel, target.waterLevel, voxelT));
+
+                // Calcolo della pendenza (gradient) locale
+                int hn = (z + 1 < chunkWidth) ? HeightMap[x, z + 1] : finalHeight;
+                int hs = (z - 1 >= 0) ? HeightMap[x, z - 1] : finalHeight;
+                int he = (x + 1 < chunkWidth) ? HeightMap[x + 1, z] : finalHeight;
+                int hw = (x - 1 >= 0) ? HeightMap[x - 1, z] : finalHeight;
+                float gx = (he - hw) * 0.5f;
+                float gz = (hn - hs) * 0.5f;
+                float slope = Mathf.Sqrt(gx * gx + gz * gz);
+
+                // Sample patch noise (medio-bassa frequenza per patch estese)
+                float patchNoise = Mathf.PerlinNoise(worldX * 0.08f + 123.4f, worldZ * 0.08f + 567.8f);
+
+                byte surfaceTile = surface;
+
+                if (slope > 1.2f)
+                {
+                    // Pendenza alta (pareti, dirupi): usa pietra o terra
+                    surfaceTile = (rock != 0) ? rock : middle;
+                }
+                else
+                {
+                    // Pianura/Pendenza dolce: crea variazioni organiche
+                    if (patchNoise < 0.20f)
+                    {
+                        // Patch di terreno scoperto (terra marrone)
+                        surfaceTile = middle;
+                    }
+                    else if (patchNoise > 0.80f)
+                    {
+                        // Patch fiorita o muschio
+                        surfaceTile = (flower != 0) ? flower : surface;
+                    }
+                    else if (patchNoise > 0.70f && patchNoise <= 0.80f)
+                    {
+                        // Patch vegetazione/cespugliosa alternativa
+                        surfaceTile = (bush != 0) ? bush : surface;
+                    }
+                }
 
                 int minHeight = Mathf.Max(0, finalHeight - 3);
                 int maxHeight = Mathf.Max(finalHeight, waterLevel);
@@ -391,8 +456,14 @@ public class Chunk : MonoBehaviour
                     {
                         map[x, y, z] = liquid;
                     }
-                    else if (y == finalHeight) map[x, y, z] = surface;
-                    else map[x, y, z] = middle;
+                    else if (y == finalHeight)
+                    {
+                        map[x, y, z] = surfaceTile;
+                    }
+                    else
+                    {
+                        map[x, y, z] = middle;
+                    }
                 }
             }
         }

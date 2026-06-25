@@ -34,5 +34,22 @@
   "snowball": 32,
   "icicle": 33,
   "frozen berry": 34,
-  "small bush": 35
+  "small bush": 35,
+  "wooden cabin": 36,
+  "wooden fence": 37,
+  "frozen pond": 38,
+  "birch tree": 39,
+  "fern": 40,
+  "kelp plant": 41,
+  "coral branch": 42,
+  "sea anemone": 43,
+  "seaweed clump": 44,
+  "sunken stone": 45,
+  "large shell": 46,
+  "starfish": 47,
+  "sea urchin": 48,
+  "pebble": 49,
+  "sand dollar": 50,
+  "small fish": 51,
+  "bubble cluster": 52
 }

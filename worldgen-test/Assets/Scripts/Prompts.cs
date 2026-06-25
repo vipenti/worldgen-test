@@ -58,6 +58,20 @@ NOISE PARAMETERS RULES (MINECRAFT SCALE CONFIGURATIONS):
 - warpStrength [0.0 - 25.0]: Organic erosion distortion. 0 for cities, 8-15 for forests.
 - warpScale [15.0 - 50.0]: Scale of coordinates distortion.
 - palette_color_description [string]: A short concise color palette rule for the whole biome (e.g. ""Warm soft colors with earthy tones"", ""Vibrant tropical colors"", ""Pastel hues"") to maintain biome-wide visual coherence in textures and 3D models.
+- surface [string]: Name of the top terrain surface tile material.
+- middle [string]: Name of the sub-surface tile material (under the top tile).
+- deep [string]: Name of the deep underground stone tile material.
+- liquid [string]: Name of the water or liquid tile material.
+- flower [string]: Name of the flower/turf patch tile material (often flowery grass or moss).
+- bush [string]: Name of the bush/vegetation patch tile material (often leafy grass or small weeds).
+- rock [string]: Name of the steep cliff/rock tile material.
+
+STRICT MATERIAL COHERENCE & THEME RULES:
+1. THE TILE NAMES MUST STRICTLY MATCH THE THEME OF THE WORLD DESCRIPTION.
+2. DO NOT COPY few-shot example tile names unless they fit the user's requested world perfectly.
+3. If the world is SNOWY, COLD, or GLACIAL, the surface/middle/liquid tiles MUST reflect snow and ice (e.g., surface: ""snowy_grass"", ""powdery_snow"", or ""white_frost""; liquid: ""frozen_water"" or ""slush""; flower: ""ice_crystal"" or ""snowdrop""; bush: ""frozen_shrub""). Never output bright green grass in a cold or winter environment.
+4. If the world is a DESERT or DRY wasteland, surface/middle/liquid tiles MUST reflect desert characteristics (e.g., surface: ""red_sand"", ""fine_sand"", or ""cracked_clay""; flower: ""desert_marigold""; bush: ""dry_thorn"").
+5. Choose simple, lowercase English tile names using underscores for spaces (e.g. ""frozen_soil"", ""coarse_gravel"").
 
 CRITICAL WALKABILITY CONSTRAINTS:
 1. FOR STANDARD FORESTS, PLAINS, AND VILLAGES: The world must be easily explored on foot. Set ampRidged to 0.0. Set ampBillow between 4.0 and 10.0. Set billowExponent to 0.8 to create wide flat spaces.
