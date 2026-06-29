@@ -106,6 +106,7 @@ public class WorldManager : MonoBehaviour
     private Dictionary<Vector2Int, bool> chunkIsNewBiome = new Dictionary<Vector2Int, bool>();
 
     private Texture2D atlasTexture;
+    private Texture2D atlasNormalTexture;
     private Material sharedChunkMaterial;
 
     private struct StructureAnchor
@@ -119,6 +120,8 @@ public class WorldManager : MonoBehaviour
 
     IEnumerator InitRoutine()
     {
+        InitializePersistentDirectory();
+
         player.gameObject.SetActive(false);
 
         var prefabRenderer = chunkPrefab.GetComponent<MeshRenderer>();
@@ -165,12 +168,29 @@ public class WorldManager : MonoBehaviour
 
     void LoadAtlasTexture()
     {
-        string albedoPath = Path.Combine(Application.dataPath, "GeneratedTexture", "TextureAtlas.png");
+        string dir = PathSettings.GetTextureFolder();
+
+        string albedoPath = Path.Combine(dir, "TextureAtlas.png");
         if (File.Exists(albedoPath))
         {
-            atlasTexture ??= new Texture2D(2, 2);
+            atlasTexture ??= new Texture2D(2, 2, TextureFormat.RGBA32, false);
             atlasTexture.LoadImage(File.ReadAllBytes(albedoPath));
+            atlasTexture.filterMode = FilterMode.Point;
+            atlasTexture.wrapMode = TextureWrapMode.Clamp;
+            atlasTexture.Apply(false);
             sharedChunkMaterial?.SetTexture("_BaseMap", atlasTexture);
+        }
+
+        string normalPath = Path.Combine(dir, "TextureAtlas_Normal.png");
+        if (File.Exists(normalPath))
+        {
+            atlasNormalTexture ??= new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            atlasNormalTexture.LoadImage(File.ReadAllBytes(normalPath));
+            atlasNormalTexture.filterMode = FilterMode.Point;
+            atlasNormalTexture.wrapMode = TextureWrapMode.Clamp;
+            atlasNormalTexture.Apply(false);
+            sharedChunkMaterial?.SetTexture("_BumpMap", atlasNormalTexture);
+            sharedChunkMaterial?.EnableKeyword("_NORMALMAP");
         }
     }
 
@@ -225,7 +245,7 @@ public class WorldManager : MonoBehaviour
 
     BiomeConfig LoadLatestConfig()
     {
-        string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
         if (File.Exists(path))
             return JsonUtility.FromJson<BiomeConfig>(File.ReadAllText(path));
 
@@ -518,6 +538,8 @@ public class WorldManager : MonoBehaviour
         GameObject obj = null;
         float maxDist = GetRenderDistance(name);
 
+        EnsureMeshCached(name);
+
         if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh) && runtimeMesh != null)
         {
             obj = new GameObject(name);
@@ -624,6 +646,8 @@ public class WorldManager : MonoBehaviour
         foreach (var p in list) if (p != null) toSpawn.Add((p.transform.position, p.transform.parent));
         foreach (var p in list) if (p != null) Destroy(p.gameObject);
         _placeholders.Remove(objectName);
+
+        EnsureMeshCached(objectName);
 
         foreach (var (pos, parent) in toSpawn)
         {
@@ -832,7 +856,7 @@ public class WorldManager : MonoBehaviour
         _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();  
         _objectSizes.Clear(); _uniqueSpawned.Clear(); _placeholders.Clear();
 
-        string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
         if (!File.Exists(path)) return;
 
         try
@@ -957,5 +981,116 @@ public class WorldManager : MonoBehaviour
         }
 
         return found ? minY : fallbackY;
+    }
+
+    void InitializePersistentDirectory()
+    {
+        // Solo in build (fuori dall'Editor), o se vogliamo testarlo, copiamo le baseline se non esistono
+#if !UNITY_EDITOR
+        string targetJsonDir = PathSettings.GetJsonFolder();
+        string targetTextureDir = PathSettings.GetTextureFolder();
+        string targetObjectsDir = PathSettings.GetObjectsFolder();
+
+        Directory.CreateDirectory(targetJsonDir);
+        Directory.CreateDirectory(targetTextureDir);
+        Directory.CreateDirectory(targetObjectsDir);
+
+        // Copiamo i file JSON di configurazione baseline da Resources
+        CopyResourceJsonToPersistent("Baseline/all_objects", Path.Combine(targetJsonDir, "all_objects.json"));
+        CopyResourceJsonToPersistent("Baseline/current_objects", Path.Combine(targetJsonDir, "current_objects.json"));
+        CopyResourceJsonToPersistent("Baseline/materials", Path.Combine(targetJsonDir, "materials.json"));
+        CopyResourceJsonToPersistent("Baseline/llm_generated", Path.Combine(targetJsonDir, "llm_generated.json"));
+
+        // Copiamo le texture dell'atlas baseline da Resources (come file binari .bytes per aggirare le restrizioni di lettura/scrittura)
+        CopyResourceBinaryToPersistent("Baseline/TextureAtlas", Path.Combine(targetTextureDir, "TextureAtlas.png"));
+        CopyResourceBinaryToPersistent("Baseline/TextureAtlas_Normal", Path.Combine(targetTextureDir, "TextureAtlas_Normal.png"));
+#endif
+    }
+
+    void CopyResourceJsonToPersistent(string resourcePath, string targetDiskPath)
+    {
+        if (File.Exists(targetDiskPath)) return;
+
+        var textAsset = Resources.Load<TextAsset>(resourcePath);
+        if (textAsset != null)
+        {
+            File.WriteAllText(targetDiskPath, textAsset.text);
+            Debug.Log($"[WorldManager] Inizializzato file JSON persistente: {targetDiskPath}");
+        }
+        else
+        {
+            Debug.LogWarning($"[WorldManager] File di risorsa baseline non trovato: {resourcePath}");
+        }
+    }
+
+    void CopyResourceBinaryToPersistent(string resourcePath, string targetDiskPath)
+    {
+        if (File.Exists(targetDiskPath)) return;
+
+        var binaryAsset = Resources.Load<TextAsset>(resourcePath);
+        if (binaryAsset != null && binaryAsset.bytes != null)
+        {
+            File.WriteAllBytes(targetDiskPath, binaryAsset.bytes);
+            Debug.Log($"[WorldManager] Inizializzato file binario persistente: {targetDiskPath}");
+        }
+        else
+        {
+            Debug.LogWarning($"[WorldManager] Risorsa binaria baseline non trovata: {resourcePath}");
+        }
+    }
+
+    public void EnsureMeshCached(string assetName)
+    {
+        if (string.IsNullOrEmpty(assetName)) return;
+
+        // Se la mesh base è già in cache, diamo per scontato che tutte le sue versioni LOD siano caricate
+        if (VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName)) return;
+
+        // Proviamo a caricare il file JSON base
+        string baseJson = LoadVoxJsonString(assetName);
+        if (string.IsNullOrEmpty(baseJson))
+        {
+            return;
+        }
+
+        Debug.Log($"[WorldManager] Caricamento dinamico a runtime delle mesh per '{assetName}'...");
+
+        var renderer = GetComponentInChildren<VoxelRenderer>();
+        if (renderer == null) renderer = FindFirstObjectByType<VoxelRenderer>();
+
+        if (renderer != null)
+        {
+            // Compiliamo il modello base originale
+            renderer.LoadFromJson(baseJson, assetName);
+
+            // Proviamo a caricare e compilare i modelli LOD
+            string highJson = LoadVoxJsonString(assetName + "_high");
+            if (!string.IsNullOrEmpty(highJson)) renderer.LoadFromJson(highJson, assetName + "_high");
+
+            string medJson = LoadVoxJsonString(assetName + "_medium");
+            if (!string.IsNullOrEmpty(medJson)) renderer.LoadFromJson(medJson, assetName + "_medium");
+
+            string lowJson = LoadVoxJsonString(assetName + "_low");
+            if (!string.IsNullOrEmpty(lowJson)) renderer.LoadFromJson(lowJson, assetName + "_low");
+        }
+    }
+
+    private string LoadVoxJsonString(string objectName)
+    {
+        // 1. Prova a caricare dalla cartella persistente
+        string localPath = Path.Combine(PathSettings.GetObjectsFolder(), objectName + ".voxjson");
+        if (File.Exists(localPath))
+        {
+            return File.ReadAllText(localPath);
+        }
+
+        // 2. Prova a caricare dalle risorse baseline incorporate
+        var textAsset = Resources.Load<TextAsset>($"Baseline/objects/{objectName}");
+        if (textAsset != null)
+        {
+            return textAsset.text;
+        }
+
+        return null;
     }
 }

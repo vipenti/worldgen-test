@@ -74,25 +74,40 @@ public class GenerateAsset : MonoBehaviour
 
     IEnumerator ProcessSingleAsset(string name)
     {
-        // 1. Controlliamo se l'asset è già stato compilato ed esiste su disco come prefab
-        string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
-        bool prefabExists = File.Exists(prefabDiskPath);
+        // 1. Controlliamo se l'asset è in cache
         bool inRuntimeCache = VoxelRenderer.RuntimeMeshCache.ContainsKey(name);
+        
+        // 2. Controlliamo se esiste il file voxjson (in persistentDataPath o in Resources)
+        string persistentVoxJson = Path.Combine(PathSettings.GetObjectsFolder(), name + ".voxjson");
+        string jsonContent = "";
+        bool jsonExists = false;
 
-        if ((prefabExists || inRuntimeCache) && worldManager != null)
+        if (File.Exists(persistentVoxJson))
         {
-            Debug.Log($"[GenerateAsset] Asset '{name}' già esistente (prefab su disco o cache mesh). Salto la generazione IA.");
-            worldManager.ReplacePlaceholders(name);
-            yield break;
+            jsonContent = File.ReadAllText(persistentVoxJson);
+            jsonExists = true;
+        }
+        else
+        {
+            var textAsset = Resources.Load<TextAsset>($"Baseline/objects/{name}");
+            if (textAsset != null)
+            {
+                jsonContent = textAsset.text;
+                jsonExists = true;
+            }
         }
 
-        // 2. Altrimenti, controlliamo se esiste almeno il file voxjson locale
-        string localVoxJson = Path.Combine("Assets/Json/objects", name + ".voxjson");
-        if (File.Exists(localVoxJson) && worldManager != null)
+        if ((jsonExists || inRuntimeCache) && worldManager != null)
         {
-            Debug.Log($"[GenerateAsset] File voxjson '{name}' trovato su disco. Carico il modello senza rigenerare via IA.");
-            string jsonContent = File.ReadAllText(localVoxJson);
-            worldManager.GetComponentInChildren<VoxelRenderer>()?.LoadFromJson(jsonContent, name);
+            if (!inRuntimeCache && !string.IsNullOrEmpty(jsonContent))
+            {
+                Debug.Log($"[GenerateAsset] File voxjson per '{name}' trovato. Compilazione mesh a runtime...");
+                worldManager.GetComponentInChildren<VoxelRenderer>()?.LoadFromJson(jsonContent, name);
+            }
+            else
+            {
+                Debug.Log($"[GenerateAsset] Asset '{name}' già presente in cache.");
+            }
             worldManager.ReplacePlaceholders(name);
             yield break;
         }
@@ -108,14 +123,17 @@ public class GenerateAsset : MonoBehaviour
         }
     }
 
+    private string CurrentObjectsListPath => Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
+
     void ClassifyAssets(List<string> names, out List<string> queueA, out List<string> queueB)
     {
         queueA = new List<string>(); queueB = new List<string>();
-        if (!File.Exists(listPath)) { queueB.AddRange(names); return; }
+        string listFilePath = CurrentObjectsListPath;
+        if (!File.Exists(listFilePath)) { queueB.AddRange(names); return; }
 
         try
         {
-            var root = JObject.Parse(File.ReadAllText(listPath));
+            var root = JObject.Parse(File.ReadAllText(listFilePath));
             foreach (string name in names)
             {
                 if (root[name] != null && root[name].Type == JTokenType.Object)
@@ -137,7 +155,7 @@ public class GenerateAsset : MonoBehaviour
     IEnumerator GenerateAll()
     {
         if (llmObjectGeneration == null) yield break;
-        var entries = JObject.Parse(File.ReadAllText(listPath));
+        var entries = JObject.Parse(File.ReadAllText(CurrentObjectsListPath));
         var names   = new List<string>();
         foreach (var entry in entries) names.Add(entry.Key);
         yield return StartCoroutine(GenerateList(names));
@@ -155,7 +173,7 @@ public class GenerateAsset : MonoBehaviour
 
     IEnumerator RegenerateAllFromRegistryRoutine()
     {
-        string registryPath = Path.Combine(Application.dataPath, "Json", "all_objects.json");
+        string registryPath = Path.Combine(PathSettings.GetJsonFolder(), "all_objects.json");
         if (!File.Exists(registryPath))
         {
             Debug.LogError($"[GenerateAsset] File di registro non trovato in: {registryPath}");

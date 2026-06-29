@@ -22,7 +22,7 @@ public class TextureAtlasManager : MonoBehaviour
     private int Rows => Mathf.CeilToInt((float)maxTextures / columns);
 
     private Dictionary<string, int> registry = new Dictionary<string, int>();
-    string MaterialsPath => Path.Combine(Application.dataPath, "Json", "materials.json");
+    string MaterialsPath => Path.Combine(PathSettings.GetJsonFolder(), "materials.json");
 
     void Awake()
     {
@@ -32,7 +32,7 @@ public class TextureAtlasManager : MonoBehaviour
 
     void LoadAtlasFromDisk()
     {
-        string dir = Path.Combine(Application.dataPath, "GeneratedTexture");
+        string dir = PathSettings.GetTextureFolder();
 
         string albedoPath = Path.Combine(dir, "TextureAtlas.png");
         if (File.Exists(albedoPath))
@@ -115,7 +115,7 @@ public class TextureAtlasManager : MonoBehaviour
 
     void SaveAtlas(Texture2D tex, string fileName)
     {
-        string dir = Path.Combine(Application.dataPath, "GeneratedTexture");
+        string dir = PathSettings.GetTextureFolder();
         Directory.CreateDirectory(dir);
         File.WriteAllBytes(Path.Combine(dir, fileName), tex.EncodeToPNG());
 #if UNITY_EDITOR
@@ -169,7 +169,7 @@ public class TextureAtlasManager : MonoBehaviour
     // Ricostruisce l'atlas dai file PNG individuali già salvati — non chiama il server
     public void RebuildAtlasFromFiles()
     {
-        string dir = Path.Combine(Application.dataPath, "GeneratedTexture");
+        string dir = PathSettings.GetTextureFolder();
 
         var sorted = new List<KeyValuePair<string, int>>(registry);
         sorted.Sort((a, b) => a.Value.CompareTo(b.Value));

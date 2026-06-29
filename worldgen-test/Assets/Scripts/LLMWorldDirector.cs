@@ -244,7 +244,7 @@ public class LLMWorldDirector : MonoBehaviour
         }
 
         string finalJson = BuildFinalJson(cleanJson, resolved);
-        string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
         File.WriteAllText(path, finalJson);
     }
 
@@ -272,7 +272,7 @@ public class LLMWorldDirector : MonoBehaviour
             currentObjects[name] = allObjects[name];
         }
 
-        string baseDir = Path.Combine(Application.dataPath, "Json");
+        string baseDir = PathSettings.GetJsonFolder();
         SaveObjectRegistry(allObjects, Path.Combine(baseDir, "all_objects.json"));
         SaveObjectRegistry(currentObjects, Path.Combine(baseDir, "current_objects.json"));
 #if UNITY_EDITOR
@@ -354,7 +354,7 @@ public class LLMWorldDirector : MonoBehaviour
         }
         sb.Append("}");
 
-        string path = Path.Combine(Application.dataPath, "Json", "current_objects.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
         File.WriteAllText(path, sb.ToString());
 #if UNITY_EDITOR
         AssetDatabase.ImportAsset("Assets/Json/current_objects.json", ImportAssetOptions.ForceSynchronousImport);
@@ -407,7 +407,7 @@ public class LLMWorldDirector : MonoBehaviour
     Dictionary<string, int> LoadObjectRegistry()
     {
         var    dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        string path = Path.Combine(Application.dataPath, "Json", "all_objects.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "all_objects.json");
         if (!File.Exists(path)) return dict;
         string json = File.ReadAllText(path).Trim().Trim('{', '}');
         foreach (string line in json.Split(','))
@@ -458,7 +458,7 @@ public class LLMWorldDirector : MonoBehaviour
     Dictionary<string, int> LoadMaterials()
     {
         var dict = new Dictionary<string, int>();
-        string path = Path.Combine(Application.dataPath, "Json", "materials.json");
+        string path = Path.Combine(PathSettings.GetJsonFolder(), "materials.json");
         if (!File.Exists(path)) return dict;
 
         string json = File.ReadAllText(path).Trim().Trim('{', '}');

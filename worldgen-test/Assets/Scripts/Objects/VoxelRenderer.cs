@@ -32,7 +32,7 @@ public class VoxelRenderer : MonoBehaviour
     public float defaultVoxelSize = 1f;
     public Color defaultColor     = Color.white;
 
-    string JsonPath => Path.Combine(jsonFolder, jsonFileName).Replace('\\', '/');
+    string JsonPath => Path.Combine(PathSettings.GetObjectsFolder(), jsonFileName).Replace('\\', '/');
 
     [Header("Export & Build Stability")]
     public string assetFolder = "Assets/GeneratedAsset";
@@ -75,7 +75,7 @@ public class VoxelRenderer : MonoBehaviour
         // Salvataggio dei file JSON su disco per ciascuna risoluzione
         try
         {
-            string baseFolder = jsonFolder;
+            string baseFolder = PathSettings.GetObjectsFolder();
             if (!Directory.Exists(baseFolder)) Directory.CreateDirectory(baseFolder);
 
             // Salviamo l'originale se non è già presente, e le versioni ridotte

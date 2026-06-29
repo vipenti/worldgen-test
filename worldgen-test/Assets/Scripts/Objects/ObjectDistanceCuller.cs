@@ -61,6 +61,12 @@ public class ObjectDistanceCuller : MonoBehaviour
         // Risolviamo le mesh dalla cache se disponibile (forziamo l'uso di _high invece dell'originale)
         if (!string.IsNullOrEmpty(objectName))
         {
+            var wm = FindFirstObjectByType<WorldManager>();
+            if (wm != null)
+            {
+                wm.EnsureMeshCached(objectName);
+            }
+
             if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName + "_high", out Mesh hm) && hm != null)
                 highMesh = hm;
 

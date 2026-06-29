@@ -43,7 +43,7 @@ public class GenerateTexture : MonoBehaviour
 
     IEnumerator GenerateRoutine(string paletteColorDescription = "")
     {
-        string outputDir = Path.Combine(Application.dataPath, "GeneratedTexture");
+        string outputDir = PathSettings.GetTextureFolder();
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
         
