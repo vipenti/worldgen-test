@@ -14,9 +14,10 @@ Shader "Custom/VoxelVertexColor"
             #pragma fragment frag
             #pragma prefer_hlslcc gles
             #pragma exclude_renderers d3d11_9x
+            // Abilita la compilazione delle varianti di nebbia in URP
+            #pragma multi_compile_fog
 
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Core.hlsl"
-            // MODIFICA 1: Includiamo la libreria URP per gestire le luci
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
@@ -25,7 +26,6 @@ Shader "Custom/VoxelVertexColor"
             struct Attributes
             {
                 float4 positionOS : POSITION;
-                // MODIFICA 2: Chiediamo i normali della mesh in Object Space
                 float3 normalOS   : NORMAL; 
                 float4 color      : COLOR;
                 UNITY_VERTEX_INPUT_INSTANCE_ID
@@ -34,9 +34,9 @@ Shader "Custom/VoxelVertexColor"
             struct Varyings
             {
                 float4 positionHCS : SV_POSITION;
-                // MODIFICA 3: Spazio per passare i normali trasformati in World Space al fragment shader
                 float3 normalWS    : TEXCOORD0; 
                 float4 color       : COLOR;
+                float  fogFactor   : TEXCOORD1; // Passa il fattore di nebbia al fragment shader
                 UNITY_VERTEX_OUTPUT_STEREO
             };
 
@@ -47,8 +47,10 @@ Shader "Custom/VoxelVertexColor"
                 UNITY_INITIALIZE_VERTEX_OUTPUT_STEREO(OUT);
                 
                 OUT.positionHCS = TransformObjectToHClip(IN.positionOS.xyz);
-                // MODIFICA 4: Trasformiamo i normali da Object Space a World Space
                 OUT.normalWS = TransformObjectToWorldNormal(IN.normalOS);
+                
+                // Calcola il fattore di nebbia basandosi sulla coordinata di ritaglio Z
+                OUT.fogFactor = ComputeFogFactor(OUT.positionHCS.z);
                 
                 OUT.color = IN.color;
                 return OUT;
@@ -56,25 +58,17 @@ Shader "Custom/VoxelVertexColor"
 
             half4 frag(Varyings IN) : SV_Target
             {
-                // Normalizziamo il vettore per sicurezza
                 float3 normalWS = normalize(IN.normalWS);
-                
-                // MODIFICA 5: Recuperiamo i dati della luce principale della scena (il sole)
                 Light mainLight = GetMainLight();
                 
-                // Calcoliamo l'intensità della luce (il classico Lambertian Diffuse)
-                // saturate() blocca il valore tra 0 e 1, evitando valori negativi dove il sole non batte
                 half diffuseTerm = saturate(dot(normalWS, mainLight.direction));
-                
-                // Calcoliamo il colore della luce del sole combinato con la sua intensità
                 half3 lightColor = mainLight.color * diffuseTerm;
-                
-                // Recuperiamo anche una base di luce ambientale (Skybox/Environment) 
-                // così le zone in ombra non diventano completamente nere come la pece
                 half3 ambientColor = SampleSH(normalWS);
                 
-                // Il colore finale sarà il colore del tuo voxel combinato con (Luce Sole + Luce Ambiente)
                 half3 finalColor = IN.color.rgb * (lightColor + ambientColor);
+                
+                // Miscela il colore finale con il colore della nebbia globale di URP
+                finalColor = MixFog(finalColor, IN.fogFactor);
                 
                 return half4(finalColor, IN.color.a);
             }

@@ -142,4 +142,98 @@ public class GenerateAsset : MonoBehaviour
         foreach (var entry in entries) names.Add(entry.Key);
         yield return StartCoroutine(GenerateList(names));
     }
+
+    public void RegenerateAllFromRegistry()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[GenerateAsset] Avvia il gioco (Play Mode) prima di rigenerare gli asset via IA!");
+            return;
+        }
+        StartCoroutine(RegenerateAllFromRegistryRoutine());
+    }
+
+    IEnumerator RegenerateAllFromRegistryRoutine()
+    {
+        string registryPath = Path.Combine(Application.dataPath, "Json", "all_objects.json");
+        if (!File.Exists(registryPath))
+        {
+            Debug.LogError($"[GenerateAsset] File di registro non trovato in: {registryPath}");
+            yield break;
+        }
+
+        List<string> names = new List<string>();
+        try
+        {
+            var entries = JObject.Parse(File.ReadAllText(registryPath));
+            foreach (var entry in entries)
+            {
+                names.Add(entry.Key);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[GenerateAsset] Errore nel parsing di all_objects.json: {ex.Message}");
+            yield break;
+        }
+
+        if (names.Count == 0)
+        {
+            Debug.LogWarning("[GenerateAsset] La lista di all_objects.json è vuota!");
+            yield break;
+        }
+
+        Debug.Log($"[GenerateAsset] Inizio rigenerazione IA forzata per tutti i {names.Count} oggetti del registro globale.");
+        
+        // Forziamo la rigenerazione eliminando i prefabbricati e la cache delle mesh runtime
+        foreach (string name in names)
+        {
+            string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
+            if (File.Exists(prefabDiskPath))
+            {
+                File.Delete(prefabDiskPath);
+                string metaPath = prefabDiskPath + ".meta";
+                if (File.Exists(metaPath)) File.Delete(metaPath);
+            }
+            
+            string medPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_medium.prefab");
+            if (File.Exists(medPrefabPath)) { File.Delete(medPrefabPath); File.Delete(medPrefabPath + ".meta"); }
+            string lowPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_low.prefab");
+            if (File.Exists(lowPrefabPath)) { File.Delete(lowPrefabPath); File.Delete(lowPrefabPath + ".meta"); }
+            string highPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_high.prefab");
+            if (File.Exists(highPrefabPath)) { File.Delete(highPrefabPath); File.Delete(highPrefabPath + ".meta"); }
+
+            VoxelRenderer.RuntimeMeshCache.Remove(name);
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_low");
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_medium");
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_high");
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.AssetDatabase.Refresh();
+#endif
+
+        yield return StartCoroutine(GenerateList(names));
+    }
 }
+
+#if UNITY_EDITOR
+[UnityEditor.CustomEditor(typeof(GenerateAsset))]
+public class GenerateAssetEditor : UnityEditor.Editor
+{
+    public override void OnInspectorGUI()
+    {
+        DrawDefaultInspector();
+
+        GenerateAsset genAsset = (GenerateAsset)target;
+
+        GUILayout.Space(15);
+        GUI.backgroundColor = new Color(0.3f, 0.8f, 0.4f);
+        if (GUILayout.Button("Regenerate All Objects from all_objects.json", GUILayout.Height(30)))
+        {
+            genAsset.RegenerateAllFromRegistry();
+        }
+        GUI.backgroundColor = Color.white;
+    }
+}
+#endif

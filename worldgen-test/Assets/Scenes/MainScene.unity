@@ -15,9 +15,9 @@ RenderSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 10
   m_Fog: 1
-  m_FogColor: {r: 1, g: 0.99976784, b: 0.9669811, a: 1}
+  m_FogColor: {r: 0.6431373, g: 0.8117648, b: 0.9058824, a: 1}
   m_FogMode: 2
-  m_FogDensity: 0.001
+  m_FogDensity: 0.006
   m_LinearFogStart: 0
   m_LinearFogEnd: 300
   m_AmbientSkyColor: {r: 0.212, g: 0.227, b: 0.259, a: 1}
@@ -252,8 +252,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 42.4
-  m_fontSizeBase: 42.4
+  m_fontSize: 69.1
+  m_fontSizeBase: 69.1
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 0
@@ -873,7 +873,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 129, y: 49}
+  m_AnchoredPosition: {x: 303, y: 311}
   m_SizeDelta: {x: 200, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &278922865
@@ -923,8 +923,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 18.8
-  m_fontSizeBase: 18.8
+  m_fontSize: 49.4
+  m_fontSizeBase: 49.4
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -1037,7 +1037,7 @@ Camera:
     height: 1
   near clip plane: 0.3
   far clip plane: 1000
-  field of view: 18
+  field of view: 39.5
   orthographic: 0
   orthographic size: 5
   m_Depth: -1
@@ -1632,8 +1632,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 136, y: -143}
-  m_SizeDelta: {x: 831.0577, y: 83.5751}
+  m_AnchoredPosition: {x: 614, y: -378}
+  m_SizeDelta: {x: 2986.8882, y: 481.3823}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &880284052
 MonoBehaviour:
@@ -2136,18 +2136,18 @@ MonoBehaviour:
   player: {fileID: 249223932}
   chunkPrefab: {fileID: 7262472378977919133, guid: 1923b02dbda562748ad858d2d660bd21, type: 3}
   atlasManager: {fileID: 1573031126}
-  viewDistance: 24
+  viewDistance: 32
   blendDistance: 12
   transitionSpeedMultiplier: 1
-  transitionLengthInChunks: 8
+  transitionLengthInChunks: 12
   frustumPadding: 20
-  renderDistHuge: 100
-  renderDistBig: 800
-  renderDistNormal: 500
-  renderDistSmall: 300
+  renderDistHuge: 1000
+  renderDistBig: 900
+  renderDistNormal: 600
+  renderDistSmall: 400
   renderDistTiny: 200
-  lodHighPercent: 0.25
-  lodMediumPercent: 0.5
+  lodHighPercent: 0.5
+  lodMediumPercent: 0.753
   pathWidth: 0
   pathBlendWidth: 0
   pathLevel: 0
@@ -2202,6 +2202,9 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: b996c8b27bca6964d8f0acdc324aa6aa, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::ObjectDistanceCuller
+  highDistance: 0
+  mediumDistance: 0
+  maxDistance: 0
 --- !u!1 &1508923895
 GameObject:
   m_ObjectHideFlags: 0
@@ -2769,8 +2772,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 42.4
-  m_fontSizeBase: 42.4
+  m_fontSize: 96.1
+  m_fontSizeBase: 96.1
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 0
