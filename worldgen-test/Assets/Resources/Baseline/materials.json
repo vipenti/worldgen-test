@@ -1,0 +1,23 @@
+{
+  "green_plain_grass": 0,
+  "fertile_soil": 1,
+  "clean_light_water": 2,
+  "dirt": 3,
+  "desert_sand": 4,
+  "snow": 5,
+  "frosted_water": 6,
+  "dry_rocky_terrain": 7,
+  "beach_sand": 8,
+  "mud": 9,
+  "autumn_orange_grass": 10,
+  "sea_deep_water": 11,
+  "lavic_floor": 12,
+  "lava": 13,
+  "wildflowers": 14,
+  "ferns": 15,
+  "stone": 16,
+  "hard_rock": 17,
+  "none": 18,
+  "sharp_rock": 19,
+  "cactus": 20
+}

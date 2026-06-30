@@ -10,6 +10,7 @@ public class FirstGeneration : MonoBehaviour
     public GameObject inputPanel;
     public TMP_InputField promptInput;
     public Button generateButton;
+    public Button skipButton;
 
     [Header("UI - Loading Panel")]
     public GameObject loadingPanel;
@@ -36,11 +37,13 @@ public class FirstGeneration : MonoBehaviour
         if (loadingPanel != null) loadingPanel.SetActive(false);
         SetProgress(0f, "Enter a world description and press Generate.");
         if (generateButton != null) generateButton.onClick.AddListener(OnGenerateClicked);
+        if (skipButton != null) skipButton.onClick.AddListener(OnSkipClicked);
     }
 
     void OnDestroy()
     {
         if (generateButton != null) generateButton.onClick.RemoveListener(OnGenerateClicked);
+        if (skipButton != null) skipButton.onClick.RemoveListener(OnSkipClicked);
         UnsubscribeAll();
     }
 
@@ -105,6 +108,11 @@ public class FirstGeneration : MonoBehaviour
         SetProgress(1f, "World ready!");
         yield return WaitSuccess;
 
+        SceneManager.LoadScene(mainSceneName);
+    }
+
+    void OnSkipClicked()
+    {
         SceneManager.LoadScene(mainSceneName);
     }
 

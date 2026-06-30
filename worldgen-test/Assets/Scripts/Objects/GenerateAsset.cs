@@ -74,25 +74,40 @@ public class GenerateAsset : MonoBehaviour
 
     IEnumerator ProcessSingleAsset(string name)
     {
-        // 1. Controlliamo se l'asset è già stato compilato ed esiste su disco come prefab
-        string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
-        bool prefabExists = File.Exists(prefabDiskPath);
+        // 1. Controlliamo se l'asset è in cache
         bool inRuntimeCache = VoxelRenderer.RuntimeMeshCache.ContainsKey(name);
+        
+        // 2. Controlliamo se esiste il file voxjson (in persistentDataPath o in Resources)
+        string persistentVoxJson = Path.Combine(PathSettings.GetObjectsFolder(), name + ".voxjson");
+        string jsonContent = "";
+        bool jsonExists = false;
 
-        if ((prefabExists || inRuntimeCache) && worldManager != null)
+        if (File.Exists(persistentVoxJson))
         {
-            Debug.Log($"[GenerateAsset] Asset '{name}' già esistente (prefab su disco o cache mesh). Salto la generazione IA.");
-            worldManager.ReplacePlaceholders(name);
-            yield break;
+            jsonContent = File.ReadAllText(persistentVoxJson);
+            jsonExists = true;
+        }
+        else
+        {
+            var textAsset = Resources.Load<TextAsset>($"Baseline/objects/{name}");
+            if (textAsset != null)
+            {
+                jsonContent = textAsset.text;
+                jsonExists = true;
+            }
         }
 
-        // 2. Altrimenti, controlliamo se esiste almeno il file voxjson locale
-        string localVoxJson = Path.Combine("Assets/Json/objects", name + ".voxjson");
-        if (File.Exists(localVoxJson) && worldManager != null)
+        if ((jsonExists || inRuntimeCache) && worldManager != null)
         {
-            Debug.Log($"[GenerateAsset] File voxjson '{name}' trovato su disco. Carico il modello senza rigenerare via IA.");
-            string jsonContent = File.ReadAllText(localVoxJson);
-            worldManager.GetComponentInChildren<VoxelRenderer>()?.LoadFromJson(jsonContent, name);
+            if (!inRuntimeCache && !string.IsNullOrEmpty(jsonContent))
+            {
+                Debug.Log($"[GenerateAsset] File voxjson per '{name}' trovato. Compilazione mesh a runtime...");
+                worldManager.GetComponentInChildren<VoxelRenderer>()?.LoadFromJson(jsonContent, name);
+            }
+            else
+            {
+                Debug.Log($"[GenerateAsset] Asset '{name}' già presente in cache.");
+            }
             worldManager.ReplacePlaceholders(name);
             yield break;
         }
@@ -108,14 +123,17 @@ public class GenerateAsset : MonoBehaviour
         }
     }
 
+    private string CurrentObjectsListPath => Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
+
     void ClassifyAssets(List<string> names, out List<string> queueA, out List<string> queueB)
     {
         queueA = new List<string>(); queueB = new List<string>();
-        if (!File.Exists(listPath)) { queueB.AddRange(names); return; }
+        string listFilePath = CurrentObjectsListPath;
+        if (!File.Exists(listFilePath)) { queueB.AddRange(names); return; }
 
         try
         {
-            var root = JObject.Parse(File.ReadAllText(listPath));
+            var root = JObject.Parse(File.ReadAllText(listFilePath));
             foreach (string name in names)
             {
                 if (root[name] != null && root[name].Type == JTokenType.Object)
@@ -137,9 +155,103 @@ public class GenerateAsset : MonoBehaviour
     IEnumerator GenerateAll()
     {
         if (llmObjectGeneration == null) yield break;
-        var entries = JObject.Parse(File.ReadAllText(listPath));
+        var entries = JObject.Parse(File.ReadAllText(CurrentObjectsListPath));
         var names   = new List<string>();
         foreach (var entry in entries) names.Add(entry.Key);
         yield return StartCoroutine(GenerateList(names));
     }
+
+    public void RegenerateAllFromRegistry()
+    {
+        if (!Application.isPlaying)
+        {
+            Debug.LogWarning("[GenerateAsset] Avvia il gioco (Play Mode) prima di rigenerare gli asset via IA!");
+            return;
+        }
+        StartCoroutine(RegenerateAllFromRegistryRoutine());
+    }
+
+    IEnumerator RegenerateAllFromRegistryRoutine()
+    {
+        string registryPath = Path.Combine(PathSettings.GetJsonFolder(), "all_objects.json");
+        if (!File.Exists(registryPath))
+        {
+            Debug.LogError($"[GenerateAsset] File di registro non trovato in: {registryPath}");
+            yield break;
+        }
+
+        List<string> names = new List<string>();
+        try
+        {
+            var entries = JObject.Parse(File.ReadAllText(registryPath));
+            foreach (var entry in entries)
+            {
+                names.Add(entry.Key);
+            }
+        }
+        catch (System.Exception ex)
+        {
+            Debug.LogError($"[GenerateAsset] Errore nel parsing di all_objects.json: {ex.Message}");
+            yield break;
+        }
+
+        if (names.Count == 0)
+        {
+            Debug.LogWarning("[GenerateAsset] La lista di all_objects.json è vuota!");
+            yield break;
+        }
+
+        Debug.Log($"[GenerateAsset] Inizio rigenerazione IA forzata per tutti i {names.Count} oggetti del registro globale.");
+        
+        // Forziamo la rigenerazione eliminando i prefabbricati e la cache delle mesh runtime
+        foreach (string name in names)
+        {
+            string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
+            if (File.Exists(prefabDiskPath))
+            {
+                File.Delete(prefabDiskPath);
+                string metaPath = prefabDiskPath + ".meta";
+                if (File.Exists(metaPath)) File.Delete(metaPath);
+            }
+            
+            string medPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_medium.prefab");
+            if (File.Exists(medPrefabPath)) { File.Delete(medPrefabPath); File.Delete(medPrefabPath + ".meta"); }
+            string lowPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_low.prefab");
+            if (File.Exists(lowPrefabPath)) { File.Delete(lowPrefabPath); File.Delete(lowPrefabPath + ".meta"); }
+            string highPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_high.prefab");
+            if (File.Exists(highPrefabPath)) { File.Delete(highPrefabPath); File.Delete(highPrefabPath + ".meta"); }
+
+            VoxelRenderer.RuntimeMeshCache.Remove(name);
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_low");
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_medium");
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_high");
+        }
+
+#if UNITY_EDITOR
+        UnityEditor.AssetDatabase.Refresh();
+#endif
+
+        yield return StartCoroutine(GenerateList(names));
+    }
 }
+
+#if UNITY_EDITOR
+[UnityEditor.CustomEditor(typeof(GenerateAsset))]
+public class GenerateAssetEditor : UnityEditor.Editor
+{
+    public override void OnInspectorGUI()
+    {
+        DrawDefaultInspector();
+
+        GenerateAsset genAsset = (GenerateAsset)target;
+
+        GUILayout.Space(15);
+        GUI.backgroundColor = new Color(0.3f, 0.8f, 0.4f);
+        if (GUILayout.Button("Regenerate All Objects from all_objects.json", GUILayout.Height(30)))
+        {
+            genAsset.RegenerateAllFromRegistry();
+        }
+        GUI.backgroundColor = Color.white;
+    }
+}
+#endif

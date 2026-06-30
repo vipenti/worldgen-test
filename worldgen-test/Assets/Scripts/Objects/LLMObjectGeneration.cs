@@ -140,7 +140,7 @@ public class LLMObjectGeneration : MonoBehaviour
     {
         try
         {
-            string path = Path.Combine(Application.dataPath, "Json", "llm_generated.json");
+            string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
             if (File.Exists(path))
             {
                 var root = Newtonsoft.Json.Linq.JObject.Parse(File.ReadAllText(path));

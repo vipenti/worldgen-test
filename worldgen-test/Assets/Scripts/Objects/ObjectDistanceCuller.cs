@@ -8,11 +8,17 @@ using UnityEngine;
 public class ObjectDistanceCuller : MonoBehaviour
 {
     private Transform player;
-    private float maxDistance;
-    private float maxDistanceSqr;
     private Renderer[] renderers;
     private bool isCurrentlyVisible = true;
-    private float checkInterval = 0.25f; // Esegue il controllo solo 4 volte al secondo
+
+    [Header("LOD Distances (Set manually or left at 0 for auto-calculation)")]
+    public float highDistance = 0f;
+    public float mediumDistance = 0f;
+    public float maxDistance = 0f;
+
+    private float maxDistanceSqr;
+    private float highDistanceSqr;
+    private float medDistanceSqr;
 
     private string objectName;
     private float highPercent;
@@ -21,47 +27,92 @@ public class ObjectDistanceCuller : MonoBehaviour
     private Mesh highMesh;
     private Mesh mediumMesh;
     private Mesh lowMesh;
-    private float highDistanceSqr;
-    private float medDistanceSqr;
-
-    private Coroutine cullCoroutine;
 
     public void Initialize(Transform playerTransform, float maxDistance, string objectName = "", float highPercent = 0.25f, float medPercent = 0.50f)
     {
         player = playerTransform;
-        this.maxDistance = maxDistance;
-        maxDistanceSqr = maxDistance * maxDistance; // Usiamo la distanza al quadrato per evitare costosi calcoli di radice quadrata
         this.objectName = objectName;
         this.highPercent = highPercent;
         this.medPercent = medPercent;
 
-        float highDist = maxDistance * highPercent;
-        float medDist = maxDistance * medPercent;
-        highDistanceSqr = highDist * highDist;
-        medDistanceSqr = medDist * medDist;
+        // Se la maxDistance non è impostata nell'inspector, usa quella passata
+        if (this.maxDistance <= 0f)
+        {
+            this.maxDistance = maxDistance;
+        }
+
+        // Se le distanze di soglia non sono impostate, calcolale usando le percentuali
+        if (this.highDistance <= 0f)
+        {
+            this.highDistance = this.maxDistance * highPercent;
+        }
+        if (this.mediumDistance <= 0f)
+        {
+            this.mediumDistance = this.maxDistance * medPercent;
+        }
+
+        maxDistanceSqr = this.maxDistance * this.maxDistance;
+        highDistanceSqr = this.highDistance * this.highDistance;
+        medDistanceSqr = this.mediumDistance * this.mediumDistance;
 
         renderers = GetComponentsInChildren<Renderer>();
         meshFilter = GetComponentInChildren<MeshFilter>();
 
-        // Risolviamo le mesh dalla cache se disponibile
+        // Risolviamo le mesh dalla cache se disponibile (forziamo l'uso di _high invece dell'originale)
         if (!string.IsNullOrEmpty(objectName))
         {
+            var wm = FindFirstObjectByType<WorldManager>();
+            if (wm != null)
+            {
+                wm.EnsureMeshCached(objectName);
+            }
+
             if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName + "_high", out Mesh hm) && hm != null)
                 highMesh = hm;
-            else if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh om) && om != null)
-                highMesh = om;
-            else if (meshFilter != null)
-                highMesh = meshFilter.sharedMesh;
 
             if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName + "_medium", out Mesh mm) && mm != null)
                 mediumMesh = mm;
-            else
-                mediumMesh = highMesh;
 
             if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName + "_low", out Mesh lm) && lm != null)
                 lowMesh = lm;
-            else
-                lowMesh = mediumMesh;
+
+            // --- CARICAMENTO DI EMERGENZA DA DISCO PER PREFAB CACHATI ---
+#if UNITY_EDITOR
+            if (highMesh == null)
+            {
+                string highPrefabPath = $"Assets/GeneratedAsset/{objectName}_high.prefab";
+                var highPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(highPrefabPath);
+                if (highPrefab != null)
+                {
+                    var mf = highPrefab.GetComponentInChildren<MeshFilter>();
+                    if (mf != null) highMesh = mf.sharedMesh;
+                }
+            }
+            if (mediumMesh == null)
+            {
+                string medPrefabPath = $"Assets/GeneratedAsset/{objectName}_medium.prefab";
+                var medPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(medPrefabPath);
+                if (medPrefab != null)
+                {
+                    var mf = medPrefab.GetComponentInChildren<MeshFilter>();
+                    if (mf != null) mediumMesh = mf.sharedMesh;
+                }
+            }
+            if (lowMesh == null)
+            {
+                string lowPrefabPath = $"Assets/GeneratedAsset/{objectName}_low.prefab";
+                var lowPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(lowPrefabPath);
+                if (lowPrefab != null)
+                {
+                    var mf = lowPrefab.GetComponentInChildren<MeshFilter>();
+                    if (mf != null) lowMesh = mf.sharedMesh;
+                }
+            }
+#endif
+            // Fallback finale all'originale (meshFilter.sharedMesh) se non troviamo i file LOD _high, _medium, _low
+            if (highMesh == null && meshFilter != null) highMesh = meshFilter.sharedMesh;
+            if (mediumMesh == null) mediumMesh = highMesh;
+            if (lowMesh == null) lowMesh = mediumMesh;
         }
         else if (meshFilter != null)
         {
@@ -69,55 +120,81 @@ public class ObjectDistanceCuller : MonoBehaviour
             mediumMesh = meshFilter.sharedMesh;
             lowMesh = meshFilter.sharedMesh;
         }
-        
-        // Eseguiamo un primo controllo immediato
-        UpdateVisibility();
-        
-        // Avviamo la coroutine solo se il GameObject è attivo in gerarchia
+
+        // Registrazione immediata nel gestore LOD se siamo già attivi
         if (gameObject.activeInHierarchy)
         {
-            if (cullCoroutine != null) StopCoroutine(cullCoroutine);
-            cullCoroutine = StartCoroutine(CullRoutine());
+            RegisterToLODManager();
+        }
+
+        // Eseguiamo un primo controllo immediato
+        if (player != null)
+        {
+            UpdateVisibilityAndLOD(player.position);
         }
     }
 
     void OnEnable()
     {
-        if (player != null && gameObject.activeInHierarchy)
+        RegisterToLODManager();
+        if (player != null)
         {
-            if (cullCoroutine != null) StopCoroutine(cullCoroutine);
-            cullCoroutine = StartCoroutine(CullRoutine());
+            UpdateVisibilityAndLOD(player.position);
         }
     }
 
     void OnDisable()
     {
-        if (cullCoroutine != null)
+        UnregisterFromLODManager();
+    }
+
+    void OnDestroy()
+    {
+        UnregisterFromLODManager();
+    }
+
+    private void RegisterToLODManager()
+    {
+        if (LODManager.Instance != null)
         {
-            StopCoroutine(cullCoroutine);
-            cullCoroutine = null;
+            LODManager.Instance.Register(this);
+        }
+        else
+        {
+            // Crea un LODManager al volo se non esiste in scena
+            var go = GameObject.Find("LODManager");
+            if (go == null)
+            {
+                go = new GameObject("LODManager");
+                go.AddComponent<LODManager>();
+            }
+            LODManager.Instance.Register(this);
         }
     }
 
-    IEnumerator CullRoutine()
+    private void UnregisterFromLODManager()
     {
-        // Applichiamo un piccolo ritardo iniziale casuale (Dithering) per evitare 
-        // che migliaia di oggetti esguano il calcolo nello stesso identico frame
-        yield return new WaitForSeconds(UnityEngine.Random.Range(0f, checkInterval));
-
-        while (true)
+        if (LODManager.Instance != null)
         {
-            UpdateVisibility();
-            yield return new WaitForSeconds(checkInterval);
+            LODManager.Instance.Unregister(this);
         }
     }
 
-    void UpdateVisibility()
+    // Questa funzione viene chiamata periodicamente a frame alternati da LODManager
+    public void UpdateVisibilityAndLOD(Vector3 playerPos)
     {
-        if (player == null) return;
+        if (renderers == null)
+        {
+            renderers = GetComponentsInChildren<Renderer>();
+        }
+        if (meshFilter == null)
+        {
+            meshFilter = GetComponentInChildren<MeshFilter>();
+        }
+        if (renderers == null) return;
 
         // Calcolo della distanza vettoriale quadrata (ultra-performante)
-        float currentDistSqr = (transform.position - player.position).sqrMagnitude;
+        float currentDistSqr = (transform.position - playerPos).sqrMagnitude;
         bool shouldBeVisible = currentDistSqr <= maxDistanceSqr;
 
         if (shouldBeVisible != isCurrentlyVisible)
