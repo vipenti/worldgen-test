@@ -1,14 +1,16 @@
 {
-  "kelp plant": { "id": 41, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "coral branch": { "id": 42, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "sea anemone": { "id": 43, "size": "tiny", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "seaweed clump": { "id": 44, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "sunken stone": { "id": 45, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
-  "large shell": { "id": 46, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 2 },
-  "starfish": { "id": 47, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "sea urchin": { "id": 48, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "pebble": { "id": 49, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "sand dollar": { "id": 50, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "small fish": { "id": 51, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "bubble cluster": { "id": 52, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
+  "oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "birch tree": { "id": 39, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "fern": { "id": 40, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 35, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "wildflower": { "id": 2, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "pond": { "id": 7, "size": "normal", "frequency": "rare", "type": "structure", "priority": 1 },
+  "deer": { "id": 4, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 2 },
+  "rabbit": { "id": 5, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 },
+  "small rock": { "id": 14, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "fallen branch": { "id": 9, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "acorn": { "id": 10, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 11, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "dried leaf": { "id": 20, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "smooth stone": { "id": 8, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
 }

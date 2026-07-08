@@ -51,5 +51,13 @@
   "pebble": 49,
   "sand dollar": 50,
   "small fish": 51,
-  "bubble cluster": 52
+  "bubble cluster": 52,
+  "cactus": 53,
+  "dry bush": 54,
+  "dead tree": 55,
+  "rock": 56,
+  "skull": 57,
+  "dry log": 58,
+  "bone": 59,
+  "shell": 60
 }
