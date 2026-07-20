@@ -12,12 +12,16 @@ using UnityEditor;
 
 public class WorldManager : MonoBehaviour
 {
+
+
     [Header("Core References")]
     public Transform player;
     public GameObject chunkPrefab;
     public TextureAtlasManager atlasManager;
 
-    [Header("Vision Settings")]
+    [Header("Texture Atlas Settings")]
+    public FilterMode atlasFilterMode = FilterMode.Bilinear;
+    public bool enableAtlasMipmaps = true;
     public int viewDistance = 4;
     [Tooltip("Duration of the smooth interpolation blend between biomes measured in chunks.")]
     public int blendDistance = 10; 
@@ -91,6 +95,7 @@ public class WorldManager : MonoBehaviour
     private BiomeConfig oldConfig;
     private BiomeConfig targetConfig;
     private bool isTransitioning = false;
+    private bool isPlayerInTransitionHUD = false;
     private Vector2 transitionStartPos2D;
     private Vector2 transitionDir2D;
     private Vector3 lastPlayerPositionForTransition;
@@ -106,7 +111,6 @@ public class WorldManager : MonoBehaviour
     private Dictionary<Vector2Int, bool> chunkIsNewBiome = new Dictionary<Vector2Int, bool>();
 
     private Texture2D atlasTexture;
-    private Texture2D atlasNormalTexture;
     private Material sharedChunkMaterial;
 
     private struct StructureAnchor
@@ -173,24 +177,25 @@ public class WorldManager : MonoBehaviour
         string albedoPath = Path.Combine(dir, "TextureAtlas.png");
         if (File.Exists(albedoPath))
         {
-            atlasTexture ??= new Texture2D(2, 2, TextureFormat.RGBA32, false);
+            atlasTexture ??= new Texture2D(2, 2, TextureFormat.RGBA32, enableAtlasMipmaps);
             atlasTexture.LoadImage(File.ReadAllBytes(albedoPath));
-            atlasTexture.filterMode = FilterMode.Point;
+            atlasTexture.filterMode = atlasFilterMode;
             atlasTexture.wrapMode = TextureWrapMode.Clamp;
-            atlasTexture.Apply(false);
+            atlasTexture.Apply(enableAtlasMipmaps);
             sharedChunkMaterial?.SetTexture("_BaseMap", atlasTexture);
         }
 
-        string normalPath = Path.Combine(dir, "TextureAtlas_Normal.png");
-        if (File.Exists(normalPath))
+        // Remove the application of normal maps to the terrain atlas material
+        sharedChunkMaterial?.SetTexture("_BumpMap", null);
+        sharedChunkMaterial?.DisableKeyword("_NORMALMAP");
+    }
+
+    void OnValidate()
+    {
+        if (atlasTexture != null)
         {
-            atlasNormalTexture ??= new Texture2D(2, 2, TextureFormat.RGBA32, false);
-            atlasNormalTexture.LoadImage(File.ReadAllBytes(normalPath));
-            atlasNormalTexture.filterMode = FilterMode.Point;
-            atlasNormalTexture.wrapMode = TextureWrapMode.Clamp;
-            atlasNormalTexture.Apply(false);
-            sharedChunkMaterial?.SetTexture("_BumpMap", atlasNormalTexture);
-            sharedChunkMaterial?.EnableKeyword("_NORMALMAP");
+            atlasTexture.filterMode = atlasFilterMode;
+            atlasTexture.Apply(enableAtlasMipmaps);
         }
     }
 
@@ -209,7 +214,7 @@ public class WorldManager : MonoBehaviour
         if (holdChunkUpdates) return;
 
         // Gestione transizione basata sul movimento del giocatore
-        if (isTransitioning)
+        if (isPlayerInTransitionHUD)
         {
             Vector3 currentPos = player.position;
             lastPlayerPositionForTransition = currentPos;
@@ -714,6 +719,7 @@ public class WorldManager : MonoBehaviour
 
         targetConfig = LoadLatestConfig();
         isTransitioning = true;
+        isPlayerInTransitionHUD = true;
         
         // Record horizontal start pos and forward direction of player
         transitionStartPos2D = new Vector2(player.position.x, player.position.z);
@@ -747,9 +753,7 @@ public class WorldManager : MonoBehaviour
 
         if (projectedWalk >= startOffset + totalDist)
         {
-            isTransitioning = false;
-            oldConfig = targetConfig;
-            RegenerateAllChunks();
+            isPlayerInTransitionHUD = false;
             Debug.Log("<color=orange>[WorldManager]</color> Terrain transition completed successfully.");
             SetStatusText("[Transition] Biome transition completed successfully!");
             return;

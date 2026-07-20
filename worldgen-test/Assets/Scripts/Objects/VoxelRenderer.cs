@@ -67,53 +67,67 @@ public class VoxelRenderer : MonoBehaviour
     {
         if (string.IsNullOrEmpty(rawJson)) return;
 
-        // 1. Generazione delle 3 stringhe JSON a risoluzioni diverse usando GenerateResolutions
-        string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
-        string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Medium);
-        string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.High);
+        // Check if this is already an LOD name (ends with _low, _medium, or _high)
+        bool isLOD = assetName.EndsWith("_low") || assetName.EndsWith("_medium") || assetName.EndsWith("_high");
 
-        // Salvataggio dei file JSON su disco per ciascuna risoluzione
-        try
+        if (isLOD)
         {
-            string baseFolder = PathSettings.GetObjectsFolder();
-            if (!Directory.Exists(baseFolder)) Directory.CreateDirectory(baseFolder);
-
-            // Salviamo l'originale se non è già presente, e le versioni ridotte
-            File.WriteAllText(Path.Combine(baseFolder, assetName + ".voxjson"), rawJson);
-            File.WriteAllText(Path.Combine(baseFolder, assetName + "_low.voxjson"), jsonLow);
-            File.WriteAllText(Path.Combine(baseFolder, assetName + "_medium.voxjson"), jsonMedium);
-            File.WriteAllText(Path.Combine(baseFolder, assetName + "_high.voxjson"), jsonHigh);
-        }
-        catch (Exception ex)
-        {
-            Debug.LogError($"[VoxelRenderer] Errore nel salvataggio dei file voxjson su disco: {ex.Message}");
-        }
-
-        // 2. Parsing dei dati per ciascuna versione
-        VoxelData dataOriginal = ParseJson(rawJson);
-        VoxelData dataLow = ParseJson(jsonLow);
-        VoxelData dataMedium = ParseJson(jsonMedium);
-        VoxelData dataHigh = ParseJson(jsonHigh);
-
-        // Memorizziamo dataOriginal nel campo privato per compatibilità
-        _data = dataOriginal;
-
-        Debug.Log($"[VoxelRenderer] Processato '{assetName}': original={dataOriginal.count} voxels, low={dataLow.count} voxels, medium={dataMedium.count} voxels, high={dataHigh.count} voxels");
-
-        // 3. Generazione delle Mesh a runtime nella cache
-        GenerateRuntimeMeshForData(assetName, dataOriginal);
-        GenerateRuntimeMeshForData(assetName + "_low", dataLow);
-        GenerateRuntimeMeshForData(assetName + "_medium", dataMedium);
-        GenerateRuntimeMeshForData(assetName + "_high", dataHigh);
-
-        // 4. Salvataggio degli Asset Prefab (solo in modalità Editor)
+            VoxelData data = ParseJson(rawJson);
+            _data = data;
+            GenerateRuntimeMeshForData(assetName, data);
 #if UNITY_EDITOR
-        SaveAsAssetForData(assetName + "_low", dataLow);
-        SaveAsAssetForData(assetName + "_medium", dataMedium);
-        SaveAsAssetForData(assetName + "_high", dataHigh);
-        // Salviamo la versione base originale per ultima in modo che triggeri OnPrefabSaved
-        // per avviare il rimpiazzo nel WorldManager.
+            SaveAsAssetForData(assetName, data);
+#endif
+            return;
+        }
+
+        // For original/base model:
+        VoxelData dataOriginal = ParseJson(rawJson);
+        _data = dataOriginal;
+        GenerateRuntimeMeshForData(assetName, dataOriginal);
+#if UNITY_EDITOR
         SaveAsAssetForData(assetName, dataOriginal);
+#endif
+
+        // Generate/save LOD files only in the Editor and only if they do not exist.
+        // In the built player, LODs are loaded from individual pre-existing JSONs.
+#if UNITY_EDITOR
+        string baseFolder = PathSettings.GetObjectsFolder();
+        string lowPath = Path.Combine(baseFolder, assetName + "_low.voxjson");
+        string medPath = Path.Combine(baseFolder, assetName + "_medium.voxjson");
+        string highPath = Path.Combine(baseFolder, assetName + "_high.voxjson");
+
+        if (!File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath))
+        {
+            Debug.Log($"[VoxelRenderer] Generating LODs for '{assetName}' because they do not exist on disk.");
+            string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
+            string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Medium);
+            string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.High);
+
+            try
+            {
+                if (!Directory.Exists(baseFolder)) Directory.CreateDirectory(baseFolder);
+                File.WriteAllText(lowPath, jsonLow);
+                File.WriteAllText(medPath, jsonMedium);
+                File.WriteAllText(highPath, jsonHigh);
+            }
+            catch (Exception ex)
+            {
+                Debug.LogError($"[VoxelRenderer] Errore nel salvataggio dei file voxjson su disco: {ex.Message}");
+            }
+
+            VoxelData dataLow = ParseJson(jsonLow);
+            VoxelData dataMedium = ParseJson(jsonMedium);
+            VoxelData dataHigh = ParseJson(jsonHigh);
+
+            GenerateRuntimeMeshForData(assetName + "_low", dataLow);
+            GenerateRuntimeMeshForData(assetName + "_medium", dataMedium);
+            GenerateRuntimeMeshForData(assetName + "_high", dataHigh);
+
+            SaveAsAssetForData(assetName + "_low", dataLow);
+            SaveAsAssetForData(assetName + "_medium", dataMedium);
+            SaveAsAssetForData(assetName + "_high", dataHigh);
+        }
 #endif
     }
 
@@ -147,10 +161,37 @@ public class VoxelRenderer : MonoBehaviour
 
     VoxelData ParseJson(string json)
     {
-        var root = JObject.Parse(json);
-        if (root.ContainsKey("gridSize") || root.ContainsKey("voxels"))
-            return ParseGridFormat(root);
-        return JsonUtility.FromJson<VoxelData>(json);
+        if (string.IsNullOrEmpty(json)) return null;
+
+        // Try standard JSON format using Unity's fast native JsonUtility first to avoid Newtonsoft overhead.
+        if (json.Contains("\"positions\"") && json.Contains("\"colors\""))
+        {
+            try
+            {
+                var data = JsonUtility.FromJson<VoxelData>(json);
+                if (data != null && data.positions != null && data.positions.Length > 0)
+                {
+                    return data;
+                }
+            }
+            catch
+            {
+                // Fallback to JObject if JsonUtility fails
+            }
+        }
+
+        try
+        {
+            var root = JObject.Parse(json);
+            if (root.ContainsKey("gridSize") || root.ContainsKey("voxels"))
+                return ParseGridFormat(root);
+            return JsonUtility.FromJson<VoxelData>(json);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogError($"[VoxelRenderer] Failed to parse voxel JSON: {ex.Message}");
+            return null;
+        }
     }
 
     VoxelData ParseGridFormat(JObject root)
@@ -201,22 +242,30 @@ public class VoxelRenderer : MonoBehaviour
             AssetDatabase.CreateAsset(vcMat, vcMatPath);
         }
 
-        if (!RuntimeMeshCache.TryGetValue(assetName, out Mesh mesh))
+        if (!RuntimeMeshCache.TryGetValue(assetName, out Mesh mesh) || mesh == null)
         {
             mesh = BuildOptimizedMesh(data, baseBlocksToRemove);
             mesh.name = assetName;
         }
 
+        // Clone the mesh for the persistent asset, so the cached mesh remains a runtime-only object.
+        Mesh assetMesh = Instantiate(mesh);
+        assetMesh.name = assetName;
+
         AssetDatabase.DeleteAsset(prefabPath);
         var go = new GameObject(assetName);
-        go.AddComponent<MeshFilter>().sharedMesh      = mesh;
+        go.AddComponent<MeshFilter>().sharedMesh      = assetMesh;
         go.AddComponent<MeshRenderer>().sharedMaterial = vcMat;
-        go.AddComponent<MeshCollider>().sharedMesh     = mesh;
+        go.AddComponent<MeshCollider>().sharedMesh     = assetMesh;
         var savedPrefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
         DestroyImmediate(go);
 
-        AssetDatabase.AddObjectToAsset(mesh, prefabPath);
-        savedPrefab.GetComponent<MeshFilter>().sharedMesh = mesh;
+        AssetDatabase.AddObjectToAsset(assetMesh, prefabPath);
+        savedPrefab.GetComponent<MeshFilter>().sharedMesh = assetMesh;
+        if (savedPrefab.GetComponent<MeshCollider>() != null)
+        {
+            savedPrefab.GetComponent<MeshCollider>().sharedMesh = assetMesh;
+        }
         PrefabUtility.SavePrefabAsset(savedPrefab);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();
@@ -243,11 +292,16 @@ public class VoxelRenderer : MonoBehaviour
         // 1. FILTRAGGIO DELLA PEDANA SULLA Z NATIVA GREZZA
         if (baseLayersToRemove > 0)
         {
+            var uniqueZKeys = new HashSet<int>();
             List<float> uniqueZ = new List<float>();
             for (int i = 0; i < originalData.count; i++)
             {
                 float zVal = originalData.positions[i * 3 + 2]; 
-                if (!uniqueZ.Any(val => Mathf.Abs(val - zVal) < 0.001f)) uniqueZ.Add(zVal);
+                int key = Mathf.RoundToInt(zVal * 1000f);
+                if (uniqueZKeys.Add(key))
+                {
+                    uniqueZ.Add(zVal);
+                }
             }
             uniqueZ.Sort(); 
 

@@ -378,10 +378,9 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: house
-  stylePrompt: A house made only of cubes in Minecraft style on a neutral background
-    on a super thin white plane. Low cube resolution, frontal view, studio lighting.
-  negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
-    elements
+  stylePrompt: A reference image of a stylized house. Neutral pastel blue background,
+    frontal view, no bases or ground, studio lighting.
+  negativePrompt: ground, floor, base, text, watermark, multiple elements
   quality: 1
   transparent: 0
   serverAddress: http://25.18.55.60:5000
@@ -2018,7 +2017,7 @@ RectTransform:
   m_GameObject: {fileID: 1549178858}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.94697, y: 0.94697, z: 0.94697}
+  m_LocalScale: {x: 0.50338084, y: 0.50338084, z: 0.50338084}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1309043053}
@@ -2028,7 +2027,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -34, y: -431.61536}
+  m_AnchoredPosition: {x: -0, y: -221}
   m_SizeDelta: {x: -923.74634, y: -1113.2856}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1549178860
@@ -2207,7 +2206,7 @@ RectTransform:
   m_GameObject: {fileID: 1860251367}
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
-  m_LocalScale: {x: 0.81438, y: 0.81438, z: 0.81438}
+  m_LocalScale: {x: 0.5336388, y: 0.5336388, z: 0.5336388}
   m_ConstrainProportionsScale: 0
   m_Children:
   - {fileID: 1933398439}
@@ -2218,7 +2217,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -34, y: 126}
+  m_AnchoredPosition: {x: -11.43, y: 110.93}
   m_SizeDelta: {x: -923.74634, y: -635.379}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &1860251369

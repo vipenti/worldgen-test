@@ -252,8 +252,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 69.1
-  m_fontSizeBase: 69.1
+  m_fontSize: 65.7
+  m_fontSizeBase: 65.7
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 0
@@ -873,8 +873,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 453, y: 225}
-  m_SizeDelta: {x: 631.5389, y: 371.2381}
+  m_AnchoredPosition: {x: 382, y: -83}
+  m_SizeDelta: {x: 716.1623, y: 368.1039}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &278922865
 MonoBehaviour:
@@ -896,7 +896,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_text: asdasdasdasdsadasdasdasdasdasdasdasdasdadasdasdasdasdasd
+  m_text: eeeee
   m_isRightToLeft: 0
   m_fontAsset: {fileID: 11400000, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
   m_sharedMaterial: {fileID: 2180264, guid: 8f586378b4e144a9851e7b34d9b748ee, type: 2}
@@ -923,8 +923,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 40.6
-  m_fontSizeBase: 40.6
+  m_fontSize: 23.89
+  m_fontSizeBase: 23.89
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 18
@@ -962,7 +962,7 @@ MonoBehaviour:
   m_VertexBufferAutoSizeReduction: 0
   m_useMaxVisibleDescender: 1
   m_pageToDisplay: 1
-  m_margin: {x: -2.2986603, y: -50.570267, z: -190.78787, w: 0}
+  m_margin: {x: -2.2986603, y: -50.570267, z: 216.65866, w: 294.6151}
   m_isUsingLegacyAnimationComponent: 0
   m_isVolumetricText: 0
   m_hasFontAssetChanged: 0
@@ -1632,8 +1632,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 614, y: -378}
-  m_SizeDelta: {x: 2986.8882, y: 481.3823}
+  m_AnchoredPosition: {x: 224, y: -228}
+  m_SizeDelta: {x: 1133.8223, y: 255.1}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &880284052
 MonoBehaviour:
@@ -2557,8 +2557,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: house
-  stylePrompt: A house made only of cubes in Minecraft style on a neutral background
-    on a super thin white plane. Low cube resolution, frontal view, studio lighting.
+  stylePrompt: A reference image of a stylized house. Neutral white background, frontal
+    view, no bases or ground, studio lighting.
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   quality: 1
@@ -2772,8 +2772,8 @@ MonoBehaviour:
   m_faceColor:
     serializedVersion: 2
     rgba: 4294967295
-  m_fontSize: 96.1
-  m_fontSizeBase: 96.1
+  m_fontSize: 64.9
+  m_fontSizeBase: 64.9
   m_fontWeight: 400
   m_enableAutoSizing: 0
   m_fontSizeMin: 0

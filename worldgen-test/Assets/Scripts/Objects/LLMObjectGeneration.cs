@@ -21,7 +21,7 @@ public class LLMObjectGeneration : MonoBehaviour
 
     [Header("Generation")]
     public Quality quality = Quality.low;
-    public bool transparent = true;
+    public bool transparent = false;
     public string serverAddress = "http://25.18.55.60:5000";
 
     [Header("Output")]
@@ -55,7 +55,8 @@ public class LLMObjectGeneration : MonoBehaviour
 
     void OnValidate()
     {
-        stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background on a super thin white plane. Low cube resolution, frontal view, studio lighting.";
+        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background on a super thin white plane. Low cube resolution, frontal view, studio lighting.";
+        stylePrompt = $"A beautiful, high-quality 3D render of a single stylized {object_name}. Clean, minimal design, soft lighting, pastel color palette. The object has smooth, defined shapes and is perfectly centered against a clean, plain, neutral background (like pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.";
         //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background. Low cube resolution, isometric view, studio lighting.";
     }
 

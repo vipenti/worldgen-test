@@ -1,5 +1,11 @@
 Shader "Custom/VoxelVertexColor"
 {
+    Properties
+    {
+        _Saturation ("Saturation", Range(0.0, 3.0)) = 1.3
+        _Contrast ("Contrast", Range(0.0, 3.0)) = 1.2
+        _AmbientBoost ("Ambient Boost", Range(0.0, 2.0)) = 0.6
+    }
     SubShader
     {
         Tags { "RenderType" = "Opaque" "RenderPipeline" = "UniversalPipeline" "Queue" = "Geometry" }
@@ -21,6 +27,9 @@ Shader "Custom/VoxelVertexColor"
             #include "Packages/com.unity.render-pipelines.universal/ShaderLibrary/Lighting.hlsl"
 
             CBUFFER_START(UnityPerMaterial)
+                half _Saturation;
+                half _Contrast;
+                half _AmbientBoost;
             CBUFFER_END
 
             struct Attributes
@@ -58,14 +67,25 @@ Shader "Custom/VoxelVertexColor"
 
             half4 frag(Varyings IN) : SV_Target
             {
+                // 1. Base vertex color adjustment (Saturation & Contrast)
+                half3 baseColor = IN.color.rgb;
+
+                // Saturation adjustment via Rec.709 luminance weights
+                half luminance = dot(baseColor, half3(0.2126, 0.7152, 0.0722));
+                baseColor = lerp(half3(luminance, luminance, luminance), baseColor, _Saturation);
+
+                // Contrast adjustment (pivot around 0.5)
+                baseColor = saturate((baseColor - 0.5) * _Contrast + 0.5);
+
+                // 2. Lighting calculation
                 float3 normalWS = normalize(IN.normalWS);
                 Light mainLight = GetMainLight();
                 
                 half diffuseTerm = saturate(dot(normalWS, mainLight.direction));
                 half3 lightColor = mainLight.color * diffuseTerm;
-                half3 ambientColor = SampleSH(normalWS);
+                half3 ambientColor = SampleSH(normalWS) * _AmbientBoost;
                 
-                half3 finalColor = IN.color.rgb * (lightColor + ambientColor);
+                half3 finalColor = baseColor * (lightColor + ambientColor);
                 
                 // Miscela il colore finale con il colore della nebbia globale di URP
                 finalColor = MixFog(finalColor, IN.fogFactor);
