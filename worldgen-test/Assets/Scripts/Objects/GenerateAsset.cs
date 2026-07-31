@@ -221,6 +221,17 @@ public class GenerateAsset : MonoBehaviour
             string highPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_high.prefab");
             if (File.Exists(highPrefabPath)) { File.Delete(highPrefabPath); File.Delete(highPrefabPath + ".meta"); }
 
+            // Elimina anche i voxjson dei livelli LOD (non il modello base): finché esistono su
+            // disco, VoxelRenderer li considera già generati e salta la ricostruzione, quindi i
+            // prefab LOD appena cancellati sopra non verrebbero mai ricreati.
+            string objectsFolder = PathSettings.GetObjectsFolder();
+            string lowVoxJsonPath = Path.Combine(objectsFolder, name + "_low.voxjson");
+            if (File.Exists(lowVoxJsonPath)) File.Delete(lowVoxJsonPath);
+            string medVoxJsonPath = Path.Combine(objectsFolder, name + "_medium.voxjson");
+            if (File.Exists(medVoxJsonPath)) File.Delete(medVoxJsonPath);
+            string highVoxJsonPath = Path.Combine(objectsFolder, name + "_high.voxjson");
+            if (File.Exists(highVoxJsonPath)) File.Delete(highVoxJsonPath);
+
             VoxelRenderer.RuntimeMeshCache.Remove(name);
             VoxelRenderer.RuntimeMeshCache.Remove(name + "_low");
             VoxelRenderer.RuntimeMeshCache.Remove(name + "_medium");
