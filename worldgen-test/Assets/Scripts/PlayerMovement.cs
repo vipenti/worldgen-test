@@ -14,6 +14,8 @@ public class PlayerMovement : MonoBehaviour
 
     void Update()
     {
+        if (LLMWorldDirector.IsUIFocused) return;
+
         // 1. Controllo se il player è a terra
         // Usiamo isGrounded del controller, ma resettiamo la velocità Y
         isGrounded = controller.isGrounded;

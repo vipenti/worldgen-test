@@ -15,6 +15,8 @@ public class MouseLook : MonoBehaviour
 
     void Update()
     {
+        if (LLMWorldDirector.IsUIFocused) return;
+
         // Nel nuovo sistema leggiamo il delta di spostamento accumulato nel frame
         Vector2 mouseDelta = Mouse.current.delta.ReadValue();
         

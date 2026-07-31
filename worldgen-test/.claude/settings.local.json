@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(Get-Content \"c:\\\\Users\\\\vpentangelo\\\\Documents\\\\GitHub\\\\worldgen-test\\\\worldgen-test\\\\Assets\\\\Json\\\\objects\\\\rabbit.json\" -TotalCount 5)",
-      "Read(//c/Users/vpentangelo/Documents/GitHub/worldgen-test/**)"
+      "Read(//c/Users/vpentangelo/Documents/GitHub/worldgen-test/**)",
+      "mcp__unity-mcp__Unity_GetUserGuidelines",
+      "mcp__unity-mcp__Unity_GetProjectData",
+      "mcp__unity-mcp__Unity_ManageEditor"
     ]
   }
 }

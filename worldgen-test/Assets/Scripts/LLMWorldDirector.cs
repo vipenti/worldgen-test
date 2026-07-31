@@ -41,6 +41,10 @@ public class LLMWorldDirector : MonoBehaviour
     public static event Action                OnTerrainPipelineDone;
     public static event Action<string>        OnGenerationFailed;
 
+    // True while the world-description input field has focus. Checked by PlayerMovement/MouseLook
+    // to freeze player control while the user is typing.
+    public static bool IsUIFocused;
+
     void Awake()
     {
         if (generateAsset == null) generateAsset = FindAnyObjectByType<GenerateAsset>();
@@ -52,11 +56,30 @@ public class LLMWorldDirector : MonoBehaviour
     {
         // Ci agganciamo all'evento di sblocco della Coda A degli asset critici
         GenerateAsset.OnCriticalAssetsReady += TriggerTerrainTransition;
+
+        inputField.onSelect.AddListener(OnInputSelected);
+        inputField.onDeselect.AddListener(OnInputDeselected);
+        inputField.onSubmit.AddListener(OnInputSubmit);
     }
 
     void OnDisable()
     {
         GenerateAsset.OnCriticalAssetsReady -= TriggerTerrainTransition;
+
+        inputField.onSelect.RemoveListener(OnInputSelected);
+        inputField.onDeselect.RemoveListener(OnInputDeselected);
+        inputField.onSubmit.RemoveListener(OnInputSubmit);
+    }
+
+    void OnInputSelected(string _) => IsUIFocused = true;
+
+    void OnInputDeselected(string _) => IsUIFocused = false;
+
+    void OnInputSubmit(string text)
+    {
+        if (!string.IsNullOrEmpty(text)) SendRequestToLLM(text);
+        inputField.text = "";
+        EventSystem.current.SetSelectedGameObject(null); // scatena OnInputDeselected -> IsUIFocused = false
     }
 
     string BuildSystemPrompt()
@@ -74,16 +97,6 @@ public class LLMWorldDirector : MonoBehaviour
         {
             inputField.ActivateInputField();
             inputField.text = "";
-        }
-
-        if (Keyboard.current.periodKey.wasPressedThisFrame && inputField.isFocused)
-        {
-            if (!string.IsNullOrEmpty(inputField.text))
-            {
-                SendRequestToLLM(inputField.text);
-                inputField.text = "";
-                EventSystem.current.SetSelectedGameObject(null);
-            }
         }
     }
 

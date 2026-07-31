@@ -47,9 +47,9 @@ public class GenerateTexture : MonoBehaviour
         Directory.CreateDirectory(outputDir);
         string safeName = materialName.Trim().Replace(" ", "_");
         
-        string palettePrompt = string.IsNullOrEmpty(paletteColorDescription) ? "" : $" The colors must be perfectly coherent with this color palette: {paletteColorDescription}.";
-        string prompt = $"Seamless flat tileable texture of a simple {materialName} surface for a 3D videogame, to be applied on cube faces. It must contain exclusively simple, clean characteristic details of the material. Top-down orthographic 90-degree view.{palettePrompt}";
-
+        string palettePrompt = string.IsNullOrEmpty(paletteColorDescription) ? "" : $" The colors is {paletteColorDescription}.";
+        //string prompt = $"Seamless flat tileable texture of a {materialName} to be applied on cube faces of a cozy game. Simple, clean characteristic of the material. Top-down orthographic 90-degree view.{palettePrompt}";
+        string prompt = $"Top-down aerial view of a texture tile of pure {materialName} material. very low details, cartoonish style, {palettePrompt}. Flat colors, soft shading, minimal highlights. Absolutely NO other elements or materials. Only the isolated surface pattern of {materialName}, filling the entire frame completely.";
         // Step 1: genera immagine
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
         string gsStr = guidanceScale.ToString("F1", CultureInfo.InvariantCulture);

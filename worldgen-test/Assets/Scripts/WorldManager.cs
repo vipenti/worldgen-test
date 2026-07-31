@@ -88,7 +88,7 @@ public class WorldManager : MonoBehaviour
     [Header("Debug & Map Visualization")]
     public MapVisualizer mapVisualizer;
     public bool skipInitialPlayerSpawn = false;
-    public TMP_Text infoText;
+    public LogPanelUI logPanel;
 
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
@@ -740,7 +740,7 @@ public class WorldManager : MonoBehaviour
         float startOffset = viewDistance * targetConfig.chunkWidth;
         float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
         float totalMeters = startOffset + totalDist;
-        SetStatusText($"[Transition] Biome transition started!\nWalk {viewDistance} chunks (~{startOffset:F0}m) to reach the transition zone.\nOverall: 0% complete");
+        logPanel?.LogEvent($"[Transition] Biome transition started!\nWalk {viewDistance} chunks (~{startOffset:F0}m) to reach the transition zone.\nOverall: 0% complete");
     }
 
     void UpdateTransitionProgress()
@@ -755,7 +755,7 @@ public class WorldManager : MonoBehaviour
         {
             isPlayerInTransitionHUD = false;
             Debug.Log("<color=orange>[WorldManager]</color> Terrain transition completed successfully.");
-            SetStatusText("[Transition] Biome transition completed successfully!");
+            logPanel?.LogEvent("[Transition] Biome transition completed successfully!");
             return;
         }
 
@@ -912,10 +912,7 @@ public class WorldManager : MonoBehaviour
 
     public void SetStatusText(string text)
     {
-        if (infoText != null)
-        {
-            infoText.text = text;
-        }
+        logPanel?.LogProgress(text);
     }
 
     void HandleGenerationProgress(string status, float progress)
@@ -925,12 +922,12 @@ public class WorldManager : MonoBehaviour
 
     void HandleTerrainPipelineDone()
     {
-        SetStatusText("[Pipeline] World design complete! Preparing assets...");
+        logPanel?.LogEvent("[Pipeline] World design complete! Preparing assets...");
     }
 
     void HandleGenerationFailed(string reason)
     {
-        SetStatusText($"[Pipeline Error] {reason}");
+        logPanel?.LogError($"[Pipeline Error] {reason}");
     }
 
     void HandleAssetProgress(int done, int total)
@@ -942,7 +939,7 @@ public class WorldManager : MonoBehaviour
 
     void HandleCriticalAssetsReady()
     {
-        SetStatusText("[Transition] Critical assets loaded! Interpolation starting.");
+        logPanel?.LogEvent("[Transition] Critical assets loaded! Interpolation starting.");
     }
 
     private float GetObjectMinY(GameObject obj, float fallbackY)
