@@ -100,13 +100,21 @@ public class VoxelRenderer : MonoBehaviour
         if (!File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath))
         {
             Debug.Log($"[VoxelRenderer] Generating LODs for '{assetName}' because they do not exist on disk.");
-            string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
-            string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Medium);
 
-            // Small/tiny objects (small rocks, pebbles, flowers...) never need the full "high"
-            // voxel density — cap their top LOD tier at medium so we don't waste cubes on detail
-            // nobody will notice at that scale.
-            ModelResolution highResolution = IsSmallOrTinySize(assetName) ? ModelResolution.Medium : ModelResolution.High;
+            // Cap voxel density by the object's in-game size classification: "tiny" props
+            // (pebbles, tiny flowers...) never need more than low-resolution cubes even up
+            // close, and "small" props (small rocks, bushes...) top out at medium.
+            string sizeCategory = GetSizeCategory(assetName);
+            bool isTiny = sizeCategory == "tiny";
+            bool isSmall = sizeCategory == "small";
+
+            ModelResolution mediumResolution = isTiny ? ModelResolution.Low : ModelResolution.Medium;
+            ModelResolution highResolution = isTiny ? ModelResolution.Low
+                : isSmall ? ModelResolution.Medium
+                : ModelResolution.High;
+
+            string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
+            string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, mediumResolution);
             string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, highResolution);
 
             try
@@ -136,26 +144,25 @@ public class VoxelRenderer : MonoBehaviour
 #endif
     }
 
-    static bool IsSmallOrTinySize(string assetName)
+    static string GetSizeCategory(string assetName)
     {
         try
         {
             string path = Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
-            if (!File.Exists(path)) return false;
+            if (!File.Exists(path)) return null;
 
             var root = JObject.Parse(File.ReadAllText(path));
             foreach (var entry in root)
             {
                 if (!string.Equals(entry.Key, assetName, StringComparison.OrdinalIgnoreCase)) continue;
-                string size = entry.Value?["size"]?.ToString();
-                return size == "small" || size == "tiny";
+                return entry.Value?["size"]?.ToString();
             }
         }
         catch (Exception ex)
         {
             Debug.LogWarning($"[VoxelRenderer] Impossibile leggere la size di '{assetName}' da current_objects.json: {ex.Message}");
         }
-        return false;
+        return null;
     }
 
     void GenerateRuntimeMeshForData(string assetName, VoxelData data)
