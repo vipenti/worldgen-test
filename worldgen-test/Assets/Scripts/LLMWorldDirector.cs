@@ -416,18 +416,11 @@ public class LLMWorldDirector : MonoBehaviour
         return list;
     }
 
-    // Capped so the AssetListSystem prompt doesn't keep growing forever as more worlds are
-    // generated — an unbounded list is what pushed the prompt past the server's context window.
-    const int MaxExistingObjectsInPrompt = 60;
-
     string BuildExistingObjectsList(Dictionary<string, int> existingRegistry)
     {
         if (existingRegistry.Count == 0) return "(none yet)";
 
         var keys = new List<string>(existingRegistry.Keys);
-        if (keys.Count > MaxExistingObjectsInPrompt)
-            keys = keys.GetRange(keys.Count - MaxExistingObjectsInPrompt, MaxExistingObjectsInPrompt);
-
         return string.Join(", ", keys.ConvertAll(k => $"\"{k}\""));
     }
 
