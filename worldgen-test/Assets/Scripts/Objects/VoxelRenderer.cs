@@ -102,7 +102,12 @@ public class VoxelRenderer : MonoBehaviour
             Debug.Log($"[VoxelRenderer] Generating LODs for '{assetName}' because they do not exist on disk.");
             string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
             string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Medium);
-            string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.High);
+
+            // Small/tiny objects (small rocks, pebbles, flowers...) never need the full "high"
+            // voxel density — cap their top LOD tier at medium so we don't waste cubes on detail
+            // nobody will notice at that scale.
+            ModelResolution highResolution = IsSmallOrTinySize(assetName) ? ModelResolution.Medium : ModelResolution.High;
+            string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, highResolution);
 
             try
             {
@@ -129,6 +134,28 @@ public class VoxelRenderer : MonoBehaviour
             SaveAsAssetForData(assetName + "_high", dataHigh);
         }
 #endif
+    }
+
+    static bool IsSmallOrTinySize(string assetName)
+    {
+        try
+        {
+            string path = Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
+            if (!File.Exists(path)) return false;
+
+            var root = JObject.Parse(File.ReadAllText(path));
+            foreach (var entry in root)
+            {
+                if (!string.Equals(entry.Key, assetName, StringComparison.OrdinalIgnoreCase)) continue;
+                string size = entry.Value?["size"]?.ToString();
+                return size == "small" || size == "tiny";
+            }
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"[VoxelRenderer] Impossibile leggere la size di '{assetName}' da current_objects.json: {ex.Message}");
+        }
+        return false;
     }
 
     void GenerateRuntimeMeshForData(string assetName, VoxelData data)
