@@ -128,22 +128,21 @@ public class LLMWorldDirector : MonoBehaviour
         }
 
         OnGenerationProgress?.Invoke("Planning biome and assets...", 0.15f);
-        bool step2Done = false, step3Done = false;
         var r2 = new string[] { "" };
         var r3 = new string[] { "" };
 
-        StartCoroutine(CallLLM(BuildSystemPrompt(), worldDescription,
-            raw => { r2[0] = raw; step2Done = true; }, disableThinking: !thinkingForParams));
+        // Run sequentially (not concurrently) so the local LLM server only ever has to hold
+        // one of these large prompts in its KV cache at a time. Firing both at once used to
+        // require two simultaneous inference slots, which overflows the server's context
+        // budget once the registries below grow large (see maxExistingObjects note).
+        yield return StartCoroutine(CallLLM(BuildSystemPrompt(), worldDescription,
+            raw => { r2[0] = raw; }, disableThinking: !thinkingForParams));
 
         var existingRegistry = LoadObjectRegistry();
-        string existingList = existingRegistry.Count > 0
-            ? string.Join(", ", new List<string>(existingRegistry.Keys).ConvertAll(k => $"\"{k}\""))
-            : "(none yet)";
+        string existingList = BuildExistingObjectsList(existingRegistry);
 
-        StartCoroutine(CallLLM(Prompts.AssetListSystem(existingList), worldDescription,
-            raw => { r3[0] = raw; step3Done = true; }, disableThinking: true));
-
-        yield return new WaitUntil(() => step2Done && step3Done);
+        yield return StartCoroutine(CallLLM(Prompts.AssetListSystem(existingList), worldDescription,
+            raw => { r3[0] = raw; }, disableThinking: true));
 
         OnGenerationProgress?.Invoke("Generating terrain textures...", 0.25f);
 
@@ -415,6 +414,21 @@ public class LLMWorldDirector : MonoBehaviour
             if (!string.IsNullOrEmpty(t)) list.Add(t);
         }
         return list;
+    }
+
+    // Capped so the AssetListSystem prompt doesn't keep growing forever as more worlds are
+    // generated — an unbounded list is what pushed the prompt past the server's context window.
+    const int MaxExistingObjectsInPrompt = 60;
+
+    string BuildExistingObjectsList(Dictionary<string, int> existingRegistry)
+    {
+        if (existingRegistry.Count == 0) return "(none yet)";
+
+        var keys = new List<string>(existingRegistry.Keys);
+        if (keys.Count > MaxExistingObjectsInPrompt)
+            keys = keys.GetRange(keys.Count - MaxExistingObjectsInPrompt, MaxExistingObjectsInPrompt);
+
+        return string.Join(", ", keys.ConvertAll(k => $"\"{k}\""));
     }
 
     Dictionary<string, int> LoadObjectRegistry()
