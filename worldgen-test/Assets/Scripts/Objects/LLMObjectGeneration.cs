@@ -81,7 +81,7 @@ public class LLMObjectGeneration : MonoBehaviour
 
         if (req.result != UnityWebRequest.Result.Success)
         {
-            Debug.LogError($"LLMObjectGeneration: request failed — {req.error}");
+            Debug.LogError($"LLMObjectGeneration: request failed — {req.responseCode} {req.error}\n{req.downloadHandler.text}");
             IsGenerating = false;
             yield break;
         }
