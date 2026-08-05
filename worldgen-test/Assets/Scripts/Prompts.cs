@@ -57,7 +57,7 @@ NOISE PARAMETERS RULES (MINECRAFT SCALE CONFIGURATIONS):
 - ridgedExponent [1.2 - 2.8]: Sharpness of peaks.
 - warpStrength [0.0 - 25.0]: Organic erosion distortion. 0 for cities, 8-15 for forests.
 - warpScale [15.0 - 50.0]: Scale of coordinates distortion.
-- isStructuredBiome [boolean]: true if the world description depicts a human-made settlement or planned structured area (city, town, village, urban district, market square). false for natural, wild, or unstructured landscapes (forests, mountains, deserts, oceans, plains), even if a single isolated cabin or ruin appears.
+- isStructuredBiome [boolean]: true for settlements (city, town, village, urban district); false for natural/wild landscapes.
 - palette_color_description [string]: A short concise color palette rule for the whole biome (e.g. ""Warm soft colors with earthy tones"", ""Vibrant tropical colors"", ""Pastel hues"") to maintain biome-wide visual coherence in textures and 3D models.
 - surface [string]: Name of the top terrain surface tile material.
 - middle [string]: Name of the sub-surface tile material (under the top tile).
@@ -84,16 +84,12 @@ OUTPUT: Write <analysis></analysis> containing a verification of the walkability
 ### EXAMPLES
 
 World: A quiet basic forest with tall trees and flat green grass clearings.
-<analysis>Forest biome requires flat, walkable paths. No jagged mountains allowed: ampRidged=0. Gentle terrain: ampBillow=6, billowExponent=0.8 for flat clearings. Low water dominance: base(22) > waterLevel(10) so pools are rare. Math: 22+6+0=28. chunkHeight(55)>40. Natural wild landscape, no settlement: isStructuredBiome=false. OK.</analysis>
+<analysis>Forest biome requires flat, walkable paths. No jagged mountains allowed: ampRidged=0. Gentle terrain: ampBillow=6, billowExponent=0.8 for flat clearings. Low water dominance: base(22) > waterLevel(10) so pools are rare. Math: 22+6+0=28. chunkHeight(55)>40. isStructuredBiome=false (natural). OK.</analysis>
 {""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""isStructuredBiome"":false,""surface"":""mossy_grass"",""middle"":""grass_with_soil"",""deep"":""stone"",""liquid"":""fresh_clean_water"",""palette_color_description"":""Rich warm colors with earthy tones."" }
 
 World: A jagged mountain peak range with vertical stone cliffs.
-<analysis>Mountain biome requires high verticality. ampRidged=65, scaleRidged=60 for massive ranges. macroInfluence=0.85 to allow ridges to dominate high macro zones. Math: 10+10+65=85. chunkHeight(110)>97. Natural wild landscape, no settlement: isStructuredBiome=false. OK.</analysis>
+<analysis>Mountain biome requires high verticality. ampRidged=65, scaleRidged=60 for massive ranges. macroInfluence=0.85 to allow ridges to dominate high macro zones. Math: 10+10+65=85. chunkHeight(110)>97. isStructuredBiome=false (natural). OK.</analysis>
 {""scaleMacro"":200.0,""macroInfluence"":0.85,""scaleBillow"":30.0,""ampBillow"":10.0,""billowExponent"":1.1,""scaleRidged"":60.0,""ampRidged"":65.0,""ridgedExponent"":2.2,""warpStrength"":12.0,""warpScale"":25.0,""baseTerrainHeight"":10.0,""waterLevel"":5,""chunkHeight"":110,""chunkWidth"":16,""scaleLayout"":20.0,""objectDensityThreshold"":0.65,""slopeMaxLimit"":2.5,""isStructuredBiome"":false,""surface"":""grey_stone"",""middle"":""dark_stone"",""deep"":""hard_rock_with_gems"",""liquid"":""fresh_water"",""palette_color_description"":""Cold light-greish tones.""}
-
-World: A peaceful medieval village with small houses and a central gathering square, connected by narrow dirt roads.
-<analysis>Village needs a flat, buildable clearing for streets and building plots: ampRidged=0, low ampBillow(4) and billowExponent=0.8 to minimize terrain disruption. warpStrength=0 because structured layouts need low organic distortion so streets and plots stay geometrically coherent. Math: 20+4+0=24. chunkHeight(45)>36. This is a human-made settlement with buildings and paths: isStructuredBiome=true. OK.</analysis>
-{""scaleMacro"":300.0,""macroInfluence"":0.1,""scaleBillow"":100.0,""ampBillow"":4.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":0.0,""warpScale"":30.0,""baseTerrainHeight"":20.0,""waterLevel"":8,""chunkHeight"":45,""chunkWidth"":16,""scaleLayout"":30.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.0,""isStructuredBiome"":true,""surface"":""cobblestone_path"",""middle"":""packed_dirt"",""deep"":""stone"",""liquid"":""fresh_water"",""palette_color_description"":""Warm rustic earthy tones.""}
 ";
 
     // ── Step 4: assign size + frequency to each object ───────────────────────
