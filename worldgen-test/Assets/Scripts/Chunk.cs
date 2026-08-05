@@ -54,6 +54,12 @@ public class BiomeConfig
     public float baseTerrainHeight = 15f;  // Y floor before noise layers [5-25]
     public float scaleLayout       = 30f;  // spawn-zone size [10-60]
     public float slopeMaxLimit     = 1.2f; // max slope for object placement [0.5-3]
+    // 6. Layout archetype
+    // True for human-made settlements (city, town, village, urban district) that need a
+    // structured, grid/street-based layout instead of the organic noise-scatter placement
+    // used for natural biomes. Placement logic doesn't branch on this yet — it's the first
+    // step toward a dedicated urban layout system.
+    public bool isStructuredBiome = false;
     public string palette_color_description;
 }
 

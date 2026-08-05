@@ -527,16 +527,20 @@ public class LLMWorldDirector : MonoBehaviour
     string BuildFinalJson(string llmJson, Dictionary<string, int> resolved)
     {
         var entries = new List<string>();
-        string[] numericFields = {
+        // Fields copied verbatim (as raw JSON literals) from the LLM's response — covers
+        // both numbers and the isStructuredBiome boolean, since ExtractRawField just grabs
+        // whatever literal follows the key.
+        string[] rawLiteralFields = {
             "scaleMacro", "macroInfluence",
             "scaleBillow", "ampBillow", "billowExponent",
             "scaleRidged", "ampRidged", "ridgedExponent",
             "warpStrength", "warpScale",
             "baseTerrainHeight", "waterLevel",
             "chunkHeight", "chunkWidth",
-            "scaleLayout", "objectDensityThreshold", "slopeMaxLimit"
+            "scaleLayout", "objectDensityThreshold", "slopeMaxLimit",
+            "isStructuredBiome"
         };
-        foreach (string field in numericFields)
+        foreach (string field in rawLiteralFields)
         {
             string val = ExtractRawField(llmJson, field);
             if (val != null) entries.Add($"  \"{field}\": {val}");
