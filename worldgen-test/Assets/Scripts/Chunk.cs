@@ -88,6 +88,9 @@ public class Chunk : MonoBehaviour
     private float pathHalfWidth;
     private float pathBlendWidth;
     private int pathLevel;
+    // Urban street grid (isStructuredBiome), mirrored from WorldManager so terrain flattening
+    // and texturing agree with where WorldManager.SpawnStructuredLayoutObjects puts the lots.
+    private UrbanGrid.Params urbanGrid;
 
     private bool isTransitioning = false;
     private Vector2 transitionStartPos2D;
@@ -97,9 +100,10 @@ public class Chunk : MonoBehaviour
     private bool hasColliderBuilt = false;
 
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
-    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, 
+    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary,
                            bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist,
-                           float pathHalfWidth, float pathBlendWidth, int pathLevel, bool updateCollider)
+                           float pathHalfWidth, float pathBlendWidth, int pathLevel,
+                           UrbanGrid.Params urbanGrid, bool updateCollider)
     {
         chunkWidth  = targetBinary.chunkWidth;
         chunkHeight = Mathf.Max(oldBinary.chunkHeight, targetBinary.chunkHeight);
@@ -121,6 +125,7 @@ public class Chunk : MonoBehaviour
         this.pathHalfWidth = pathHalfWidth;
         this.pathBlendWidth = pathBlendWidth;
         this.pathLevel = pathLevel;
+        this.urbanGrid = urbanGrid;
 
         this.isTransitioning = isTransitioning;
         this.transitionStartPos2D = transitionStartPos2D;
@@ -381,6 +386,27 @@ public class Chunk : MonoBehaviour
                     finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, pathLevel, pathInfluence));
                 }
 
+                // Appiattimento della griglia stradale urbana (isStructuredBiome), incluse le
+                // strade principali più larghe: stessa griglia (UrbanGrid) usata da WorldManager
+                // per piazzare i lotti/edifici, così il terreno resta piatto sotto le strade
+                // indipendentemente dal rumore del bioma.
+                if (target.isStructuredBiome)
+                {
+                    var sampleX = UrbanGrid.SampleAxis(worldX, urbanGrid);
+                    var sampleZ = UrbanGrid.SampleAxis(worldZ, urbanGrid);
+                    float distToStreet = Mathf.Min(
+                        sampleX.isStreet ? sampleX.distToEdge : float.MaxValue,
+                        sampleZ.isStreet ? sampleZ.distToEdge : float.MaxValue);
+                    float streetBlendWidth = Mathf.Max(pathBlendWidth * 0.35f, 3f);
+                    if (distToStreet < streetBlendWidth)
+                    {
+                        float streetBlendT    = Mathf.Clamp01(distToStreet / streetBlendWidth);
+                        float streetInfluence = 1f - Mathf.SmoothStep(0f, 1f, streetBlendT);
+                        int streetLevel = Mathf.RoundToInt(target.baseTerrainHeight);
+                        finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, streetLevel, streetInfluence));
+                    }
+                }
+
                 HeightMap[x, z] = finalHeight;
             }
         }
@@ -452,6 +478,19 @@ public class Chunk : MonoBehaviour
                         // Patch vegetazione/cespugliosa alternativa
                         surfaceTile = (bush != 0) ? bush : surface;
                     }
+                }
+
+                // Rivestimento delle strade urbane (isStructuredBiome): forza il tile "surface"
+                // puro (senza le patch di terra/fiori/cespugli usate sopra per i lotti), così le
+                // strade restano una pavimentazione uniforme invece di ereditare le variazioni
+                // pensate per il terreno naturale. "middle" non va bene qui: è il materiale di
+                // sotto-superficie del bioma (spesso terra/erba), non pensato per essere visto in
+                // superficie, ed è quello che dava l'effetto "prato fiorito" sulla strada.
+                if (target.isStructuredBiome)
+                {
+                    bool onStreet = UrbanGrid.SampleAxis(worldX, urbanGrid).isStreet
+                                 || UrbanGrid.SampleAxis(worldZ, urbanGrid).isStreet;
+                    if (onStreet) surfaceTile = surface;
                 }
 
                 int minHeight = Mathf.Max(0, finalHeight - 3);

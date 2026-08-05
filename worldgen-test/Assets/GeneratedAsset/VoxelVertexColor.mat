@@ -26,8 +26,8 @@ Material:
     m_Ints: []
     m_Floats:
     - _AmbientBoost: 0.85
-    - _Contrast: 1.74
-    - _Saturation: 1.88
+    - _Contrast: 1.83
+    - _Saturation: 1.95
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

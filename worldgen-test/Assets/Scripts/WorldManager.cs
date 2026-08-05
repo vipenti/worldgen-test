@@ -71,6 +71,19 @@ public class WorldManager : MonoBehaviour
     public int cellUnique = 32;
     public int uniqueExclusionRadius = 12;
 
+    [Header("Urban Layout (isStructuredBiome)")]
+    [Tooltip("Side length (world units) of a buildable lot inside a city block.")]
+    public int urbanBlockSize = 8;
+    [Tooltip("Width (world units) of the minor street corridor separating adjacent lots.")]
+    public int urbanStreetWidth = 3;
+    [Tooltip("Width (world units) of a main avenue, inserted every urbanMajorRoadInterval lots instead of a minor street.")]
+    public int urbanMajorStreetWidth = 10;
+    [Tooltip("Number of lots between two main avenues along each axis (1 = every boundary is a main avenue).")]
+    public int urbanMajorRoadInterval = 4;
+    [Range(0f, 1f)]
+    [Tooltip("Fraction of lots left empty as a small park/plaza instead of holding a building.")]
+    public float urbanParkChance = 0.12f;
+
     // FLAG DI SICUREZZA: Blocca gli aggiornamenti grafici del mondo durante la generazione background
     [HideInInspector] public bool holdChunkUpdates = false;
 
@@ -376,9 +389,10 @@ public class WorldManager : MonoBehaviour
                 transitionStartPos2D + transitionDir2D * (viewDistance * targetConfig.chunkWidth), 
                 transitionDir2D, 
                 transitionLengthInChunks * targetConfig.chunkWidth,
-                pathWidth * 0.5f, 
-                pathBlendWidth, 
-                pathLevel, 
+                pathWidth * 0.5f,
+                pathBlendWidth,
+                pathLevel,
+                GetUrbanGridParams(),
                 closeToPlayer
             );
             activeChunks.Add(coord, chunkScript);
@@ -411,6 +425,14 @@ public class WorldManager : MonoBehaviour
 
     void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
     {
+        // Settlements (city/town/village) get a grid/street layout instead of the organic
+        // noise-scatter used below for natural biomes.
+        if (cfg.isStructuredBiome)
+        {
+            SpawnStructuredLayoutObjects(chunk, worldPos, cfg);
+            return;
+        }
+
         var allNames = new List<string>(_readyPrefabs.Keys);
         allNames.AddRange(_pendingObjectNames);
         if (allNames.Count == 0) return;
@@ -537,6 +559,196 @@ public class WorldManager : MonoBehaviour
             }
         }
     }
+
+    // Grid/street layout used for settlements (isStructuredBiome == true). Buildings (priority 1)
+    // are snapped to lot centers on a world-aligned grid of blocks separated by street corridors,
+    // facing a cardinal direction instead of a random angle. Street-facing props (priority 2)
+    // ring each building's sidewalk edge. A small fraction of lots become parks that keep the
+    // organic scatter (priority 3/4) for greenery instead of holding a building.
+    void SpawnStructuredLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
+    {
+        var allNames = new List<string>(_readyPrefabs.Keys);
+        allNames.AddRange(_pendingObjectNames);
+        if (allNames.Count == 0) return;
+
+        int w = cfg.chunkWidth;
+        int bx = Mathf.RoundToInt(worldPos.x);
+        int bz = Mathf.RoundToInt(worldPos.z);
+
+        UrbanGrid.Params gridParams = GetUrbanGridParams();
+        bool[,] excluded = new bool[w, w];
+
+        // Mark street cells (minor + main avenues) so nothing gets placed on the road.
+        for (int x = 0; x < w; x++)
+        for (int z = 0; z < w; z++)
+        {
+            var sx = UrbanGrid.SampleAxis(bx + x, gridParams);
+            var sz = UrbanGrid.SampleAxis(bz + z, gridParams);
+            if (sx.isStreet || sz.isStreet) excluded[x, z] = true;
+        }
+
+        var buildingNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1).ToList();
+        var streetPropNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 2).ToList();
+        var decorNames3 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 3).ToList();
+        var decorNames4 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 4).ToList();
+
+        if (buildingNames.Count == 0) return; // No structures registered yet for this biome.
+
+        var placedStructures = new List<StructureAnchor>();
+        int blockSize = gridParams.blockSize;
+
+        foreach (var (gcx, lotCenterX) in UrbanGrid.LotsInRange(bx, w, gridParams))
+        foreach (var (gcz, lotCenterZ) in UrbanGrid.LotsInRange(bz, w, gridParams))
+        {
+            int lotHash = PlacementHash(gcx, gcz, 0x1337);
+            bool isPark = ((lotHash & 0xFF) / 255f) < urbanParkChance;
+
+            int lcx = Mathf.FloorToInt(lotCenterX - bx);
+            int lcz = Mathf.FloorToInt(lotCenterZ - bz);
+            if (lcx < 0 || lcx >= w || lcz < 0 || lcz >= w) continue; // Lot centered in a neighboring chunk.
+            if (chunk.HeightMap[lcx, lcz] <= cfg.waterLevel) continue;
+
+            // Park lots stay open (no building, no footprint exclusion) so the general decor
+            // scatter below is free to fill them with trees/props like any other open ground.
+            if (isPark) continue;
+
+            string bName = buildingNames[Mathf.Abs(lotHash) % buildingNames.Count];
+            float bScale = _objectScaleFactors.TryGetValue(bName, out float bsf) ? bsf : scaleBig;
+            float bGroundY = GetGroundY(lotCenterX, lotCenterZ, chunk.HeightMap[lcx, lcz]);
+            float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
+
+            InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, bRotZ);
+            placedStructures.Add(new StructureAnchor {
+                position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
+            });
+
+            int footRadius = Mathf.CeilToInt(blockSize * 0.5f);
+            for (int dx = -footRadius; dx <= footRadius; dx++)
+            for (int dz = -footRadius; dz <= footRadius; dz++)
+            {
+                int nx = lcx + dx, nz = lcz + dz;
+                if ((uint)nx < (uint)w && (uint)nz < (uint)w) excluded[nx, nz] = true;
+            }
+        }
+
+        // Street-facing props (lamps, benches, stalls...) placed at each building's curb.
+        if (streetPropNames.Count > 0)
+        {
+            foreach (var structure in placedStructures)
+            foreach (string name in streetPropNames)
+            {
+                float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+                bool isUnique = fc < 0f;
+                int propSeed = PlacementHash(Mathf.RoundToInt(structure.position.x), Mathf.RoundToInt(structure.position.z), name.GetHashCode());
+                float spawnRoll = (propSeed & 0xFFFF) / 65535f;
+                if (!isUnique && spawnRoll > fc) continue;
+                if (isUnique && _uniqueSpawned.Contains(name)) continue;
+
+                int side = Mathf.Abs(propSeed) % 4;
+                float offsetDistance = (blockSize * 0.5f) + (urbanStreetWidth * 0.5f);
+                Vector3 offsetDir = side switch { 0 => Vector3.forward, 1 => Vector3.right, 2 => Vector3.back, _ => Vector3.left };
+                Vector3 propWorldPos = structure.position + offsetDir * offsetDistance;
+
+                int plx = Mathf.FloorToInt(propWorldPos.x - bx);
+                int plz = Mathf.FloorToInt(propWorldPos.z - bz);
+                if (plx < 0 || plx >= w || plz < 0 || plz >= w) continue;
+                if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel) continue;
+
+                float pScale = _objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
+                float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
+                float rotZ = ((propSeed >> 16) & 0xFF) / 255f * 360f;
+
+                InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, rotZ);
+                excluded[plx, plz] = true;
+                if (isUnique) _uniqueSpawned.Add(name);
+            }
+        }
+
+        // General decor scatter (trees, benches, clutter — priority 3/4) fills whatever ground is
+        // still free: park lots, sidewalks, building yards. Same jittered-grid algorithm as the
+        // organic biome path, just constrained to cells that aren't a street or a building
+        // footprint via the shared `excluded` mask.
+        ScatterDecorObjects(chunk, worldPos, cfg, decorNames3, 3, excluded);
+        ScatterDecorObjects(chunk, worldPos, cfg, decorNames4, 4, excluded);
+    }
+
+    // Jittered-grid scatter shared by the urban decor pass above and mirroring the organic
+    // biome's priority 3/4 loop in the block below: one deterministic roll per grid cell (sized
+    // by rarity), filtered by the chunk's LayoutMap band, skipping anything already excluded.
+    void ScatterDecorObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg, List<string> names, int priority, bool[,] excluded)
+    {
+        if (names.Count == 0) return;
+
+        int w = cfg.chunkWidth;
+        int bx = Mathf.RoundToInt(worldPos.x);
+        int bz = Mathf.RoundToInt(worldPos.z);
+        float minLayout = priority == 4 ? 0.10f : 0.15f;
+        float maxLayout = priority == 4 ? 0.90f : 0.85f;
+
+        foreach (string name in names)
+        {
+            float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+            bool isUnique = fc < 0f;
+            int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
+
+            int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
+            int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
+            int gcx1 = Mathf.FloorToInt((float)(bx + w - 1) / cellSize);
+            int gcz1 = Mathf.FloorToInt((float)(bz + w - 1) / cellSize);
+
+            for (int gcx = gcx0; gcx <= gcx1; gcx++)
+            for (int gcz = gcz0; gcz <= gcz1; gcz++)
+            {
+                if (isUnique && _uniqueSpawned.Contains(name)) continue;
+                int cellHash = PlacementHash(gcx, gcz, name.GetHashCode());
+
+                float spawnRoll = (cellHash & 0xFFFF) / 65535f;
+                if (!isUnique && spawnRoll > fc) continue;
+
+                float jx = ((cellHash & 0xFF) / 255f) * cellSize;
+                float jz = (((cellHash >> 8) & 0xFF) / 255f) * cellSize;
+                float wx = gcx * cellSize + jx;
+                float wz = gcz * cellSize + jz;
+
+                int lx = Mathf.FloorToInt(wx - bx);
+                int lz = Mathf.FloorToInt(wz - bz);
+                if (lx < 0 || lx >= w || lz < 0 || lz >= w) continue;
+                if (excluded[lx, lz]) continue;
+
+                float layoutVal = chunk.LayoutMap[lx, lz];
+                if (layoutVal <= minLayout || layoutVal > maxLayout) continue;
+                if (chunk.HeightMap[lx, lz] <= cfg.waterLevel) continue;
+
+                float scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
+                float groundY = GetGroundY(wx, wz, chunk.HeightMap[lx, lz]);
+                float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
+                InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, rotZ);
+
+                int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
+                for (int dx = -footRadius; dx <= footRadius; dx++)
+                for (int dz = -footRadius; dz <= footRadius; dz++)
+                {
+                    int nx = lx + dx, nz = lz + dz;
+                    if ((uint)nx < (uint)w && (uint)nz < (uint)w) excluded[nx, nz] = true;
+                }
+
+                if (isUnique) _uniqueSpawned.Add(name);
+            }
+        }
+    }
+
+    // Effective urban grid parameters, shared by placement (here) and Chunk's terrain/texture
+    // pass so lots and streets always agree. Lot size is never smaller than the biggest building
+    // (scaleHuge) plus a small margin, regardless of what urbanBlockSize is set to in the
+    // inspector — buildings are instantiated at scaleHuge/scaleBig/etc. (see
+    // _objectScaleFactors), so a lot smaller than scaleHuge would let the biggest structures
+    // overflow into the street or a neighboring lot.
+    UrbanGrid.Params GetUrbanGridParams() => new UrbanGrid.Params {
+        blockSize = Mathf.Max(urbanBlockSize, Mathf.CeilToInt(scaleHuge) + 2),
+        minorStreetWidth = Mathf.Max(1, urbanStreetWidth),
+        majorStreetWidth = Mathf.Max(urbanStreetWidth, urbanMajorStreetWidth),
+        majorInterval = Mathf.Max(1, urbanMajorRoadInterval)
+    };
 
     void InstantiateAssetPrimitive(string name, float wx, float groundY, float wz, float scaleFactor, Transform parent, float rotZ = 0f)
     {

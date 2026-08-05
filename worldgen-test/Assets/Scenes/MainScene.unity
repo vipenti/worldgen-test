@@ -2458,7 +2458,7 @@ MonoBehaviour:
   defaultVoxelSize: 1
   defaultColor: {r: 1, g: 1, b: 1, a: 1}
   assetFolder: Assets/GeneratedAsset
-  voxelMaterialTemplate: {fileID: 0}
+  voxelMaterialTemplate: {fileID: 2100000, guid: b9dc2d93b9ef8494398ae34c98d0def3, type: 2}
   baseBlocksToRemove: 0
 --- !u!114 &1772015173
 MonoBehaviour:

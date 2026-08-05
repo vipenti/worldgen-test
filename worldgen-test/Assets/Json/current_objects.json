@@ -1,14 +1,14 @@
 {
-  "oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "birch tree": { "id": 1, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "fern": { "id": 65, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "small bush": { "id": 66, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "mossy rock": { "id": 67, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "deer": { "id": 7, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "fox": { "id": 5, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "fallen log": { "id": 68, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "pinecone": { "id": 69, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "wooden stick": { "id": 70, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "wild flower": { "id": 71, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 }
+  "humanoid service bot": { "id": 97, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "maintenance drone": { "id": 98, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
+  "charging station": { "id": 99, "size": "small", "frequency": "rare", "type": "prop", "priority": 2 },
+  "sensor pole": { "id": 100, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "metallic crate": { "id": 101, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
+  "concrete slab": { "id": 102, "size": "small", "frequency": "very_common", "type": "structure", "priority": 1 },
+  "asphalt tile": { "id": 103, "size": "tiny", "frequency": "very_common", "type": "structure", "priority": 1 },
+  "small stone": { "id": 86, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "wooden stick": { "id": 70, "size": "tiny", "frequency": "unique", "type": "clutter", "priority": 4 },
+  "metallic barrel": { "id": 104, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
+  "industrial lamp": { "id": 105, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "metallic pipe": { "id": 106, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 }
 }
