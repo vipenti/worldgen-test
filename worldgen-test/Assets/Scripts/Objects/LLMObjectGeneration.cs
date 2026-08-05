@@ -62,12 +62,12 @@ public class LLMObjectGeneration : MonoBehaviour
 
     IEnumerator PostRequest()
     {
-        string paletteColorDescription = LoadPaletteColorDescription();
+        //string paletteColorDescription = LoadPaletteColorDescription();
         string finalPrompt = stylePrompt;
-        if (!string.IsNullOrEmpty(paletteColorDescription))
+        /*if (!string.IsNullOrEmpty(paletteColorDescription))
         {
             finalPrompt += $" Coherent with this color palette: {paletteColorDescription}.";
-        }
+        }*/
 
         Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
         string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";

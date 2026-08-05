@@ -1,15 +1,14 @@
 {
-  "palm tree": { "id": 25, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "tropical bush": { "id": 26, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "sea grass": { "id": 27, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "wooden dock": { "id": 28, "size": "normal", "frequency": "rare", "type": "structure", "priority": 2 },
-  "pirate ship": { "id": 29, "size": "normal", "frequency": "super_rare", "type": "prop", "priority": 2 },
-  "cargo crate": { "id": 30, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
-  "large rock": { "id": 31, "size": "small", "frequency": "common", "type": "clutter", "priority": 1 },
-  "driftwood": { "id": 32, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "anchor": { "id": 33, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "rope coil": { "id": 34, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "seashell": { "id": 35, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "wet sand clump": { "id": 36, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "broken plank": { "id": 37, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
+  "oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "birch tree": { "id": 1, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "fern": { "id": 65, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 66, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "mossy rock": { "id": 67, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "deer": { "id": 7, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "fox": { "id": 5, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "fallen log": { "id": 68, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 69, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "wooden stick": { "id": 70, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "wild flower": { "id": 71, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 }
 }
