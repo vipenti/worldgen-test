@@ -229,13 +229,9 @@ public class ObjectDistanceCuller : MonoBehaviour
             if (targetMesh != null && meshFilter.sharedMesh != targetMesh)
             {
                 meshFilter.sharedMesh = targetMesh;
-                
-                // Aggiorniamo anche il MeshCollider se presente per garantire la coerenza della fisica
-                MeshCollider mc = GetComponent<MeshCollider>();
-                if (mc != null)
-                {
-                    mc.sharedMesh = targetMesh;
-                }
+                // Nessun aggiornamento collider qui: gli oggetti ora usano BoxCollider (dimensionato
+                // sui bounds allo spawn), che non ha bisogno di essere ribakeato ad ogni cambio LOD
+                // come serviva invece al vecchio MeshCollider.
             }
         }
     }

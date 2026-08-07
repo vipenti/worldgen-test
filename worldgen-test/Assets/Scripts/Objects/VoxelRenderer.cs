@@ -290,16 +290,15 @@ public class VoxelRenderer : MonoBehaviour
         var go = new GameObject(assetName);
         go.AddComponent<MeshFilter>().sharedMesh      = assetMesh;
         go.AddComponent<MeshRenderer>().sharedMaterial = vcMat;
-        go.AddComponent<MeshCollider>().sharedMesh     = assetMesh;
+        // Nessun collider cotto qui: WorldManager assegna il collider giusto (BoxCollider o
+        // nessuno, in base alla size) al momento dello spawn, sia per il path RuntimeMeshCache
+        // sia per il fallback via Instantiate(prefab). Un MeshCollider salvato nel prefab
+        // sopravviverebbe a quella logica e resterebbe pesante per sempre.
         var savedPrefab = PrefabUtility.SaveAsPrefabAsset(go, prefabPath);
         DestroyImmediate(go);
 
         AssetDatabase.AddObjectToAsset(assetMesh, prefabPath);
         savedPrefab.GetComponent<MeshFilter>().sharedMesh = assetMesh;
-        if (savedPrefab.GetComponent<MeshCollider>() != null)
-        {
-            savedPrefab.GetComponent<MeshCollider>().sharedMesh = assetMesh;
-        }
         PrefabUtility.SavePrefabAsset(savedPrefab);
         AssetDatabase.SaveAssets();
         AssetDatabase.Refresh();

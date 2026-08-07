@@ -807,12 +807,6 @@ public class WorldManager : MonoBehaviour
 
             obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
             obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
-
-            if (!_objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
-            if (sizeStr == "huge" || sizeStr == "big")
-            {
-                obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
-            }
         }
         else if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
         {
@@ -832,8 +826,35 @@ public class WorldManager : MonoBehaviour
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
+            ApplySizeCollider(obj, sizeStr);
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent);
         }
+    }
+
+    // Assegna il collider giusto in base alla size, indipendentemente dal path di spawn
+    // (mesh generata a runtime o prefab già pronto). tiny/small restano senza collider
+    // (troppo numerosi/piccoli per giustificare il costo fisico). normal/big/huge ricevono
+    // un BoxCollider approssimato sui bounds della mesh invece del MeshCollider completo,
+    // molto più leggero da valutare e senza bisogno di ribake ad ogni cambio LOD. Rimuove
+    // anche un eventuale MeshCollider ereditato da un prefab generato prima di questa modifica.
+    void ApplySizeCollider(GameObject obj, string sizeStr)
+    {
+        var oldMc = obj.GetComponent<MeshCollider>();
+        if (oldMc != null) Destroy(oldMc);
+
+        if (sizeStr != "huge" && sizeStr != "big" && sizeStr != "normal") return;
+        // Nota: Destroy() è differito a fine frame, quindi subito dopo il vecchio MeshCollider
+        // esiste ancora — controlliamo solo se un BoxCollider (quello che aggiungiamo noi) è già
+        // presente, non un generico Collider, altrimenti il MeshCollider "in coda per la distruzione"
+        // farebbe uscire la funzione prima di aggiungere il BoxCollider e l'oggetto resterebbe senza.
+        if (obj.GetComponent<BoxCollider>() != null) return; // già presente
+
+        var mf = obj.GetComponent<MeshFilter>();
+        if (mf == null || mf.sharedMesh == null) return;
+
+        var box = obj.AddComponent<BoxCollider>();
+        box.center = mf.sharedMesh.bounds.center;
+        box.size = mf.sharedMesh.bounds.size;
     }
 
     float GetRenderDistance(string assetName)
@@ -925,11 +946,6 @@ public class WorldManager : MonoBehaviour
 
                 obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
                 obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
-
-                if (sizeStr == "huge" || sizeStr == "big")
-                {
-                    obj.AddComponent<MeshCollider>().sharedMesh = runtimeMesh;
-                }
             }
             else if (prefab != null)
             {
@@ -942,6 +958,7 @@ public class WorldManager : MonoBehaviour
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
+            ApplySizeCollider(obj, sizeStr);
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent);
         }
     }

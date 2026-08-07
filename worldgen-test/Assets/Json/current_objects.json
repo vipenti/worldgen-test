@@ -1,12 +1,13 @@
 {
-  "jagged rock formation": { "id": 117, "size": "huge", "frequency": "common", "type": "structure", "priority": 1 },
-  "basalt column": { "id": 118, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
-  "large boulder": { "id": 119, "size": "normal", "frequency": "common", "type": "structure", "priority": 1 },
-  "cliff edge outcrop": { "id": 120, "size": "huge", "frequency": "very_common", "type": "structure", "priority": 1 },
-  "loose cobblestone": { "id": 121, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "gravel patch": { "id": 122, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "small stone": { "id": 86, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "rock debris": { "id": 123, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "sharp rock spike": { "id": 124, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "basalt shard": { "id": 125, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
+  "merchant tent": { "id": 16, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "desert palm tree": { "id": 10, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "giant cactus": { "id": 12, "size": "normal", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "dead bush cluster": { "id": 11, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "desert camel": { "id": 17, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "desert well": { "id": 13, "size": "normal", "frequency": "unique", "type": "prop", "priority": 1 },
+  "wooden merchant cart": { "id": 115, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "wooden crate": { "id": 85, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 },
+  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "dry twig": { "id": 96, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "coconut": { "id": 19, "size": "tiny", "frequency": "rare", "type": "clutter", "priority": 4 }
 }
