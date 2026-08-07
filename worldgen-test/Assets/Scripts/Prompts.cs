@@ -59,12 +59,19 @@ NOISE PARAMETERS RULES (MINECRAFT SCALE CONFIGURATIONS):
 - warpScale [15.0 - 50.0]: Scale of coordinates distortion.
 - isStructuredBiome [boolean]: true for settlements (city, town, village, urban district); false for natural/wild landscapes.
 - surface [string]: Name of the top terrain surface tile material.
+- surface_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the surface material.
 - middle [string]: Name of the sub-surface tile material (under the top tile).
+- middle_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the middle material.
 - deep [string]: Name of the deep underground stone tile material.
+- deep_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the deep material (almost always ""hard"").
 - liquid [string]: Name of the water or liquid tile material.
+- liquid_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the liquid material (almost always ""fluid"", or ""snow"" for ice/frozen liquids).
 - flower [string]: Name of the flower/turf patch tile material (often flowery grass or moss).
+- flower_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the flower material.
 - bush [string]: Name of the bush/vegetation patch tile material (often leafy grass or small weeds).
+- bush_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the bush material.
 - rock [string]: Name of the steep cliff/rock tile material.
+- rock_footstep [string, enum: grass|hard|soft|fluid|snow]: Footstep sound category for the rock material (almost always ""hard"").
 
 STRICT MATERIAL COHERENCE & THEME RULES:
 1. THE TILE NAMES MUST STRICTLY MATCH THE THEME OF THE WORLD DESCRIPTION.
@@ -72,6 +79,7 @@ STRICT MATERIAL COHERENCE & THEME RULES:
 3. If the world is SNOWY, COLD, or GLACIAL, the surface/middle/liquid tiles MUST reflect snow and ice (e.g., surface: ""snowy_grass"", ""powdery_snow"", or ""white_frost""; liquid: ""frozen_water"" or ""slush""; flower: ""ice_crystal"" or ""snowdrop""; bush: ""frozen_shrub""). Never output bright green grass in a cold or winter environment.
 4. If the world is a DESERT or DRY wasteland, surface/middle/liquid tiles MUST reflect desert characteristics (e.g., surface: ""red_sand"", ""fine_sand"", or ""cracked_clay""; flower: ""desert_marigold""; bush: ""dry_thorn"").
 5. Choose simple, lowercase English tile names using underscores for spaces (e.g. ""frozen_soil"", ""coarse_gravel"").
+6. Every *_footstep value MUST be exactly one of: grass, hard, soft, fluid, snow — pick whichever matches what walking on that material would actually sound/feel like (e.g. stone/metal/obsidian/concrete = hard; sand/dirt/mud/clay = soft; water/lava = fluid; snow/ice/frost = snow; grass/moss/turf/ferns = grass). Never invent other values.
 
 CRITICAL WALKABILITY CONSTRAINTS:
 1. FOR STANDARD FORESTS, PLAINS, AND VILLAGES: The world must be easily explored on foot. Set ampRidged to 0.0. Set ampBillow between 4.0 and 10.0. Set billowExponent to 0.8 to create wide flat spaces.
@@ -84,11 +92,11 @@ OUTPUT: Write <analysis></analysis> containing a verification of the walkability
 
 World: A quiet basic forest with tall trees and flat green grass clearings.
 <analysis>Forest biome requires flat, walkable paths. No jagged mountains allowed: ampRidged=0. Gentle terrain: ampBillow=6, billowExponent=0.8 for flat clearings. Low water dominance: base(22) > waterLevel(10) so pools are rare. Math: 22+6+0=28. chunkHeight(55)>40. isStructuredBiome=false (natural). OK.</analysis>
-{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""isStructuredBiome"":false,""surface"":""mossy_grass"",""middle"":""grass_with_soil"",""deep"":""stone"",""liquid"":""fresh_clean_water"" }
+{""scaleMacro"":250.0,""macroInfluence"":0.1,""scaleBillow"":80.0,""ampBillow"":6.0,""billowExponent"":0.8,""scaleRidged"":40.0,""ampRidged"":0.0,""ridgedExponent"":1.5,""warpStrength"":10.0,""warpScale"":30.0,""baseTerrainHeight"":22.0,""waterLevel"":10,""chunkHeight"":55,""chunkWidth"":16,""scaleLayout"":35.0,""objectDensityThreshold"":0.55,""slopeMaxLimit"":1.2,""isStructuredBiome"":false,""surface"":""mossy_grass"",""surface_footstep"":""grass"",""middle"":""grass_with_soil"",""middle_footstep"":""grass"",""deep"":""stone"",""deep_footstep"":""hard"",""liquid"":""fresh_clean_water"",""liquid_footstep"":""fluid"" }
 
 World: A jagged mountain peak range with vertical stone cliffs.
 <analysis>Mountain biome requires high verticality. ampRidged=65, scaleRidged=60 for massive ranges. macroInfluence=0.85 to allow ridges to dominate high macro zones. Math: 10+10+65=85. chunkHeight(110)>97. isStructuredBiome=false (natural). OK.</analysis>
-{""scaleMacro"":200.0,""macroInfluence"":0.85,""scaleBillow"":30.0,""ampBillow"":10.0,""billowExponent"":1.1,""scaleRidged"":60.0,""ampRidged"":65.0,""ridgedExponent"":2.2,""warpStrength"":12.0,""warpScale"":25.0,""baseTerrainHeight"":10.0,""waterLevel"":5,""chunkHeight"":110,""chunkWidth"":16,""scaleLayout"":20.0,""objectDensityThreshold"":0.65,""slopeMaxLimit"":2.5,""isStructuredBiome"":false,""surface"":""grey_stone"",""middle"":""dark_stone"",""deep"":""hard_rock_with_gems"",""liquid"":""fresh_water""}
+{""scaleMacro"":200.0,""macroInfluence"":0.85,""scaleBillow"":30.0,""ampBillow"":10.0,""billowExponent"":1.1,""scaleRidged"":60.0,""ampRidged"":65.0,""ridgedExponent"":2.2,""warpStrength"":12.0,""warpScale"":25.0,""baseTerrainHeight"":10.0,""waterLevel"":5,""chunkHeight"":110,""chunkWidth"":16,""scaleLayout"":20.0,""objectDensityThreshold"":0.65,""slopeMaxLimit"":2.5,""isStructuredBiome"":false,""surface"":""grey_stone"",""surface_footstep"":""hard"",""middle"":""dark_stone"",""middle_footstep"":""hard"",""deep"":""hard_rock_with_gems"",""deep_footstep"":""hard"",""liquid"":""fresh_water"",""liquid_footstep"":""fluid""}
 ";
 
     // ── Step 4: assign size + frequency to each object ───────────────────────

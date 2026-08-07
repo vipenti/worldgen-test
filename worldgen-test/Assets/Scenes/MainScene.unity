@@ -671,6 +671,7 @@ GameObject:
   - component: {fileID: 249223930}
   - component: {fileID: 249223929}
   - component: {fileID: 249223928}
+  - component: {fileID: 249223933}
   m_Layer: 0
   m_Name: Player
   m_TagString: Untagged
@@ -792,6 +793,44 @@ Transform:
   - {fileID: 330585546}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!114 &249223933
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 249223927}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: ad2cdbb173c3e0742bdc5b428a12ee44, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::FootstepAudio
+  controller: {fileID: 249223929}
+  worldManager: {fileID: 1447165635}
+  audioSource: {fileID: 1472413733}
+  surfaceSounds:
+  - footstepType: grass
+    clips:
+    - {fileID: 8300000, guid: b43eb7d147539354ab83960f81500a98, type: 3}
+  - footstepType: hard
+    clips:
+    - {fileID: 8300000, guid: 4d541b18b3a1afc4692b75878c0303ec, type: 3}
+  - footstepType: soft
+    clips:
+    - {fileID: 8300000, guid: 0c3afed21eaf905409ef120574924b15, type: 3}
+  - footstepType: fluid
+    clips:
+    - {fileID: 8300000, guid: 429bccc42bfccaf4d80e02fe7ab8a9cc, type: 3}
+  - footstepType: snow
+    clips:
+    - {fileID: 8300000, guid: 5e8b0581f5aab7c4d9190864052cb14e, type: 3}
+  - footstepType: snow
+    clips: []
+  defaultFootstepClip: {fileID: 8300000, guid: 4d541b18b3a1afc4692b75878c0303ec, type: 3}
+  stepDistance: 2
+  pitchVariation: 0.08
+  volumeVariation: 0.1
+  baseVolume: 0.6
 --- !u!1 &257481989
 GameObject:
   m_ObjectHideFlags: 0
@@ -2151,6 +2190,11 @@ MonoBehaviour:
   cellSuperRare: 200
   cellUnique: 250
   uniqueExclusionRadius: 16
+  urbanBlockSize: 8
+  urbanStreetWidth: 3
+  urbanMajorStreetWidth: 10
+  urbanMajorRoadInterval: 4
+  urbanParkChance: 0.12
   holdChunkUpdates: 0
   mapVisualizer: {fileID: 1508923896}
   skipInitialPlayerSpawn: 0
@@ -2190,6 +2234,150 @@ MonoBehaviour:
   highDistance: 0
   mediumDistance: 0
   maxDistance: 0
+--- !u!1 &1472413731
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1472413734}
+  - component: {fileID: 1472413733}
+  - component: {fileID: 1472413732}
+  m_Layer: 0
+  m_Name: AudioManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1472413732
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1472413731}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e079d24609df4a84886158a3b670722e, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AmbientAudioController
+  generalAmbientClip: {fileID: 0}
+  volume: 0.4
+--- !u!82 &1472413733
+AudioSource:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1472413731}
+  m_Enabled: 1
+  serializedVersion: 4
+  OutputAudioMixerGroup: {fileID: 0}
+  m_audioClip: {fileID: 0}
+  m_Resource: {fileID: 0}
+  m_PlayOnAwake: 1
+  m_Volume: 1
+  m_Pitch: 1
+  Loop: 0
+  Mute: 0
+  Spatialize: 0
+  SpatializePostEffects: 0
+  Priority: 128
+  DopplerLevel: 1
+  MinDistance: 1
+  MaxDistance: 500
+  Pan2D: 0
+  rolloffMode: 0
+  BypassEffects: 0
+  BypassListenerEffects: 0
+  BypassReverbZones: 0
+  rolloffCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    - serializedVersion: 3
+      time: 1
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  panLevelCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  spreadCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 0
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+  reverbZoneMixCustomCurve:
+    serializedVersion: 2
+    m_Curve:
+    - serializedVersion: 3
+      time: 0
+      value: 1
+      inSlope: 0
+      outSlope: 0
+      tangentMode: 0
+      weightedMode: 0
+      inWeight: 0.33333334
+      outWeight: 0.33333334
+    m_PreInfinity: 2
+    m_PostInfinity: 2
+    m_RotationOrder: 4
+--- !u!4 &1472413734
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1472413731}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -30.72077, y: 0, z: -53.69543}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1508923895
 GameObject:
   m_ObjectHideFlags: 0
@@ -2493,10 +2681,10 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: house
-  stylePrompt: A beautiful, high-quality 3D render of a single stylized house. Clean,
-    minimal design, soft lighting, pastel color palette. The object has smooth, defined
-    shapes and is perfectly centered against a clean, plain, neutral background (like
-    pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.
+  stylePrompt: A beautiful, high-quality 3D render of a single realistic house. High
+    definition, soft lighting, vibrant color palette. The object is perfectly centered
+    against a clean, plain, neutral background (like pastel blue or cream). Studio
+    lighting, sharp details, a touch of cozy game aesthetic.
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   quality: 1
@@ -3080,3 +3268,4 @@ SceneRoots:
   - {fileID: 180171773}
   - {fileID: 1651245724}
   - {fileID: 14642729}
+  - {fileID: 1472413734}

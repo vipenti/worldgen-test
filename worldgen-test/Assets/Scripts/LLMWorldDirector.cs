@@ -26,15 +26,15 @@ public class LLMWorldDirector : MonoBehaviour
     public GenerateAsset generateAsset;
     public WorldManager worldManager;
 
-    static readonly (string llm, string config)[] TileFields =
+    static readonly (string llm, string config, string footstepField)[] TileFields =
     {
-        ("surface", "surfaceTileID"),
-        ("middle",  "middleTileID"),
-        ("deep",    "deepTileID"),
-        ("liquid",  "liquidTileID"),
-        ("flower",  "flowerTileID"),
-        ("bush",    "bushTileID"),
-        ("rock",    "rockTileID"),
+        ("surface", "surfaceTileID", "surface_footstep"),
+        ("middle",  "middleTileID",  "middle_footstep"),
+        ("deep",    "deepTileID",    "deep_footstep"),
+        ("liquid",  "liquidTileID",  "liquid_footstep"),
+        ("flower",  "flowerTileID",  "flower_footstep"),
+        ("bush",    "bushTileID",    "bush_footstep"),
+        ("rock",    "rockTileID",    "rock_footstep"),
     };
 
     public static event Action<string, float> OnGenerationProgress;
@@ -238,7 +238,7 @@ public class LLMWorldDirector : MonoBehaviour
 
         string paletteColorDescription = ExtractStringField(cleanJson, "palette_color_description") ?? "";
 
-        foreach (var (llmField, _) in TileFields)
+        foreach (var (llmField, _, footstepField) in TileFields)
         {
             string matName = ExtractStringField(cleanJson, llmField);
             if (string.IsNullOrEmpty(matName)) continue;
@@ -247,12 +247,20 @@ public class LLMWorldDirector : MonoBehaviour
             if (!materials.ContainsKey(matName))
             {
                 if (generateTexture == null) continue;
+
+                // La stessa risposta LLM porta anche il tipo di suono passi per questo materiale
+                // (grass/hard/soft/fluid/snow). Se manca o non è uno dei valori validi, lasciamo
+                // che TextureAtlasManager classifichi dal nome come fallback (vedi AppendAlbedo).
+                string footstepType = ExtractStringField(cleanJson, footstepField)?.Trim().ToLowerInvariant();
+                if (!string.IsNullOrEmpty(footstepType) && worldManager != null && worldManager.atlasManager != null)
+                    worldManager.atlasManager.SetPendingFootstepType(matName, footstepType);
+
                 yield return StartCoroutine(GenerateAndWait(matName, paletteColorDescription));
                 materials = LoadMaterials();
             }
 
             if (materials.TryGetValue(matName, out int id))
-                resolved[llmField] = id + 1; 
+                resolved[llmField] = id + 1;
         }
 
         string finalJson = BuildFinalJson(cleanJson, resolved);
@@ -481,17 +489,19 @@ public class LLMWorldDirector : MonoBehaviour
         string path = Path.Combine(PathSettings.GetJsonFolder(), "materials.json");
         if (!File.Exists(path)) return dict;
 
-        string json = File.ReadAllText(path).Trim().Trim('{', '}');
-        foreach (string line in json.Split(','))
+        // materials.json ora salva { "name": { "id": N, "footstepType": "..." } } (vedi
+        // TextureAtlasManager), ma resta compatibile col vecchio formato flat { "name": N }
+        // per file non ancora migrati.
+        JObject root;
+        try { root = JObject.Parse(File.ReadAllText(path)); }
+        catch (Exception) { return dict; }
+
+        foreach (var prop in root.Properties())
         {
-            string trimmed = line.Trim();
-            if (string.IsNullOrEmpty(trimmed)) continue;
-            int colon = trimmed.IndexOf(':');
-            if (colon < 0) continue;
-            string key = trimmed.Substring(0, colon).Trim().Trim('"');
-            string val = trimmed.Substring(colon + 1).Trim();
-            if (int.TryParse(val, out int id))
-                dict[key] = id;
+            int id = prop.Value.Type == JTokenType.Object
+                ? (prop.Value.Value<int?>("id") ?? -1)
+                : prop.Value.Value<int>();
+            if (id >= 0) dict[prop.Name] = id;
         }
         return dict;
     }
@@ -545,7 +555,7 @@ public class LLMWorldDirector : MonoBehaviour
             string val = ExtractRawField(llmJson, field);
             if (val != null) entries.Add($"  \"{field}\": {val}");
         }
-        foreach (var (llmField, configField) in TileFields)
+        foreach (var (llmField, configField, _) in TileFields)
         {
             if (resolved.TryGetValue(llmField, out int id))
                 entries.Add($"  \"{configField}\": {id}");

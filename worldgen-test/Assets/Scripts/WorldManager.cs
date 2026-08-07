@@ -881,6 +881,24 @@ public class WorldManager : MonoBehaviour
         return fallbackY + 1.0f;
     }
 
+    // Usato da FootstepAudio: trova il chunk sotto una posizione mondo (stessa formula di
+    // Update()/CreateChunk per la conversione posizione→coordinata chunk) e risale dal tile ID
+    // di superficie al tipo di suono passi ("grass"/"hard"/"soft"/"fluid"/"snow") tramite
+    // TextureAtlasManager. Ritorna null se il chunk non è ancora caricato o il tile non è mappato.
+    public string GetFootstepTypeAtWorldPos(Vector3 worldPos)
+    {
+        if (targetConfig == null || targetConfig.chunkWidth <= 0 || atlasManager == null) return null;
+
+        int cx = Mathf.FloorToInt(worldPos.x / targetConfig.chunkWidth);
+        int cz = Mathf.FloorToInt(worldPos.z / targetConfig.chunkWidth);
+        if (!activeChunks.TryGetValue(new Vector2Int(cx, cz), out Chunk chunk) || chunk == null) return null;
+
+        byte tileId = chunk.GetSurfaceTileIdAtWorld(worldPos.x, worldPos.z);
+        if (tileId == 0) return null;
+
+        return atlasManager.GetFootstepTypeForTileId(tileId);
+    }
+
     void SpawnBillboard(string objName, Vector3 pos, Transform parent, float scaleFactor = 1f, bool visible = true)
     {
         var quad = GameObject.CreatePrimitive(PrimitiveType.Quad);

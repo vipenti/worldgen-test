@@ -610,6 +610,18 @@ public class Chunk : MonoBehaviour
         return map[x, y, z] == 0;
     }
 
+    // Usato dal sistema di passi (FootstepAudio): restituisce il tile ID del blocco calpestabile
+    // (la superficie, non l'aria sopra) sotto una qualunque posizione mondo che ricada dentro
+    // questo chunk. HeightMap[x,z] è già la colonna dell'altezza di superficie generata in
+    // GenerateMapDataInterpolated, quindi non serve un raycast fisico.
+    public byte GetSurfaceTileIdAtWorld(float worldX, float worldZ)
+    {
+        int lx = Mathf.Clamp(Mathf.FloorToInt(worldX - transform.position.x), 0, chunkWidth - 1);
+        int lz = Mathf.Clamp(Mathf.FloorToInt(worldZ - transform.position.z), 0, chunkWidth - 1);
+        int y  = Mathf.Clamp(HeightMap[lx, lz], 0, chunkHeight - 1);
+        return map[lx, y, lz];
+    }
+
     void CreateFace(Vector3 pos, Vector3 direction, byte blockID)
     {
         int vCount = vertices.Count;

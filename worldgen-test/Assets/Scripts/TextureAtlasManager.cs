@@ -4,10 +4,20 @@ using System.Collections;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
+using Newtonsoft.Json.Linq;
 
 #if UNITY_EDITOR
 using UnityEditor;
 #endif
+
+// Voce di registro per un materiale: lo slot nell'atlas texture e il tipo di suono
+// da usare per i passi quando il player cammina su questo materiale.
+[Serializable]
+public class MaterialInfo
+{
+    public int id;
+    public string footstepType;
+}
 
 public class TextureAtlasManager : MonoBehaviour
 {
@@ -21,8 +31,43 @@ public class TextureAtlasManager : MonoBehaviour
     private int count = 0;
     private int Rows => Mathf.CeilToInt((float)maxTextures / columns);
 
-    private Dictionary<string, int> registry = new Dictionary<string, int>();
+    private Dictionary<string, MaterialInfo> registry = new Dictionary<string, MaterialInfo>();
     string MaterialsPath => Path.Combine(PathSettings.GetJsonFolder(), "materials.json");
+
+    // Categorie di suono passi supportate: "grass", "hard", "soft", "fluid", "snow".
+    // Classificazione a parole chiave sul nome del materiale invece di un'altra chiamata LLM
+    // (evita latenza extra e rischio di sforare il context, già capitato in passato).
+    // "hard" è il default per tutto ciò che non matcha nessuna parola chiave (pietra, metallo,
+    // cemento, ecc.).
+    static readonly (string keyword, string type)[] FootstepKeywords =
+    {
+        ("grass", "grass"), ("fern", "grass"), ("bush", "grass"), ("shrub", "grass"), ("moss", "grass"),
+        ("snow", "snow"), ("ice", "snow"), ("frozen", "snow"),
+        ("water", "fluid"), ("lava", "fluid"), ("molten", "fluid"), ("mud", "fluid"), ("swamp", "fluid"),
+        ("sand", "soft"), ("dirt", "soft"), ("earth", "soft"), ("soil", "soft"), ("clay", "soft"), ("terracotta", "soft"),
+    };
+
+    public static readonly HashSet<string> ValidFootstepTypes = new HashSet<string> { "grass", "hard", "soft", "fluid", "snow" };
+
+    public static string ClassifyFootstepType(string materialName)
+    {
+        string n = materialName.ToLowerInvariant();
+        foreach (var (keyword, type) in FootstepKeywords)
+            if (n.Contains(keyword)) return type;
+        return "hard";
+    }
+
+    // Popolato da LLMWorldDirector con il footstepType scelto dall'LLM stesso (parte della
+    // stessa risposta che inventa il nome del materiale) PRIMA che la texture venga generata.
+    // AppendAlbedo lo consuma quando il materiale viene registrato; se assente o non valido,
+    // si ricade sulla classificazione a parole chiave.
+    private readonly Dictionary<string, string> _pendingFootstepTypes = new Dictionary<string, string>();
+
+    public void SetPendingFootstepType(string materialName, string footstepType)
+    {
+        if (string.IsNullOrEmpty(materialName)) return;
+        _pendingFootstepTypes[materialName] = footstepType;
+    }
 
     void Awake()
     {
@@ -67,7 +112,13 @@ public class TextureAtlasManager : MonoBehaviour
     {
         int slot = AppendToAtlas(tex, ref atlasAlbedo, "TextureAtlas.png", trackCount: true);
         if (slot < 0) return;
-        registry[materialName] = slot;
+
+        string footstepType = (_pendingFootstepTypes.TryGetValue(materialName, out var pending) && ValidFootstepTypes.Contains(pending))
+            ? pending
+            : ClassifyFootstepType(materialName);
+        _pendingFootstepTypes.Remove(materialName);
+
+        registry[materialName] = new MaterialInfo { id = slot, footstepType = footstepType };
         SaveRegistry();
     }
 
@@ -127,20 +178,44 @@ public class TextureAtlasManager : MonoBehaviour
     {
         if (!File.Exists(MaterialsPath)) return;
 
-        string json = File.ReadAllText(MaterialsPath).Trim().Trim('{', '}');
-        foreach (string line in json.Split(','))
+        bool migratedFromOldFormat = false;
+        JObject root;
+        try { root = JObject.Parse(File.ReadAllText(MaterialsPath)); }
+        catch (Exception e)
         {
-            string trimmed = line.Trim();
-            if (string.IsNullOrEmpty(trimmed)) continue;
-            int colon = trimmed.IndexOf(':');
-            if (colon < 0) continue;
-            string key = trimmed.Substring(0, colon).Trim().Trim('"');
-            string val = trimmed.Substring(colon + 1).Trim();
-            if (int.TryParse(val, out int id))
-                registry[key] = id;
+            Debug.LogError($"[TextureAtlasManager] materials.json malformato, registry vuota: {e.Message}");
+            return;
         }
+
+        foreach (var prop in root.Properties())
+        {
+            string materialName = prop.Name;
+            if (prop.Value.Type == JTokenType.Object)
+            {
+                // Formato nuovo: { "id": 0, "footstepType": "grass" }
+                int id = prop.Value.Value<int?>("id") ?? -1;
+                if (id < 0) continue;
+                string footstepType = prop.Value.Value<string>("footstepType");
+                if (string.IsNullOrEmpty(footstepType)) footstepType = ClassifyFootstepType(materialName);
+                registry[materialName] = new MaterialInfo { id = id, footstepType = footstepType };
+            }
+            else
+            {
+                // Formato legacy: "materialName": id (solo un int) — migra al volo.
+                int id = prop.Value.Value<int>();
+                registry[materialName] = new MaterialInfo { id = id, footstepType = ClassifyFootstepType(materialName) };
+                migratedFromOldFormat = true;
+            }
+        }
+
         count = registry.Count;
         Debug.Log($"[TextureAtlasManager] Registry caricata: {count} materiali.");
+
+        if (migratedFromOldFormat)
+        {
+            Debug.Log("[TextureAtlasManager] materials.json in formato legacy: migrazione al nuovo formato con footstepType.");
+            SaveRegistry();
+        }
     }
 
     void SaveRegistry()
@@ -151,7 +226,7 @@ public class TextureAtlasManager : MonoBehaviour
         int i = 0;
         foreach (var kvp in registry)
         {
-            sb.Append($"  \"{kvp.Key}\": {kvp.Value}");
+            sb.Append($"  \"{kvp.Key}\": {{ \"id\": {kvp.Value.id}, \"footstepType\": \"{kvp.Value.footstepType}\" }}");
             if (i < registry.Count - 1) sb.Append(",");
             sb.AppendLine();
             i++;
@@ -166,13 +241,23 @@ public class TextureAtlasManager : MonoBehaviour
 
     public bool HasMaterials => registry.Count > 0;
 
+    // Usato da FootstepAudio per risalire dal tile ID del voxel (surfaceTileID/middleTileID/...
+    // di un BiomeConfig, che vale sempre id+1 — vedi LLMWorldDirector.ProcessResponseCoroutine)
+    // al tipo di suono passi da riprodurre. Ritorna null se il tile ID non è mappato (es. 0 = aria).
+    public string GetFootstepTypeForTileId(int tileId)
+    {
+        foreach (var kvp in registry)
+            if (kvp.Value.id + 1 == tileId) return kvp.Value.footstepType;
+        return null;
+    }
+
     // Ricostruisce l'atlas dai file PNG individuali già salvati — non chiama il server
     public void RebuildAtlasFromFiles()
     {
         string dir = PathSettings.GetTextureFolder();
 
-        var sorted = new List<KeyValuePair<string, int>>(registry);
-        sorted.Sort((a, b) => a.Value.CompareTo(b.Value));
+        var sorted = new List<KeyValuePair<string, MaterialInfo>>(registry);
+        sorted.Sort((a, b) => a.Value.id.CompareTo(b.Value.id));
 
         Texture2D newAlbedo = CreateBlankAtlas();
         Texture2D newNormal = CreateBlankAtlas();
@@ -180,7 +265,7 @@ public class TextureAtlasManager : MonoBehaviour
 
         foreach (var kvp in sorted)
         {
-            int slot = kvp.Value;
+            int slot = kvp.Value.id;
             int col  = slot % columns;
             int row  = slot / columns;
             int x    = col * textureSize;
@@ -241,8 +326,8 @@ public class TextureAtlasManager : MonoBehaviour
         }
 
         // Ordina per ID per riempire gli slot nell'ordine corretto
-        var sorted = new List<KeyValuePair<string, int>>(registry);
-        sorted.Sort((a, b) => a.Value.CompareTo(b.Value));
+        var sorted = new List<KeyValuePair<string, MaterialInfo>>(registry);
+        sorted.Sort((a, b) => a.Value.id.CompareTo(b.Value.id));
 
         // Reset completo dello stato in-memory
         count       = 0;
