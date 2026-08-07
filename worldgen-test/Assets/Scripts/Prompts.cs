@@ -103,8 +103,8 @@ EXISTING ASSETS (You MUST prioritize reusing these if they fit the theme perfect
 " + existingObjects + @"
 
 STRICT ARCHITECTURAL & MODULARITY RULES:
-1. THINK IN HIERARCHIES: You must plan the environment from massive architectural focal points down to ground-level props. Do not skip large buildings.
-2. NO TERRAIN TILES: Every item must be a standalone 3-dimensional model generated ABOVE the ground. No flat pavement, grass tiles, or road blocks.
+1. THINK IN HIERARCHIES: You must plan the environment from massive architectural focal points down to ground-level props. Do not skip large buildings. For modern, futuristic, or sci-fi cities, Structures MUST be real towering buildings (e.g. skyscraper, tower, dome habitat) — never a ground or pavement material.
+2. NO TERRAIN TILES: Every item must be a standalone 3-dimensional model generated ABOVE the ground. No flat pavement, grass tiles, or road blocks. FORBIDDEN examples: 'concrete slab', 'asphalt tile', 'pavement block', 'road tile' — these are ground textures, not standalone assets, and must never appear in the output list.
 3. THE SINGULAR MANDATE (NO CLUSTERS): Every asset MUST be a single, standalone, isolated item. You are strictly FORBIDDEN from using plural forms or collective words. Do NOT use words like: 'clump', 'cluster', 'patch', 'pile', 'stack', 'group', 'set', 'bunch', 'massive', 'collection', or plurals like 'crates', 'barrels', 'stones'. (e.g., never list 'pile of chairs', list 'wooden chair' instead; never list 'bushes', list 'small bush' instead).
 4. GENERIC & REUSABLE: Keep descriptions short, lowercase, and extremely straightforward (e.g., 'medieval house', 'pine tree', 'stone'). Avoid overly complex or specific adjectives to maximize asset reusability across multiple worlds. Always include basic rocks or stones in natural, rural, or outdoor biomes.
 6. NUMBER: You MUST produce a final list containing exactly 10 to 15 assets total in the JSON array.
@@ -172,29 +172,27 @@ Output:
   ""wooden stick""
 ]
 
-User description: A flat open grassland featuring a colorful traveling circus area with a main festival ground, scattered props, and animal wagons.
+User description: A gleaming futuristic city with towering skyscrapers, humanoid robots patrolling grid streets, and glowing neon signage.
 Output:
 <analysis>
-- Structures: grand circus tent
-- Buildings/Houses: wooden ticket booth, iron cage wagon
-- Vegetation: meadow tree, green bush, red flower
-- Environmental Props: circus elephant, wooden chair, decorative flag pole, wooden table
-- Micro Details/Clutter: circus ticket, juggling club, small stone
+- Structures: glass skyscraper, corporate tower, holographic billboard
+- Buildings/Houses: modular habitat pod, robotic maintenance depot
+- Vegetation: none
+- Environmental Props: humanoid robot, patrol drone, hover car, street lamp
+- Micro Details/Clutter: metal crate, discarded wire
 </analysis>
 [
-  ""grand circus tent"",
-  ""wooden ticket booth"",
-  ""iron cage wagon"",
-  ""meadow tree"",
-  ""green bush"",
-  ""red flower"",
-  ""circus elephant"",
-  ""wooden chair"",
-  ""decorative flag pole"",
-  ""wooden table"",
-  ""circus ticket"",
-  ""juggling club"",
-  ""small stone""
+  ""glass skyscraper"",
+  ""corporate tower"",
+  ""holographic billboard"",
+  ""modular habitat pod"",
+  ""robotic maintenance depot"",
+  ""humanoid robot"",
+  ""patrol drone"",
+  ""hover car"",
+  ""street lamp"",
+  ""metal crate"",
+  ""discarded wire""
 ]";
 
 // ── Step 4: assign size, frequency, type and placement priority ──────────

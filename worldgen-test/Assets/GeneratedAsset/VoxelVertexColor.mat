@@ -25,9 +25,9 @@ Material:
     m_TexEnvs: []
     m_Ints: []
     m_Floats:
-    - _AmbientBoost: 0.85
-    - _Contrast: 1.83
-    - _Saturation: 1.95
+    - _AmbientBoost: 1.12
+    - _Contrast: 1.66
+    - _Saturation: 2.02
     m_Colors: []
   m_BuildTextureStacks: []
   m_AllowLocking: 1

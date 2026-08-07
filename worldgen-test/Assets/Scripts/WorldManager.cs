@@ -587,12 +587,12 @@ public class WorldManager : MonoBehaviour
             if (sx.isStreet || sz.isStreet) excluded[x, z] = true;
         }
 
-        var buildingNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1).ToList();
+        var buildingNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1 && !LooksLikeGroundTile(n)).ToList();
         var streetPropNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 2).ToList();
         var decorNames3 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 3).ToList();
         var decorNames4 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 4).ToList();
 
-        if (buildingNames.Count == 0) return; // No structures registered yet for this biome.
+        if (buildingNames.Count == 0) return; // No real structures registered yet for this biome.
 
         var placedStructures = new List<StructureAnchor>();
         int blockSize = gridParams.blockSize;
@@ -613,7 +613,7 @@ public class WorldManager : MonoBehaviour
             if (isPark) continue;
 
             string bName = buildingNames[Mathf.Abs(lotHash) % buildingNames.Count];
-            float bScale = _objectScaleFactors.TryGetValue(bName, out float bsf) ? bsf : scaleBig;
+            float bScale = GetBuildingScaleForLot(bName, blockSize);
             float bGroundY = GetGroundY(lotCenterX, lotCenterZ, chunk.HeightMap[lcx, lcz]);
             float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
 
@@ -749,6 +749,47 @@ public class WorldManager : MonoBehaviour
         majorStreetWidth = Mathf.Max(urbanStreetWidth, urbanMajorStreetWidth),
         majorInterval = Mathf.Max(1, urbanMajorRoadInterval)
     };
+
+    // Caps a building's placement scale so it physically fits its lot, instead of blindly
+    // applying the size-category multiplier (e.g. scaleHuge=15). Voxel meshes are built at
+    // 1 world unit per voxel with no normalization (see VoxelRenderer.BuildOptimizedMesh) — a
+    // richly detailed "huge" building can already be dozens of units across natively, so
+    // multiplying that by 15 can produce a structure large enough to bury several lots and the
+    // streets between them. Falls back to the plain category scale when the mesh isn't cached
+    // yet (e.g. still pending generation), same as before this fix.
+    float GetBuildingScaleForLot(string name, int blockSize)
+    {
+        float categoryScale = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleBig;
+
+        EnsureMeshCached(name);
+        if (!VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh mesh) || mesh == null)
+            return categoryScale;
+
+        // Use the largest of the three local-space dimensions as a rotation-agnostic, worst-case
+        // footprint estimate (the -90° X rotation applied at instantiation swaps which local axis
+        // ends up horizontal, so no single axis pair is safe to assume).
+        Vector3 size = mesh.bounds.size;
+        float nativeSpan = Mathf.Max(size.x, Mathf.Max(size.y, size.z));
+        if (nativeSpan < 0.01f) return categoryScale;
+
+        float maxFootprint = blockSize * 0.85f; // small margin so the building doesn't kiss the street
+        float fittedScale = maxFootprint / nativeSpan;
+        return Mathf.Min(categoryScale, fittedScale);
+    }
+
+    // Safety net against LLM mislabeling: the asset-list prompt explicitly forbids ground/
+    // pavement tiles as assets, but a local model can still slip and tag one "structure"
+    // (priority 1) — placing it at every lot would fill the city with flat tiles instead of
+    // buildings. Keyword-filter those out of the building pool rather than trust the label alone.
+    static readonly string[] GroundTileKeywords = { "tile", "slab", "pavement", "sidewalk", "road", "asphalt", "path" };
+
+    static bool LooksLikeGroundTile(string name)
+    {
+        string n = name.ToLowerInvariant();
+        foreach (var kw in GroundTileKeywords)
+            if (n.Contains(kw)) return true;
+        return false;
+    }
 
     void InstantiateAssetPrimitive(string name, float wx, float groundY, float wz, float scaleFactor, Transform parent, float rotZ = 0f)
     {
