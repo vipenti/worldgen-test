@@ -1,12 +1,14 @@
 {
-  "oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "pine tree": { "id": 2, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "fern": { "id": 65, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "wild flower": { "id": 71, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "small bush": { "id": 66, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "big grey rock": { "id": 60, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "small rock": { "id": 63, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "fallen log": { "id": 68, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "pinecone": { "id": 69, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "wooden stick": { "id": 70, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
+  "desert pyramid": { "id": 14, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
+  "desert sphinx": { "id": 15, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
+  "merchant tent": { "id": 16, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "giant cactus": { "id": 12, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "desert palm tree": { "id": 10, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "dead bush cluster": { "id": 11, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "desert well": { "id": 13, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "large rock": { "id": 94, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "desert camel": { "id": 17, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "wooden crate": { "id": 85, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "discarded wire": { "id": 114, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
 }

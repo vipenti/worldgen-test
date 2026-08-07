@@ -84,8 +84,23 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Fraction of lots left empty as a small park/plaza instead of holding a building.")]
     public float urbanParkChance = 0.12f;
 
-    // FLAG DI SICUREZZA: Blocca gli aggiornamenti grafici del mondo durante la generazione background
-    [HideInInspector] public bool holdChunkUpdates = false;
+    // FLAG DI SICUREZZA: mentre è true, la pipeline LLM ha già ricaricato in memoria le scale/size/
+    // prefab del NUOVO bioma ma il terreno (targetConfig) è ancora quello VECCHIO — un chunk creato
+    // in questa finestra non deve piazzare decorazioni (userebbero dati mischiati). Lo streaming dei
+    // chunk stessi (terreno + collider) NON viene più bloccato da questo flag: bloccarlo causava un
+    // bug per cui il player sprofondava camminando durante la generazione, perché i chunk nuovi/
+    // lontani smettevano di essere creati/riattivati (vedi CreateChunk e FlushPendingDecorations).
+    private bool _holdChunkUpdates = false;
+    public bool holdChunkUpdates
+    {
+        get => _holdChunkUpdates;
+        set
+        {
+            bool wasHeld = _holdChunkUpdates;
+            _holdChunkUpdates = value;
+            if (wasHeld && !value) FlushPendingDecorations();
+        }
+    }
 
     private Dictionary<string, GameObject> _readyPrefabs = new Dictionary<string, GameObject>();
     private List<string> _pendingObjectNames = new List<string>();
@@ -223,8 +238,9 @@ public class WorldManager : MonoBehaviour
 
     void Update()
     {
-        // Se la pipeline sta pre-allocando gli asset in RAM, congeliamo l'aggiornamento dei chunk
-        if (holdChunkUpdates) return;
+        // Nota: holdChunkUpdates NON blocca più lo streaming/collider dei chunk (vedi commento
+        // sul campo) — solo il piazzamento delle decorazioni sui chunk creati durante la finestra
+        // di pre-caricamento, gestito in CreateChunk/FlushPendingDecorations.
 
         // Gestione transizione basata sul movimento del giocatore
         if (isPlayerInTransitionHUD)
@@ -250,7 +266,15 @@ public class WorldManager : MonoBehaviour
         int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
         int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
         Vector2Int currentPlayerChunk = new Vector2Int(pX, pZ);
-        
+
+        // Safety net anti-sprofondamento: il collider dei chunk viene normalmente (ri)attivato
+        // solo dentro UpdateChunks(), che scatta solo al cambio di chunk/rotazione camera — c'era
+        // quindi una finestra di uno o più frame in cui il player poteva già trovarsi fisicamente
+        // dentro un chunk il cui collider non era ancora stato attivato (race condition,
+        // indipendente dal fix di holdChunkUpdates). Questo garantisce ogni frame, senza gating,
+        // che i 9 chunk attorno al player abbiano sempre il collider pronto.
+        EnsureCloseChunkCollidersActive(pX, pZ);
+
         Quaternion currentCamRot = Camera.main != null ? Camera.main.transform.rotation : player.rotation;
 
         if (currentPlayerChunk != lastPlayerChunk || Quaternion.Angle(currentCamRot, lastCameraRotation) > 4f)
@@ -273,6 +297,23 @@ public class WorldManager : MonoBehaviour
             liquidTileID = 13, waterLevel = 5,
             octaves = 4, ridgeFactor = 0f, warpStrength = 0.2f
         };
+    }
+
+    // Chiamato ogni frame da Update() senza alcun gating (a differenza di UpdateChunks). Attiva
+    // solo (mai disattiva: quello resta gestito dal pass più costoso in UpdateChunks) il collider
+    // dei chunk nella zona 3x3 attorno al player. Costa poco (9 lookup in dizionario, quasi sempre
+    // no-op grazie al controllo hasColliderBuilt dentro EnsureColliderState) ma chiude la finestra
+    // di race condition che causava lo sprofondamento nel terreno.
+    void EnsureCloseChunkCollidersActive(int pX, int pZ)
+    {
+        for (int x = -1; x <= 1; x++)
+        {
+            for (int z = -1; z <= 1; z++)
+            {
+                if (activeChunks.TryGetValue(new Vector2Int(pX + x, pZ + z), out Chunk chunk) && chunk != null)
+                    chunk.EnsureColliderState(true);
+            }
+        }
     }
 
     void UpdateChunks()
@@ -397,7 +438,15 @@ public class WorldManager : MonoBehaviour
             );
             activeChunks.Add(coord, chunkScript);
 
-            if (isTransitioning)
+            if (holdChunkUpdates)
+            {
+                // Pipeline in corso: i dizionari di scale/size/prefab in memoria sono già quelli
+                // del nuovo bioma ma questo chunk usa ancora targetConfig vecchio — decorarlo ora
+                // userebbe dati mischiati. Il terreno e il collider sono già a posto (Initialize
+                // sopra li ha già generati), rimandiamo solo il piazzamento oggetti a dopo.
+                _pendingDecorationChunks.Add(coord);
+            }
+            else if (isTransitioning)
             {
                 if (t <= 0f)
                 {
@@ -421,6 +470,49 @@ public class WorldManager : MonoBehaviour
                 chunkIsNewBiome[coord] = true;
             }
         }
+    }
+
+    // Chunk creati mentre holdChunkUpdates era true (terreno+collider ok, decorazioni rimandate).
+    private readonly List<Vector2Int> _pendingDecorationChunks = new List<Vector2Int>();
+
+    // Chiamato automaticamente quando holdChunkUpdates torna false (vedi il setter della proprietà):
+    // a questo punto isTransitioning/targetConfig/oldConfig sono di nuovo coerenti tra loro, quindi
+    // piazza le decorazioni che erano state rimandate per ogni chunk ancora vivo.
+    void FlushPendingDecorations()
+    {
+        if (_pendingDecorationChunks.Count == 0) return;
+
+        foreach (var coord in _pendingDecorationChunks)
+        {
+            if (!activeChunks.TryGetValue(coord, out Chunk chunk) || chunk == null) continue;
+
+            Vector3 worldPos = new Vector3(coord.x * targetConfig.chunkWidth, 0, coord.y * targetConfig.chunkWidth);
+
+            if (isTransitioning)
+            {
+                float t = GetChunkTransitionT(coord);
+                if (t <= 0f)
+                {
+                    SpawnOldLayoutObjects(chunk, worldPos, oldConfig);
+                    chunkIsNewBiome[coord] = false;
+                }
+                else if (t >= 1f)
+                {
+                    SpawnLayoutObjects(chunk, worldPos, targetConfig);
+                    chunkIsNewBiome[coord] = true;
+                }
+                else
+                {
+                    chunkIsNewBiome[coord] = false;
+                }
+            }
+            else
+            {
+                SpawnLayoutObjects(chunk, worldPos, targetConfig);
+                chunkIsNewBiome[coord] = true;
+            }
+        }
+        _pendingDecorationChunks.Clear();
     }
 
     void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
@@ -839,22 +931,41 @@ public class WorldManager : MonoBehaviour
     // anche un eventuale MeshCollider ereditato da un prefab generato prima di questa modifica.
     void ApplySizeCollider(GameObject obj, string sizeStr)
     {
+        // big/huge (alberi, edifici, strutture irregolari): il BoxCollider era troppo approssimato
+        // — il bounding box include tutto lo spazio vuoto tra i rami/sporgenze e impediva di
+        // passare tra gli alberi. Torniamo al MeshCollider, più preciso (nessun Rigidbody non
+        // kinematico su questi oggetti quindi non serve marcarlo convex).
+        // normal (fontane, carretti, oggetti più semplici/compatti): resta il BoxCollider, più
+        // economico e comunque una buona approssimazione per forme meno irregolari.
+        // tiny/small: nessun collider.
+        if (sizeStr == "huge" || sizeStr == "big")
+        {
+            if (obj.GetComponent<BoxCollider>() is BoxCollider oldBox) Destroy(oldBox);
+            if (obj.GetComponent<MeshCollider>() != null) return; // già presente
+
+            var mf = obj.GetComponent<MeshFilter>();
+            if (mf == null || mf.sharedMesh == null) return;
+
+            obj.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
+            return;
+        }
+
         var oldMc = obj.GetComponent<MeshCollider>();
         if (oldMc != null) Destroy(oldMc);
 
-        if (sizeStr != "huge" && sizeStr != "big" && sizeStr != "normal") return;
+        if (sizeStr != "normal") return;
         // Nota: Destroy() è differito a fine frame, quindi subito dopo il vecchio MeshCollider
         // esiste ancora — controlliamo solo se un BoxCollider (quello che aggiungiamo noi) è già
         // presente, non un generico Collider, altrimenti il MeshCollider "in coda per la distruzione"
         // farebbe uscire la funzione prima di aggiungere il BoxCollider e l'oggetto resterebbe senza.
         if (obj.GetComponent<BoxCollider>() != null) return; // già presente
 
-        var mf = obj.GetComponent<MeshFilter>();
-        if (mf == null || mf.sharedMesh == null) return;
+        var mf2 = obj.GetComponent<MeshFilter>();
+        if (mf2 == null || mf2.sharedMesh == null) return;
 
         var box = obj.AddComponent<BoxCollider>();
-        box.center = mf.sharedMesh.bounds.center;
-        box.size = mf.sharedMesh.bounds.size;
+        box.center = mf2.sharedMesh.bounds.center;
+        box.size = mf2.sharedMesh.bounds.size;
     }
 
     float GetRenderDistance(string assetName)
