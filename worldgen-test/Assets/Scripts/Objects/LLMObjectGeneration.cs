@@ -25,7 +25,19 @@ public class LLMObjectGeneration : MonoBehaviour
     public string serverAddress = "http://25.18.55.60:5000";
 
     [Header("Output")]
+    [Tooltip("Cartella dove salvare le immagini generate. Lascia vuoto (o \"Assets/...\") per usare " +
+             "PathSettings.GetImagesFolder() — necessario perché in build \"Assets/...\" non esiste/non " +
+             "è scrivibile: la scrittura falliva silenziosamente e bloccava per sempre tutta la Coda B " +
+             "(la coroutine si fermava su un'eccezione non gestita, senza mai passare all'oggetto successivo).")]
     public string outputFolder = "Assets/GeneratedImages";
+
+    // Percorso realmente usato: se il campo è vuoto o punta ancora al vecchio default valido solo in
+    // Editor ("Assets/..."), lo ridirigiamo automaticamente a PathSettings.GetImagesFolder() — così
+    // funziona anche su scene già salvate con il vecchio valore, senza dover ritoccare l'Inspector.
+    string EffectiveOutputFolder =>
+        string.IsNullOrEmpty(outputFolder) || outputFolder.StartsWith("Assets")
+            ? PathSettings.GetImagesFolder()
+            : outputFolder;
 
     [Header("3D Generation")]
     public LLM3DGeneration llm3DGeneration;
@@ -94,11 +106,25 @@ public class LLMObjectGeneration : MonoBehaviour
             yield break;
         }
 
-        if (!Directory.Exists(outputFolder))
-            Directory.CreateDirectory(outputFolder);
-        string outputPath = Path.Combine(outputFolder, $"{object_name}.png");
-        File.WriteAllBytes(outputPath, imageData);
-        Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
+        // Il PNG salvato qui è solo un debug/cache artifact (non serve al resto della pipeline: la
+        // mesh 3D parte comunque da imageData già in memoria pochi righe sotto). Se la scrittura
+        // fallisse per qualunque motivo (permessi, disco pieno, cartella non valida) non deve
+        // bloccare tutta la generazione — prima di questo try/catch un'eccezione qui lasciava
+        // IsGenerating bloccato a true per sempre, e con esso l'intera Coda A/B che segue in
+        // GenerateAsset.GenerateList (sequenziale: un item bloccato blocca tutti i successivi).
+        try
+        {
+            string folder = EffectiveOutputFolder;
+            if (!Directory.Exists(folder))
+                Directory.CreateDirectory(folder);
+            string outputPath = Path.Combine(folder, $"{object_name}.png");
+            File.WriteAllBytes(outputPath, imageData);
+            Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"LLMObjectGeneration: impossibile salvare il PNG di debug per '{object_name}' ({ex.Message}), proseguo comunque con la generazione 3D.");
+        }
 
         OnImageReady?.Invoke(object_name, imageData);
         llm3DGeneration?.GenerateFromBytes(imageData, object_name);
@@ -126,9 +152,19 @@ public class LLMObjectGeneration : MonoBehaviour
 
     IEnumerator Run3DOnly(byte[] imageBytes)
     {
-        if (!Directory.Exists(outputFolder))
-            Directory.CreateDirectory(outputFolder);
-        File.WriteAllBytes(Path.Combine(outputFolder, $"{object_name}.png"), imageBytes);
+        // Vedi commento in PostRequest: PNG di debug non essenziale, un fallimento qui non deve
+        // bloccare per sempre IsGenerating (e con esso il resto della coda).
+        try
+        {
+            string folder = EffectiveOutputFolder;
+            if (!Directory.Exists(folder))
+                Directory.CreateDirectory(folder);
+            File.WriteAllBytes(Path.Combine(folder, $"{object_name}.png"), imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"LLMObjectGeneration: impossibile salvare il PNG di debug per '{object_name}' ({ex.Message}), proseguo comunque con la generazione 3D.");
+        }
 
         llm3DGeneration?.GenerateFromBytes(imageBytes, object_name);
         if (llm3DGeneration != null)

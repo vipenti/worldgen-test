@@ -29,4 +29,13 @@ public static class PathSettings
         return Path.Combine(Application.persistentDataPath, "Json", "objects");
 #endif
     }
+
+    public static string GetImagesFolder()
+    {
+#if UNITY_EDITOR
+        return Path.Combine(Application.dataPath, "GeneratedImages");
+#else
+        return Path.Combine(Application.persistentDataPath, "GeneratedImages");
+#endif
+    }
 }

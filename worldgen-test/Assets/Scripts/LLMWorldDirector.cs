@@ -57,6 +57,12 @@ public class LLMWorldDirector : MonoBehaviour
         // Ci agganciamo all'evento di sblocco della Coda A degli asset critici
         GenerateAsset.OnCriticalAssetsReady += TriggerTerrainTransition;
 
+        // inputField è null nella scena di prima generazione (lì il testo arriva già via
+        // SendRequestToLLM chiamato direttamente da FirstGeneration, senza passare da un campo di
+        // testo in scena) — senza questo controllo andava in NullReferenceException ad ogni
+        // OnEnable/Update/OnDisable per tutta la durata della prima generazione (build e Editor).
+        if (inputField == null) return;
+
         inputField.onSelect.AddListener(OnInputSelected);
         inputField.onDeselect.AddListener(OnInputDeselected);
         inputField.onSubmit.AddListener(OnInputSubmit);
@@ -65,6 +71,8 @@ public class LLMWorldDirector : MonoBehaviour
     void OnDisable()
     {
         GenerateAsset.OnCriticalAssetsReady -= TriggerTerrainTransition;
+
+        if (inputField == null) return;
 
         inputField.onSelect.RemoveListener(OnInputSelected);
         inputField.onDeselect.RemoveListener(OnInputDeselected);
@@ -93,6 +101,7 @@ public class LLMWorldDirector : MonoBehaviour
 
     void Update()
     {
+        if (inputField == null) return;
         if (Keyboard.current.tKey.wasPressedThisFrame && !inputField.isFocused)
         {
             inputField.ActivateInputField();
