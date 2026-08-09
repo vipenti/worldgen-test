@@ -23,5 +23,11 @@
   "dark_wet_sand": { "id": 21, "footstepType": "soft" },
   "grey_concrete_pavement": { "id": 22, "footstepType": "hard" },
   "dark_damp_soil": { "id": 23, "footstepType": "soft" },
-  "blackened_turf": { "id": 24, "footstepType": "soft" }
+  "blackened_turf": { "id": 24, "footstepType": "soft" },
+  "purple_moss": { "id": 25, "footstepType": "grass" },
+  "dark_loam": { "id": 26, "footstepType": "soft" },
+  "stone": { "id": 27, "footstepType": "hard" },
+  "iridescent_magic_liquid": { "id": 28, "footstepType": "fluid" },
+  "glowing_fungal_turf": { "id": 29, "footstepType": "grass" },
+  "small_glowing_mushroom": { "id": 30, "footstepType": "soft" }
 }
