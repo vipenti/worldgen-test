@@ -316,16 +316,15 @@ public class LLMWorldDirector : MonoBehaviour
         var resPriority = new string[] { "" };
         yield return StartCoroutine(CallLLM(Prompts.PrioritySystem(nameList), worldDesc, raw => { resPriority[0] = raw; }, disableThinking: true));
 
-        // Salva i dati dei metadati su disco
+        // Salva i dati dei metadati su disco (current_objects.json diventa il registro del NUOVO
+        // bioma). Da qui in poi la pipeline asset lavora su questo registro in background, ma il
+        // mondo attivo (WorldManager._readyPrefabs/_pendingObjectNames/ecc.) resta quello VECCHIO,
+        // invariato, finché GenerateAsset non segnala che gli asset critici sono pronti — vedi
+        // TriggerTerrainTransition, che fa lo swap atomico in un colpo solo. Nessun ricaricamento
+        // anticipato qui: era questo a causare mondo vuoto/oggetti sparenti vicino al giocatore
+        // durante la generazione (lo stato "vivo" passava al nuovo registro molto prima che i
+        // relativi asset esistessero davvero).
         ParseAndSaveFourPassMetadata(resSize[0], resFreq[0], resType[0], resPriority[0], currentObjects);
-
-        // MODIFICA PRO-SYNCHRONIZATION: Congeliamo immediatamente gli aggiornamenti dei chunk ed allineiamo la memoria dei prefabbricati
-        if (worldManager != null)
-        {
-            worldManager.holdChunkUpdates = true; 
-            worldManager.BackupOldBiome(); // Salva lo stato dei vecchi prefabbricati prima di ricaricare i nuovi
-            worldManager.ReloadBiomePrefabs(); // Forza WorldManager ad imparare subito le scale corrette dei nuovi oggetti!
-        }
 
         OnGenerationProgress?.Invoke("Pre-allocating biome guardian meshes...", 0.65f);
         if (currentObjects != null && currentObjects.Count > 0)
@@ -341,11 +340,10 @@ public class LLMWorldDirector : MonoBehaviour
         Debug.Log("<color=green>[LLMWorldDirector]</color> Gating superato con successo. Iniezione dati e avvio interpolazione.");
         OnGenerationProgress?.Invoke("Building terrain maps...", 0.75f);
 
-        if (worldManager != null) worldManager.ApplyNewConfig();
-        worldManager?.ReloadBiomePrefabs();
-
-        // Sblocco aggiornamenti chunk: senza questo il mondo rimane congelato dopo la transizione
-        if (worldManager != null) worldManager.holdChunkUpdates = false;
+        // Unico punto di swap: ApplyNewConfig congela il bioma vecchio (ancora quello attivo fino
+        // a questo momento) e carica quello nuovo in un colpo solo, poi avvia l'interpolazione
+        // visiva. Vedi il commento su ApplyNewConfig in WorldManager.
+        worldManager?.ApplyNewConfig();
     }
 
     void ParseAndSaveFourPassMetadata(string rawSize, string rawFreq, string rawType, string rawPriority, Dictionary<string, int> currentObjects)

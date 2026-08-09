@@ -87,19 +87,68 @@ public class VoxelRenderer : MonoBehaviour
         GenerateRuntimeMeshForData(assetName, dataOriginal);
 #if UNITY_EDITOR
         SaveAsAssetForData(assetName, dataOriginal);
+#else
+        // In build SaveAsAssetForData non viene mai chiamato (usa AssetDatabase/PrefabUtility, non
+        // disponibili fuori editor) — ma è proprio lì dentro che oggi parte OnPrefabSaved, l'evento
+        // a cui WorldManager.HandlePrefabSaved è agganciato per sostituire i placeholder/billboard
+        // invisibili con l'oggetto vero appena la sua mesh è pronta. Senza questo, in build nessun
+        // oggetto generato DOPO il primo caricamento (Coda B, o qualunque asset nato da una
+        // richiesta successiva) veniva mai mostrato: la mesh finiva comunque in RuntimeMeshCache,
+        // ma niente notificava ai chunk già creati di andarla a riprendere — il mondo restava
+        // sempre più spoglio man mano che si camminava e nuovi placeholder si accumulavano.
+        // GameObject null: in build non esiste un prefab da assegnare a _readyPrefabs, lo spawn
+        // passa comunque per RuntimeMeshCache (vedi WorldManager.GetBestAvailableMesh).
+        OnPrefabSaved?.Invoke(assetName, null);
 #endif
 
-        // Generate/save LOD files only in the Editor and only if they do not exist.
-        // In the built player, LODs are loaded from individual pre-existing JSONs.
+        // Persist the base voxjson to disk too — GenerateAsset.ProcessSingleAsset / WorldManager.
+        // EnsureMeshCached both check for "{assetName}.voxjson" to decide whether an object still
+        // needs (re)generating. Without this, that file never existed on disk (only the _low/
+        // _medium/_high LOD variants were saved below), so the check always failed and every
+        // object was re-run through the full AI pipeline on every session, even when its LODs
+        // were already sitting on disk from a previous run.
+#if UNITY_EDITOR
+        {
+            string basePath = Path.Combine(PathSettings.GetObjectsFolder(), assetName + ".voxjson");
+            if (!File.Exists(basePath))
+            {
+                try
+                {
+                    Directory.CreateDirectory(PathSettings.GetObjectsFolder());
+                    File.WriteAllText(basePath, rawJson);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogError($"[VoxelRenderer] Errore nel salvataggio del voxjson base per '{assetName}': {ex.Message}");
+                }
+            }
+        }
+#endif
+
+        // Le tier LOD vanno calcolate una sola volta per asset, ma "già calcolate" vuol dire cose
+        // diverse in Editor e in build:
+        // - In Editor i file _low/_medium/_high.voxjson sono nel progetto e sopravvivono a riavvii
+        //   dell'Editor, quindi il segnale è la loro presenza su disco.
+        // - In build non scriviamo mai voxjson su disco (niente AssetDatabase, niente persistenza
+        //   fra sessioni): il segnale è semplicemente "sono già in RuntimeMeshCache?", che è una
+        //   cache statica viva quanto il processo — la generazione IA di un oggetto nuovo in build
+        //   resta quindi in memoria per tutta la sessione corrente e basta, esattamente come gli
+        //   oggetti della baseline spedita in Resources/Baseline.
 #if UNITY_EDITOR
         string baseFolder = PathSettings.GetObjectsFolder();
         string lowPath = Path.Combine(baseFolder, assetName + "_low.voxjson");
         string medPath = Path.Combine(baseFolder, assetName + "_medium.voxjson");
         string highPath = Path.Combine(baseFolder, assetName + "_high.voxjson");
+        bool needLODs = !File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath);
+#else
+        bool needLODs = !RuntimeMeshCache.ContainsKey(assetName + "_low")
+            || !RuntimeMeshCache.ContainsKey(assetName + "_medium")
+            || !RuntimeMeshCache.ContainsKey(assetName + "_high");
+#endif
 
-        if (!File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath))
+        if (needLODs)
         {
-            Debug.Log($"[VoxelRenderer] Generating LODs for '{assetName}' because they do not exist on disk.");
+            Debug.Log($"[VoxelRenderer] Generating LODs for '{assetName}'.");
 
             // Cap voxel density by the object's in-game size classification: "tiny" props
             // (pebbles, tiny flowers...) never need more than low-resolution cubes even up
@@ -117,6 +166,7 @@ public class VoxelRenderer : MonoBehaviour
             string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, mediumResolution);
             string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, highResolution);
 
+#if UNITY_EDITOR
             try
             {
                 if (!Directory.Exists(baseFolder)) Directory.CreateDirectory(baseFolder);
@@ -128,6 +178,7 @@ public class VoxelRenderer : MonoBehaviour
             {
                 Debug.LogError($"[VoxelRenderer] Errore nel salvataggio dei file voxjson su disco: {ex.Message}");
             }
+#endif
 
             VoxelData dataLow = ParseJson(jsonLow);
             VoxelData dataMedium = ParseJson(jsonMedium);
@@ -137,11 +188,12 @@ public class VoxelRenderer : MonoBehaviour
             GenerateRuntimeMeshForData(assetName + "_medium", dataMedium);
             GenerateRuntimeMeshForData(assetName + "_high", dataHigh);
 
+#if UNITY_EDITOR
             SaveAsAssetForData(assetName + "_low", dataLow);
             SaveAsAssetForData(assetName + "_medium", dataMedium);
             SaveAsAssetForData(assetName + "_high", dataHigh);
-        }
 #endif
+        }
     }
 
     static string GetSizeCategory(string assetName)

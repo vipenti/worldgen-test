@@ -694,7 +694,9 @@ MonoBehaviour:
   controller: {fileID: 249223929}
   speed: 30
   gravity: -9.81
-  jumpHeight: 10
+  jumpHeight: 5
+  fallRecoveryThresholdY: -100
+  fallRecoveryY: 50
 --- !u!143 &249223929
 CharacterController:
   m_ObjectHideFlags: 0
@@ -811,23 +813,24 @@ MonoBehaviour:
   surfaceSounds:
   - footstepType: grass
     clips:
-    - {fileID: 8300000, guid: b43eb7d147539354ab83960f81500a98, type: 3}
+    - {fileID: 8300000, guid: 76d8b51e6cf36f04397eefbf973912a2, type: 3}
   - footstepType: hard
     clips:
-    - {fileID: 8300000, guid: 4d541b18b3a1afc4692b75878c0303ec, type: 3}
+    - {fileID: 8300000, guid: 355c5656fb8c7814781414f555b65c05, type: 3}
   - footstepType: soft
     clips:
-    - {fileID: 8300000, guid: 0c3afed21eaf905409ef120574924b15, type: 3}
+    - {fileID: 8300000, guid: 0ba77171d9c4ffd47beffb89edbe858e, type: 3}
   - footstepType: fluid
     clips:
-    - {fileID: 8300000, guid: 429bccc42bfccaf4d80e02fe7ab8a9cc, type: 3}
+    - {fileID: 8300000, guid: 7ef4c164492927d4bb9131b084391e1d, type: 3}
+  - footstepType: snow
+    clips:
+    - {fileID: 8300000, guid: 3e259e77daf3a754fb7b65023e29a4f9, type: 3}
   - footstepType: snow
     clips:
     - {fileID: 8300000, guid: 5e8b0581f5aab7c4d9190864052cb14e, type: 3}
-  - footstepType: snow
-    clips: []
   defaultFootstepClip: {fileID: 8300000, guid: 4d541b18b3a1afc4692b75878c0303ec, type: 3}
-  stepDistance: 2
+  stepDistance: 6
   pitchVariation: 0.08
   volumeVariation: 0.1
   baseVolume: 0.6
@@ -2264,8 +2267,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e079d24609df4a84886158a3b670722e, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AmbientAudioController
-  generalAmbientClip: {fileID: 0}
-  volume: 0.4
+  generalAmbientClip: {fileID: 8300000, guid: 83e465c0957ee9d4caa1cf433febd899, type: 3}
+  volume: 0.54
 --- !u!82 &1472413733
 AudioSource:
   m_ObjectHideFlags: 0
@@ -2281,7 +2284,7 @@ AudioSource:
   m_PlayOnAwake: 1
   m_Volume: 1
   m_Pitch: 1
-  Loop: 0
+  Loop: 1
   Mute: 0
   Spatialize: 0
   SpatializePostEffects: 0

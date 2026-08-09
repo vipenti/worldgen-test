@@ -21,5 +21,7 @@
   "fern_patch": { "id": 19, "footstepType": "grass" },
   "small_bush": { "id": 20, "footstepType": "grass" },
   "dark_wet_sand": { "id": 21, "footstepType": "soft" },
-  "grey_concrete_pavement": { "id": 22, "footstepType": "hard" }
+  "grey_concrete_pavement": { "id": 22, "footstepType": "hard" },
+  "dark_damp_soil": { "id": 23, "footstepType": "soft" },
+  "blackened_turf": { "id": 24, "footstepType": "soft" }
 }

@@ -28,7 +28,7 @@ public class ObjectDistanceCuller : MonoBehaviour
     private Mesh mediumMesh;
     private Mesh lowMesh;
 
-    public void Initialize(Transform playerTransform, float maxDistance, string objectName = "", float highPercent = 0.25f, float medPercent = 0.50f)
+    public void Initialize(Transform playerTransform, float maxDistance, string objectName = "", float highPercent = 0.25f, float medPercent = 0.50f, bool useOriginalMeshForHigh = false)
     {
         player = playerTransform;
         this.objectName = objectName;
@@ -113,6 +113,32 @@ public class ObjectDistanceCuller : MonoBehaviour
             if (highMesh == null && meshFilter != null) highMesh = meshFilter.sharedMesh;
             if (mediumMesh == null) mediumMesh = highMesh;
             if (lowMesh == null) lowMesh = mediumMesh;
+
+            // Per gli oggetti "huge" (edifici grandi) la tier "_high" è comunque limitata a
+            // HighGridSize (32 voxel sul lato più lungo, vedi GenerateResolutions), che su un
+            // edificio enorme risulta troppo grezza anche da vicino. In questo caso usiamo la
+            // mesh originale non decimata (quella salvata come "{objectName}.prefab"/cache
+            // senza suffisso, generata comunque per ogni oggetto prima del downsampling in
+            // low/medium/high) come livello più dettagliato, al posto di "_high".
+            if (useOriginalMeshForHigh)
+            {
+                Mesh original = null;
+                if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh om) && om != null)
+                    original = om;
+#if UNITY_EDITOR
+                if (original == null)
+                {
+                    string origPrefabPath = $"Assets/GeneratedAsset/{objectName}.prefab";
+                    var origPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(origPrefabPath);
+                    if (origPrefab != null)
+                    {
+                        var mf = origPrefab.GetComponentInChildren<MeshFilter>();
+                        if (mf != null) original = mf.sharedMesh;
+                    }
+                }
+#endif
+                if (original != null) highMesh = original;
+            }
         }
         else if (meshFilter != null)
         {
@@ -228,15 +254,15 @@ public class ObjectDistanceCuller : MonoBehaviour
 
             if (targetMesh != null && meshFilter.sharedMesh != targetMesh)
             {
+                // Nota: il MeshCollider (big/huge) NON viene più riallineato qui ai cambi di LOD
+                // visivo. È bakato una volta sola allo spawn in WorldManager.ApplySizeCollider,
+                // sempre dalla tier "_high" capped — un ribake fisico sincrono ogni volta che il
+                // player entra/esce da una soglia di distanza (specialmente verso la mesh originale
+                // non decimata usata qui come LOD visivo più vicino per gli huge) era un costo
+                // pesante e ricorrente proprio durante il cammino. La leggera imprecisione tra
+                // collisione (sempre "_high") e mesh visiva più vicina (originale, per gli huge) è
+                // accettabile: il collider non ha bisogno della stessa fedeltà del rendering.
                 meshFilter.sharedMesh = targetMesh;
-
-                // big/huge usano MeshCollider (più preciso del BoxCollider per forme irregolari
-                // come gli alberi): va riallineato alla nuova mesh LOD, altrimenti la collisione
-                // resterebbe quella del livello di dettaglio precedente. Per normal (BoxCollider,
-                // dimensionato una volta sola sui bounds) questo GetComponent ritorna null ed è
-                // un no-op.
-                MeshCollider mc = GetComponent<MeshCollider>();
-                if (mc != null) mc.sharedMesh = targetMesh;
             }
         }
     }

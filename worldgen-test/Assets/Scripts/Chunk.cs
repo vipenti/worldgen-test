@@ -93,15 +93,19 @@ public class Chunk : MonoBehaviour
     private UrbanGrid.Params urbanGrid;
 
     private bool isTransitioning = false;
-    private Vector2 transitionStartPos2D;
-    private Vector2 transitionDir2D;
-    private float totalDist;
+    // Blend radiale: centro (mondo, XZ) della transizione + raggio interno (già coperto dalla vista,
+    // nessun blend) + larghezza della fascia oltre cui il blend arriva a 1. Sostituisce il vecchio
+    // modello direzionale (start pos + direzione + lunghezza corridoio), che dipendeva dal player
+    // che continuasse a camminare dritto nella direzione catturata al momento del trigger.
+    private Vector2 transitionCenter2D;
+    private float innerRadius;
+    private float blendWidth;
     private bool hasGeneratedOnce = false;
     private bool hasColliderBuilt = false;
 
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
     public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary,
-                           bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist,
+                           bool isTransitioning, Vector2 transitionCenter2D, float innerRadius, float blendWidth,
                            float pathHalfWidth, float pathBlendWidth, int pathLevel,
                            UrbanGrid.Params urbanGrid, bool updateCollider)
     {
@@ -128,9 +132,9 @@ public class Chunk : MonoBehaviour
         this.urbanGrid = urbanGrid;
 
         this.isTransitioning = isTransitioning;
-        this.transitionStartPos2D = transitionStartPos2D;
-        this.transitionDir2D = transitionDir2D;
-        this.totalDist = totalDist;
+        this.transitionCenter2D = transitionCenter2D;
+        this.innerRadius = innerRadius;
+        this.blendWidth = blendWidth;
         hasGeneratedOnce = true;
 
         GenerateMapDataInterpolated(pos, oldBinary, targetBinary, pathHalfWidth, pathBlendWidth, pathLevel);
@@ -138,22 +142,22 @@ public class Chunk : MonoBehaviour
         GenerateMesh(updateCollider);
     }
 
-    public void UpdateInterpolation(bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist, bool updateCollider)
+    public void UpdateInterpolation(bool isTransitioning, Vector2 transitionCenter2D, float innerRadius, float blendWidth, bool updateCollider)
     {
-        if (hasGeneratedOnce && 
-            this.isTransitioning == isTransitioning && 
-            this.transitionStartPos2D == transitionStartPos2D && 
-            this.transitionDir2D == transitionDir2D && 
-            Mathf.Abs(this.totalDist - totalDist) < 0.01f)
+        if (hasGeneratedOnce &&
+            this.isTransitioning == isTransitioning &&
+            this.transitionCenter2D == transitionCenter2D &&
+            Mathf.Abs(this.innerRadius - innerRadius) < 0.01f &&
+            Mathf.Abs(this.blendWidth - blendWidth) < 0.01f)
         {
             EnsureColliderState(updateCollider);
             return;
         }
 
         this.isTransitioning = isTransitioning;
-        this.transitionStartPos2D = transitionStartPos2D;
-        this.transitionDir2D = transitionDir2D;
-        this.totalDist = totalDist;
+        this.transitionCenter2D = transitionCenter2D;
+        this.innerRadius = innerRadius;
+        this.blendWidth = blendWidth;
         hasGeneratedOnce = true;
 
         GenerateMapDataInterpolated(chunkPos, oldConfig, targetConfig, pathHalfWidth, pathBlendWidth, pathLevel);
@@ -349,8 +353,13 @@ public class Chunk : MonoBehaviour
                 float voxelT = 1f;
                 if (isTransitioning)
                 {
-                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
-                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
+                    // Blend radiale: quanto questo voxel è "dentro" il nuovo bioma dipende dalla
+                    // sua distanza dal centro della transizione, non da una direzione catturata al
+                    // momento del trigger.
+                    float dx = worldX - transitionCenter2D.x;
+                    float dz = worldZ - transitionCenter2D.y;
+                    float distFromCenter = Mathf.Sqrt(dx * dx + dz * dz);
+                    voxelT = Mathf.Clamp01((distFromCenter - innerRadius) / blendWidth);
                 }
 
                 float rawOld, rawTarget;
@@ -389,8 +398,10 @@ public class Chunk : MonoBehaviour
                 // Appiattimento della griglia stradale urbana (isStructuredBiome), incluse le
                 // strade principali più larghe: stessa griglia (UrbanGrid) usata da WorldManager
                 // per piazzare i lotti/edifici, così il terreno resta piatto sotto le strade
-                // indipendentemente dal rumore del bioma.
-                if (target.isStructuredBiome)
+                // indipendentemente dal rumore del bioma. Pesato per voxelT: se questo punto è
+                // ancora dal lato "vecchio" del blend (voxelT basso), niente appiattimento — le
+                // strade del bioma nuovo non devono comparire su terreno non ancora transizionato.
+                if (target.isStructuredBiome && voxelT > 0f)
                 {
                     var sampleX = UrbanGrid.SampleAxis(worldX, urbanGrid);
                     var sampleZ = UrbanGrid.SampleAxis(worldZ, urbanGrid);
@@ -401,7 +412,7 @@ public class Chunk : MonoBehaviour
                     if (distToStreet < streetBlendWidth)
                     {
                         float streetBlendT    = Mathf.Clamp01(distToStreet / streetBlendWidth);
-                        float streetInfluence = 1f - Mathf.SmoothStep(0f, 1f, streetBlendT);
+                        float streetInfluence = (1f - Mathf.SmoothStep(0f, 1f, streetBlendT)) * voxelT;
                         int streetLevel = Mathf.RoundToInt(target.baseTerrainHeight);
                         finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, streetLevel, streetInfluence));
                     }
@@ -422,8 +433,13 @@ public class Chunk : MonoBehaviour
                 float voxelT = 1f;
                 if (isTransitioning)
                 {
-                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
-                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
+                    // Blend radiale: quanto questo voxel è "dentro" il nuovo bioma dipende dalla
+                    // sua distanza dal centro della transizione, non da una direzione catturata al
+                    // momento del trigger.
+                    float dx = worldX - transitionCenter2D.x;
+                    float dz = worldZ - transitionCenter2D.y;
+                    float distFromCenter = Mathf.Sqrt(dx * dx + dz * dz);
+                    voxelT = Mathf.Clamp01((distFromCenter - innerRadius) / blendWidth);
                 }
 
                 int finalHeight = HeightMap[x, z];
@@ -486,7 +502,10 @@ public class Chunk : MonoBehaviour
                 // pensate per il terreno naturale. "middle" non va bene qui: è il materiale di
                 // sotto-superficie del bioma (spesso terra/erba), non pensato per essere visto in
                 // superficie, ed è quello che dava l'effetto "prato fiorito" sulla strada.
-                if (target.isStructuredBiome)
+                // Gating su voxelT >= 0.5: stessa soglia usata da WorldManager per decidere se un
+                // chunk è "abbastanza nuovo" da ricevere decorazioni del bioma nuovo — sotto quella
+                // soglia il punto è ancora considerato vecchio bioma, niente pavimentazione.
+                if (target.isStructuredBiome && voxelT >= 0.5f)
                 {
                     bool onStreet = UrbanGrid.SampleAxis(worldX, urbanGrid).isStreet
                                  || UrbanGrid.SampleAxis(worldZ, urbanGrid).isStreet;

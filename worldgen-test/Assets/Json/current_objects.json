@@ -1,14 +1,15 @@
 {
-  "desert pyramid": { "id": 14, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "desert sphinx": { "id": 15, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "merchant tent": { "id": 16, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "giant cactus": { "id": 12, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "desert palm tree": { "id": 10, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "dead bush cluster": { "id": 11, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "desert well": { "id": 13, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "large rock": { "id": 94, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "desert camel": { "id": 17, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "wooden crate": { "id": 85, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "discarded wire": { "id": 114, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
+  "wooden cottage": { "id": 88, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
+  "thatched barn": { "id": 89, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
+  "oak tree": { "id": 0, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "pine tree": { "id": 2, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "wildflower": { "id": 90, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 66, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "stone well": { "id": 91, "size": "normal", "frequency": "unique", "type": "prop", "priority": 2 },
+  "wild deer": { "id": 70, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "large rock": { "id": 68, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "fallen log": { "id": 69, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "wooden crate": { "id": 85, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
+  "wooden barrel": { "id": 83, "size": "small", "frequency": "rare", "type": "clutter", "priority": 2 },
+  "mushroom": { "id": 73, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 }
 }

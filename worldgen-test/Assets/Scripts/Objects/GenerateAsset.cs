@@ -112,6 +112,53 @@ public class GenerateAsset : MonoBehaviour
             yield break;
         }
 
+        // 2b. Fallback per gli asset di cui esistono solo le tre varianti LOD ma non il voxjson
+        // base — sia gli oggetti generati prima che VoxelRenderer iniziasse a salvare anche quello
+        // (persistentDataPath/Assets/Json/objects in Editor), sia gli oggetti della baseline di
+        // build: BuildAssetPacker impacchetta in Resources/Baseline/objects esattamente gli stessi
+        // file voxjson presenti in Assets/Json/objects al momento dell'export, quindi senza questo
+        // fallback la build non riconoscerebbe MAI questi oggetti come già pronti (il controllo al
+        // punto 2 cerca solo "Baseline/objects/{name}", senza suffisso) e li rigenererebbe tutti via
+        // IA al primo avvio. Se troviamo almeno una tier (su disco o nelle Resources), l'oggetto è
+        // comunque già stato generato — le carichiamo direttamente invece di ripartire dalla
+        // pipeline IA.
+        if (!jsonExists && !inRuntimeCache && worldManager != null)
+        {
+            string objectsFolder = PathSettings.GetObjectsFolder();
+            bool foundAnyLOD = false;
+            var voxelRenderer = worldManager.GetComponentInChildren<VoxelRenderer>();
+
+            foreach (string tier in new[] { "_high", "_medium", "_low" })
+            {
+                string tierName = name + tier;
+                string diskPath = Path.Combine(objectsFolder, tierName + ".voxjson");
+                string tierJson = null;
+
+                if (File.Exists(diskPath))
+                {
+                    tierJson = File.ReadAllText(diskPath);
+                }
+                else
+                {
+                    var textAsset = Resources.Load<TextAsset>($"Baseline/objects/{tierName}");
+                    if (textAsset != null) tierJson = textAsset.text;
+                }
+
+                if (!string.IsNullOrEmpty(tierJson))
+                {
+                    foundAnyLOD = true;
+                    voxelRenderer?.LoadFromJson(tierJson, tierName);
+                }
+            }
+
+            if (foundAnyLOD)
+            {
+                Debug.Log($"[GenerateAsset] Solo LOD trovati per '{name}' (nessun voxjson base). Compilazione mesh dai LOD esistenti...");
+                worldManager.ReplacePlaceholders(name);
+                yield break;
+            }
+        }
+
         // 3. Solo se non c'è traccia dell'asset, avviamo la pipeline IA
         if (llmObjectGeneration != null)
         {

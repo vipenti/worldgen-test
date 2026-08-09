@@ -84,24 +84,6 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Fraction of lots left empty as a small park/plaza instead of holding a building.")]
     public float urbanParkChance = 0.12f;
 
-    // FLAG DI SICUREZZA: mentre è true, la pipeline LLM ha già ricaricato in memoria le scale/size/
-    // prefab del NUOVO bioma ma il terreno (targetConfig) è ancora quello VECCHIO — un chunk creato
-    // in questa finestra non deve piazzare decorazioni (userebbero dati mischiati). Lo streaming dei
-    // chunk stessi (terreno + collider) NON viene più bloccato da questo flag: bloccarlo causava un
-    // bug per cui il player sprofondava camminando durante la generazione, perché i chunk nuovi/
-    // lontani smettevano di essere creati/riattivati (vedi CreateChunk e FlushPendingDecorations).
-    private bool _holdChunkUpdates = false;
-    public bool holdChunkUpdates
-    {
-        get => _holdChunkUpdates;
-        set
-        {
-            bool wasHeld = _holdChunkUpdates;
-            _holdChunkUpdates = value;
-            if (wasHeld && !value) FlushPendingDecorations();
-        }
-    }
-
     private Dictionary<string, GameObject> _readyPrefabs = new Dictionary<string, GameObject>();
     private List<string> _pendingObjectNames = new List<string>();
     private Dictionary<string, List<BillboardPlaceholder>> _placeholders = new Dictionary<string, List<BillboardPlaceholder>>();
@@ -124,8 +106,12 @@ public class WorldManager : MonoBehaviour
     private BiomeConfig targetConfig;
     private bool isTransitioning = false;
     private bool isPlayerInTransitionHUD = false;
-    private Vector2 transitionStartPos2D;
-    private Vector2 transitionDir2D;
+    // Centro (mondo, XZ) della transizione: il punto in cui si trovava il player quando gli asset
+    // critici sono diventati pronti. Il blend è radiale (distanza dal centro), non più direzionale
+    // — così qualunque direzione il player esplori dopo il trigger, prima o poi entra ed esce dalla
+    // fascia di blend, invece di dipendere dal camminare dritto in un'unica direzione catturata
+    // nell'istante del trigger.
+    private Vector2 transitionCenter2D;
     private Vector3 lastPlayerPositionForTransition;
     private float lastUpdatedProgress;
 
@@ -135,8 +121,52 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, float> _oldObjectFreqChances = new Dictionary<string, float>();
     private Dictionary<string, string> _oldObjectTypes = new Dictionary<string, string>();
     private Dictionary<string, int> _oldObjectPriorities = new Dictionary<string, int>();
-    private Dictionary<string, string> _oldObjectSizes = new Dictionary<string, string>(); 
+    private Dictionary<string, string> _oldObjectSizes = new Dictionary<string, string>();
     private Dictionary<Vector2Int, bool> chunkIsNewBiome = new Dictionary<Vector2Int, bool>();
+
+    // Bundle di SOLI RIFERIMENTI ai dati "oggetti disponibili" di un bioma — quello corrente (vivo,
+    // mutato in continuazione man mano che gli asset finiscono di generarsi) o quello vecchio
+    // (istantanea congelata da BackupOldBiome). Passato esplicitamente a SpawnLayoutObjects e a
+    // tutta la catena sottostante (InstantiateAssetPrimitive, GetRenderDistance,
+    // GetBuildingScaleForLot) invece di scambiare temporaneamente i campi di istanza
+    // _readyPrefabs/_pendingObjectNames/ecc. con i loro equivalenti _old... — quello scambio, senza
+    // un try/finally a protezione, lasciava lo stato globale permanentemente agganciato ai dati del
+    // vecchio bioma se una qualsiasi eccezione veniva sollevata a metà del piazzamento di un chunk,
+    // svuotando il mondo per il resto della sessione (anche su chunk mai visti prima). Con i dati
+    // passati per parametro invece che scambiati sui campi, quella classe di bug è impossibile per
+    // costruzione: non c'è più nessuno stato condiviso da corrompere.
+    private struct BiomeObjectSet
+    {
+        public Dictionary<string, GameObject> readyPrefabs;
+        public List<string> pendingObjectNames;
+        public Dictionary<string, float> objectScaleFactors;
+        public Dictionary<string, float> objectFreqChances;
+        public Dictionary<string, string> objectTypes;
+        public Dictionary<string, int> objectPriorities;
+        public Dictionary<string, string> objectSizes;
+    }
+
+    private BiomeObjectSet CurrentObjectSet => new BiomeObjectSet
+    {
+        readyPrefabs = _readyPrefabs,
+        pendingObjectNames = _pendingObjectNames,
+        objectScaleFactors = _objectScaleFactors,
+        objectFreqChances = _objectFreqChances,
+        objectTypes = _objectTypes,
+        objectPriorities = _objectPriorities,
+        objectSizes = _objectSizes
+    };
+
+    private BiomeObjectSet OldObjectSet => new BiomeObjectSet
+    {
+        readyPrefabs = _oldReadyPrefabs,
+        pendingObjectNames = _oldPendingObjectNames,
+        objectScaleFactors = _oldObjectScaleFactors,
+        objectFreqChances = _oldObjectFreqChances,
+        objectTypes = _oldObjectTypes,
+        objectPriorities = _oldObjectPriorities,
+        objectSizes = _oldObjectSizes
+    };
 
     private Texture2D atlasTexture;
     private Material sharedChunkMaterial;
@@ -238,25 +268,22 @@ public class WorldManager : MonoBehaviour
 
     void Update()
     {
-        // Nota: holdChunkUpdates NON blocca più lo streaming/collider dei chunk (vedi commento
-        // sul campo) — solo il piazzamento delle decorazioni sui chunk creati durante la finestra
-        // di pre-caricamento, gestito in CreateChunk/FlushPendingDecorations.
-
         // Gestione transizione basata sul movimento del giocatore
         if (isPlayerInTransitionHUD)
         {
             Vector3 currentPos = player.position;
             lastPlayerPositionForTransition = currentPos;
 
-            // Calcola la distanza proiettata del giocatore lungo la direzione di transizione
+            // Calcola la distanza radiale del giocatore dal centro della transizione (non più una
+            // proiezione direzionale: il blend si espande verso l'esterno in ogni direzione).
             Vector2 playerPos2D = new Vector2(player.position.x, player.position.z);
-            float projectedWalk = Vector2.Dot(playerPos2D - transitionStartPos2D, transitionDir2D);
+            float distFromCenter = Vector2.Distance(playerPos2D, transitionCenter2D);
             float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
-            float playerProgress = Mathf.Clamp01(projectedWalk / totalDist);
+            float playerProgress = Mathf.Clamp01(distFromCenter / totalDist);
 
             // Aggiorna la transizione e il testo se il progresso è avanzato dello 0.5%
             // o se il giocatore ha completato la transizione
-            if (playerProgress - lastUpdatedProgress >= 0.005f || projectedWalk >= totalDist)
+            if (playerProgress - lastUpdatedProgress >= 0.005f || distFromCenter >= totalDist)
             {
                 lastUpdatedProgress = playerProgress;
                 UpdateTransitionProgress();
@@ -270,9 +297,8 @@ public class WorldManager : MonoBehaviour
         // Safety net anti-sprofondamento: il collider dei chunk viene normalmente (ri)attivato
         // solo dentro UpdateChunks(), che scatta solo al cambio di chunk/rotazione camera — c'era
         // quindi una finestra di uno o più frame in cui il player poteva già trovarsi fisicamente
-        // dentro un chunk il cui collider non era ancora stato attivato (race condition,
-        // indipendente dal fix di holdChunkUpdates). Questo garantisce ogni frame, senza gating,
-        // che i 9 chunk attorno al player abbiano sempre il collider pronto.
+        // dentro un chunk il cui collider non era ancora stato attivato. Questo garantisce ogni
+        // frame, senza gating, che i 9 chunk attorno al player abbiano sempre il collider pronto.
         EnsureCloseChunkCollidersActive(pX, pZ);
 
         Quaternion currentCamRot = Camera.main != null ? Camera.main.transform.rotation : player.rotation;
@@ -397,12 +423,15 @@ public class WorldManager : MonoBehaviour
             coord.y * targetConfig.chunkWidth + targetConfig.chunkWidth * 0.5f
         );
 
-        float startOffset = viewDistance * targetConfig.chunkWidth;
-        Vector2 startPos = transitionStartPos2D + transitionDir2D * startOffset;
-
-        float projectedDist = Vector2.Dot(chunkWorldPos - startPos, transitionDir2D);
-        float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
-        return Mathf.Clamp01(projectedDist / totalDist);
+        // Blend radiale: quanto un chunk è "dentro" la nuova biome dipende solo dalla sua distanza
+        // dal centro della transizione, non dalla direzione in cui il player stava guardando nel
+        // momento del trigger. innerRadius = raggio già coperto dalla vista (nessun cambiamento
+        // immediato lì, quei chunk sono già caricati); oltre, cresce linearmente fino a 1 su una
+        // fascia larga transitionLengthInChunks chunk.
+        float innerRadius = viewDistance * targetConfig.chunkWidth;
+        float blendWidth = transitionLengthInChunks * targetConfig.chunkWidth;
+        float dist = Vector2.Distance(chunkWorldPos, transitionCenter2D);
+        return Mathf.Clamp01((dist - innerRadius) / blendWidth);
     }
 
     void CreateChunk(Vector2Int coord)
@@ -423,12 +452,12 @@ public class WorldManager : MonoBehaviour
             float t = GetChunkTransitionT(coord);
 
             chunkScript.Initialize(
-                coord, 
-                oldConfig, 
-                targetConfig, 
-                isTransitioning, 
-                transitionStartPos2D + transitionDir2D * (viewDistance * targetConfig.chunkWidth), 
-                transitionDir2D, 
+                coord,
+                oldConfig,
+                targetConfig,
+                isTransitioning,
+                transitionCenter2D,
+                viewDistance * targetConfig.chunkWidth,
                 transitionLengthInChunks * targetConfig.chunkWidth,
                 pathWidth * 0.5f,
                 pathBlendWidth,
@@ -438,95 +467,46 @@ public class WorldManager : MonoBehaviour
             );
             activeChunks.Add(coord, chunkScript);
 
-            if (holdChunkUpdates)
+            // Durante la generazione (prima che gli asset critici del nuovo bioma siano pronti)
+            // isTransitioning è ancora false: i chunk vengono creati e decorati normalmente col
+            // bioma correntemente attivo, che resta quello vecchio fino allo swap atomico fatto da
+            // ApplyNewConfig() — nessuna finestra "mista" da gestire qui.
+            if (isTransitioning)
             {
-                // Pipeline in corso: i dizionari di scale/size/prefab in memoria sono già quelli
-                // del nuovo bioma ma questo chunk usa ancora targetConfig vecchio — decorarlo ora
-                // userebbe dati mischiati. Il terreno e il collider sono già a posto (Initialize
-                // sopra li ha già generati), rimandiamo solo il piazzamento oggetti a dopo.
-                _pendingDecorationChunks.Add(coord);
-            }
-            else if (isTransitioning)
-            {
-                if (t <= 0f)
+                // Niente più "corridoio vuoto": ogni chunk viene sempre decorato, scegliendo il
+                // lato (vecchio/nuovo bioma) in base a quale parte del blend ricade — il terreno
+                // sotto continua comunque a sfumare gradualmente via voxelT in Chunk.
+                if (t < 0.5f)
                 {
                     SpawnOldLayoutObjects(chunkScript, worldPos, oldConfig);
                     chunkIsNewBiome[coord] = false;
                 }
-                else if (t >= 1f)
-                {
-                    SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
-                    chunkIsNewBiome[coord] = true;
-                }
                 else
                 {
-                    // No assets spawned in the transition corridor
-                    chunkIsNewBiome[coord] = false;
+                    SpawnLayoutObjects(chunkScript, worldPos, targetConfig, CurrentObjectSet);
+                    chunkIsNewBiome[coord] = true;
                 }
             }
             else
             {
-                SpawnLayoutObjects(chunkScript, worldPos, targetConfig);
+                SpawnLayoutObjects(chunkScript, worldPos, targetConfig, CurrentObjectSet);
                 chunkIsNewBiome[coord] = true;
             }
         }
     }
 
-    // Chunk creati mentre holdChunkUpdates era true (terreno+collider ok, decorazioni rimandate).
-    private readonly List<Vector2Int> _pendingDecorationChunks = new List<Vector2Int>();
-
-    // Chiamato automaticamente quando holdChunkUpdates torna false (vedi il setter della proprietà):
-    // a questo punto isTransitioning/targetConfig/oldConfig sono di nuovo coerenti tra loro, quindi
-    // piazza le decorazioni che erano state rimandate per ogni chunk ancora vivo.
-    void FlushPendingDecorations()
-    {
-        if (_pendingDecorationChunks.Count == 0) return;
-
-        foreach (var coord in _pendingDecorationChunks)
-        {
-            if (!activeChunks.TryGetValue(coord, out Chunk chunk) || chunk == null) continue;
-
-            Vector3 worldPos = new Vector3(coord.x * targetConfig.chunkWidth, 0, coord.y * targetConfig.chunkWidth);
-
-            if (isTransitioning)
-            {
-                float t = GetChunkTransitionT(coord);
-                if (t <= 0f)
-                {
-                    SpawnOldLayoutObjects(chunk, worldPos, oldConfig);
-                    chunkIsNewBiome[coord] = false;
-                }
-                else if (t >= 1f)
-                {
-                    SpawnLayoutObjects(chunk, worldPos, targetConfig);
-                    chunkIsNewBiome[coord] = true;
-                }
-                else
-                {
-                    chunkIsNewBiome[coord] = false;
-                }
-            }
-            else
-            {
-                SpawnLayoutObjects(chunk, worldPos, targetConfig);
-                chunkIsNewBiome[coord] = true;
-            }
-        }
-        _pendingDecorationChunks.Clear();
-    }
-
-    void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
+    void SpawnLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg, BiomeObjectSet data)
     {
         // Settlements (city/town/village) get a grid/street layout instead of the organic
         // noise-scatter used below for natural biomes.
         if (cfg.isStructuredBiome)
         {
-            SpawnStructuredLayoutObjects(chunk, worldPos, cfg);
+            SpawnStructuredLayoutObjects(chunk, worldPos, cfg, data);
             return;
         }
 
-        var allNames = new List<string>(_readyPrefabs.Keys);
-        allNames.AddRange(_pendingObjectNames);
+        var allNames = new List<string>(data.readyPrefabs.Keys);
+        allNames.AddRange(data.pendingObjectNames);
         if (allNames.Count == 0) return;
 
         int w = cfg.chunkWidth;
@@ -539,7 +519,7 @@ public class WorldManager : MonoBehaviour
         for (int currentPriority = 1; currentPriority <= 4; currentPriority++)
         {
             var passObjects = allNames.Where(n => {
-                int pr = _objectPriorities.TryGetValue(n, out int pVal) ? pVal : 3;
+                int pr = data.objectPriorities.TryGetValue(n, out int pVal) ? pVal : 3;
                 return pr == currentPriority;
             }).ToList();
 
@@ -547,7 +527,7 @@ public class WorldManager : MonoBehaviour
 
             foreach (string name in passObjects)
             {
-                float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+                float fc = data.objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
                 bool isUnique = fc < 0f;
 
                 if (currentPriority == 2 && placedStructures.Count > 0)
@@ -556,7 +536,7 @@ public class WorldManager : MonoBehaviour
                     {
                         int propSeed = PlacementHash(Mathf.RoundToInt(structure.position.x), Mathf.RoundToInt(structure.position.z), name.GetHashCode());
                         float spawnRoll = (propSeed & 0xFFFF) / 65535f;
-                        
+
                         if (!isUnique && spawnRoll > fc) continue;
                         if (isUnique && _uniqueSpawned.Contains(name)) continue;
 
@@ -574,16 +554,16 @@ public class WorldManager : MonoBehaviour
                         {
                             if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel) continue;
 
-                            float pScale = _objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
+                            float pScale = data.objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
                             float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
 
                             float rotZ = (propSeed >> 16 & 0xFF) / 255f * 360f;
-                            InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, rotZ);
-                            excluded[plx, plz] = true; 
+                            InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
+                            excluded[plx, plz] = true;
                             if (isUnique) _uniqueSpawned.Add(name);
                         }
                     }
-                    continue; 
+                    continue;
                 }
 
                 int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
@@ -626,11 +606,11 @@ public class WorldManager : MonoBehaviour
                     
                     if (chunk.HeightMap[lx, lz] <= cfg.waterLevel) continue;
 
-                    float scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
+                    float scaleFactor = data.objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
                     float groundY = GetGroundY(wx, wz, chunk.HeightMap[lx, lz]);
 
                     float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
-                    InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, rotZ);
+                    InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
                     int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
                     for (int dx = -footRadius; dx <= footRadius; dx++)
@@ -657,10 +637,10 @@ public class WorldManager : MonoBehaviour
     // facing a cardinal direction instead of a random angle. Street-facing props (priority 2)
     // ring each building's sidewalk edge. A small fraction of lots become parks that keep the
     // organic scatter (priority 3/4) for greenery instead of holding a building.
-    void SpawnStructuredLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
+    void SpawnStructuredLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg, BiomeObjectSet data)
     {
-        var allNames = new List<string>(_readyPrefabs.Keys);
-        allNames.AddRange(_pendingObjectNames);
+        var allNames = new List<string>(data.readyPrefabs.Keys);
+        allNames.AddRange(data.pendingObjectNames);
         if (allNames.Count == 0) return;
 
         int w = cfg.chunkWidth;
@@ -679,10 +659,10 @@ public class WorldManager : MonoBehaviour
             if (sx.isStreet || sz.isStreet) excluded[x, z] = true;
         }
 
-        var buildingNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1 && !LooksLikeGroundTile(n)).ToList();
-        var streetPropNames = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 2).ToList();
-        var decorNames3 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 3).ToList();
-        var decorNames4 = allNames.Where(n => (_objectPriorities.TryGetValue(n, out int p) ? p : 3) == 4).ToList();
+        var buildingNames = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1 && !LooksLikeGroundTile(n)).ToList();
+        var streetPropNames = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 2).ToList();
+        var decorNames3 = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 3).ToList();
+        var decorNames4 = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 4).ToList();
 
         if (buildingNames.Count == 0) return; // No real structures registered yet for this biome.
 
@@ -705,11 +685,11 @@ public class WorldManager : MonoBehaviour
             if (isPark) continue;
 
             string bName = buildingNames[Mathf.Abs(lotHash) % buildingNames.Count];
-            float bScale = GetBuildingScaleForLot(bName, blockSize);
+            float bScale = GetBuildingScaleForLot(bName, blockSize, data);
             float bGroundY = GetGroundY(lotCenterX, lotCenterZ, chunk.HeightMap[lcx, lcz]);
             float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
 
-            InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, bRotZ);
+            InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, data, bRotZ);
             placedStructures.Add(new StructureAnchor {
                 position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
             });
@@ -729,7 +709,7 @@ public class WorldManager : MonoBehaviour
             foreach (var structure in placedStructures)
             foreach (string name in streetPropNames)
             {
-                float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+                float fc = data.objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
                 bool isUnique = fc < 0f;
                 int propSeed = PlacementHash(Mathf.RoundToInt(structure.position.x), Mathf.RoundToInt(structure.position.z), name.GetHashCode());
                 float spawnRoll = (propSeed & 0xFFFF) / 65535f;
@@ -746,11 +726,11 @@ public class WorldManager : MonoBehaviour
                 if (plx < 0 || plx >= w || plz < 0 || plz >= w) continue;
                 if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel) continue;
 
-                float pScale = _objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
+                float pScale = data.objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
                 float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
                 float rotZ = ((propSeed >> 16) & 0xFF) / 255f * 360f;
 
-                InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, rotZ);
+                InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                 excluded[plx, plz] = true;
                 if (isUnique) _uniqueSpawned.Add(name);
             }
@@ -760,14 +740,14 @@ public class WorldManager : MonoBehaviour
         // still free: park lots, sidewalks, building yards. Same jittered-grid algorithm as the
         // organic biome path, just constrained to cells that aren't a street or a building
         // footprint via the shared `excluded` mask.
-        ScatterDecorObjects(chunk, worldPos, cfg, decorNames3, 3, excluded);
-        ScatterDecorObjects(chunk, worldPos, cfg, decorNames4, 4, excluded);
+        ScatterDecorObjects(chunk, worldPos, cfg, decorNames3, 3, excluded, data);
+        ScatterDecorObjects(chunk, worldPos, cfg, decorNames4, 4, excluded, data);
     }
 
     // Jittered-grid scatter shared by the urban decor pass above and mirroring the organic
     // biome's priority 3/4 loop in the block below: one deterministic roll per grid cell (sized
     // by rarity), filtered by the chunk's LayoutMap band, skipping anything already excluded.
-    void ScatterDecorObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg, List<string> names, int priority, bool[,] excluded)
+    void ScatterDecorObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg, List<string> names, int priority, bool[,] excluded, BiomeObjectSet data)
     {
         if (names.Count == 0) return;
 
@@ -779,7 +759,7 @@ public class WorldManager : MonoBehaviour
 
         foreach (string name in names)
         {
-            float fc = _objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
+            float fc = data.objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
             bool isUnique = fc < 0f;
             int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
 
@@ -811,10 +791,10 @@ public class WorldManager : MonoBehaviour
                 if (layoutVal <= minLayout || layoutVal > maxLayout) continue;
                 if (chunk.HeightMap[lx, lz] <= cfg.waterLevel) continue;
 
-                float scaleFactor = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
+                float scaleFactor = data.objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleDefault;
                 float groundY = GetGroundY(wx, wz, chunk.HeightMap[lx, lz]);
                 float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
-                InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, rotZ);
+                InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
                 int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
                 for (int dx = -footRadius; dx <= footRadius; dx++)
@@ -849,12 +829,13 @@ public class WorldManager : MonoBehaviour
     // multiplying that by 15 can produce a structure large enough to bury several lots and the
     // streets between them. Falls back to the plain category scale when the mesh isn't cached
     // yet (e.g. still pending generation), same as before this fix.
-    float GetBuildingScaleForLot(string name, int blockSize)
+    float GetBuildingScaleForLot(string name, int blockSize, BiomeObjectSet data)
     {
-        float categoryScale = _objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleBig;
+        float categoryScale = data.objectScaleFactors.TryGetValue(name, out float sf) ? sf : scaleBig;
 
         EnsureMeshCached(name);
-        if (!VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh mesh) || mesh == null)
+        Mesh mesh = GetBestAvailableMesh(name);
+        if (mesh == null)
             return categoryScale;
 
         // Use the largest of the three local-space dimensions as a rotation-agnostic, worst-case
@@ -883,14 +864,15 @@ public class WorldManager : MonoBehaviour
         return false;
     }
 
-    void InstantiateAssetPrimitive(string name, float wx, float groundY, float wz, float scaleFactor, Transform parent, float rotZ = 0f)
+    void InstantiateAssetPrimitive(string name, float wx, float groundY, float wz, float scaleFactor, Transform parent, BiomeObjectSet data, float rotZ = 0f)
     {
         GameObject obj = null;
-        float maxDist = GetRenderDistance(name);
+        float maxDist = GetRenderDistance(name, data);
 
         EnsureMeshCached(name);
 
-        if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh runtimeMesh) && runtimeMesh != null)
+        Mesh runtimeMesh = GetBestAvailableMesh(name);
+        if (runtimeMesh != null)
         {
             obj = new GameObject(name);
             obj.transform.SetParent(parent);
@@ -900,7 +882,7 @@ public class WorldManager : MonoBehaviour
             obj.AddComponent<MeshFilter>().sharedMesh = runtimeMesh;
             obj.AddComponent<MeshRenderer>().sharedMaterial = VoxelRenderer.RuntimeMaterialInstance;
         }
-        else if (_readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
+        else if (data.readyPrefabs.TryGetValue(name, out var prefab) && prefab != null)
         {
             obj = Instantiate(prefab, new Vector3(wx, groundY, wz), Quaternion.Euler(-90f, 0f, rotZ), parent);
         }
@@ -913,13 +895,13 @@ public class WorldManager : MonoBehaviour
         if (obj != null)
         {
             obj.transform.localScale = Vector3.one * scaleFactor;
-            if (!_objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
+            if (!data.objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
             float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
-            ApplySizeCollider(obj, sizeStr);
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent);
+            ApplySizeCollider(obj, sizeStr, name);
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent, useOriginalMeshForHigh: sizeStr == "huge");
         }
     }
 
@@ -929,7 +911,7 @@ public class WorldManager : MonoBehaviour
     // un BoxCollider approssimato sui bounds della mesh invece del MeshCollider completo,
     // molto più leggero da valutare e senza bisogno di ribake ad ogni cambio LOD. Rimuove
     // anche un eventuale MeshCollider ereditato da un prefab generato prima di questa modifica.
-    void ApplySizeCollider(GameObject obj, string sizeStr)
+    void ApplySizeCollider(GameObject obj, string sizeStr, string assetName)
     {
         // big/huge (alberi, edifici, strutture irregolari): il BoxCollider era troppo approssimato
         // — il bounding box include tutto lo spazio vuoto tra i rami/sporgenze e impediva di
@@ -943,10 +925,24 @@ public class WorldManager : MonoBehaviour
             if (obj.GetComponent<BoxCollider>() is BoxCollider oldBox) Destroy(oldBox);
             if (obj.GetComponent<MeshCollider>() != null) return; // già presente
 
-            var mf = obj.GetComponent<MeshFilter>();
-            if (mf == null || mf.sharedMesh == null) return;
+            // Bake fisico SEMPRE dalla tier "_high" a risoluzione capped (mai dalla mesh originale
+            // non decimata usata come LOD visivo più vicino per gli huge — vedi
+            // ObjectDistanceCuller.useOriginalMeshForHigh — né da qualunque LOD sia visivamente
+            // attivo in questo istante). Il collider non ha bisogno della stessa fedeltà del
+            // rendering, e viene bakato una volta sola qui: ObjectDistanceCuller non lo tocca più
+            // ai cambi di LOD, quindi niente più ribake fisico sincrono ogni volta che il player si
+            // avvicina/allontana da un edificio.
+            Mesh colliderMesh = null;
+            if (!string.IsNullOrEmpty(assetName) && VoxelRenderer.RuntimeMeshCache.TryGetValue(assetName + "_high", out Mesh highMesh) && highMesh != null)
+                colliderMesh = highMesh;
+            else
+            {
+                var fallbackMf = obj.GetComponent<MeshFilter>();
+                colliderMesh = fallbackMf != null ? fallbackMf.sharedMesh : null;
+            }
+            if (colliderMesh == null) return;
 
-            obj.AddComponent<MeshCollider>().sharedMesh = mf.sharedMesh;
+            obj.AddComponent<MeshCollider>().sharedMesh = colliderMesh;
             return;
         }
 
@@ -968,9 +964,9 @@ public class WorldManager : MonoBehaviour
         box.size = mf2.sharedMesh.bounds.size;
     }
 
-    float GetRenderDistance(string assetName)
+    float GetRenderDistance(string assetName, BiomeObjectSet data)
     {
-        if (!_objectSizes.TryGetValue(assetName, out string size)) size = "big";
+        if (!data.objectSizes.TryGetValue(assetName, out string size)) size = "big";
         return size switch {
             "huge" => renderDistHuge, "big" => renderDistBig, "normal" => renderDistNormal,
             "small" => renderDistSmall, "tiny" => renderDistTiny, _ => renderDistBig
@@ -985,12 +981,13 @@ public class WorldManager : MonoBehaviour
         }
     }
 
-    float GetGroundY(float wx, float wz, int fallbackY)
-    {
-        var origin = new Vector3(wx, fallbackY + 10f, wz);
-        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit, 30f)) return hit.point.y;
-        return fallbackY + 1.0f;
-    }
+    // fallbackY è sempre chunk.HeightMap[lx,lz] — l'altezza esatta della colonna di superficie,
+    // già calcolata analiticamente in Chunk.GenerateMapDataInterpolated (stessa fonte usata da
+    // GetSurfaceTileIdAtWorld per i passi). Prima qui c'era un Physics.Raycast per "ritrovarla" via
+    // fisica: una query fisica in più per ogni singolo oggetto piazzato (decine per chunk), del
+    // tutto ridondante dato che il valore corretto era già disponibile come parametro. wx/wz restano
+    // nella firma per compatibilità con i chiamanti, anche se non servono più al calcolo.
+    float GetGroundY(float wx, float wz, int fallbackY) => fallbackY + 1.0f;
 
     // Usato da FootstepAudio: trova il chunk sotto una posizione mondo (stessa formula di
     // Update()/CreateChunk per la conversione posizione→coordinata chunk) e risale dal tile ID
@@ -1028,7 +1025,10 @@ public class WorldManager : MonoBehaviour
 
     void HandlePrefabSaved(string name, GameObject prefab)
     {
-        _readyPrefabs[name] = prefab;
+        // In build VoxelRenderer invoca questo evento con prefab == null (non esiste un asset
+        // .prefab fuori editor) solo per far scattare ReplacePlaceholders — lo spawn vero passa
+        // per RuntimeMeshCache via GetBestAvailableMesh, non serve un prefab qui.
+        if (prefab != null) _readyPrefabs[name] = prefab;
         ReplacePlaceholders(name);
     }
 
@@ -1046,7 +1046,7 @@ public class WorldManager : MonoBehaviour
 
         _pendingObjectNames.Remove(objectName);
         float scaleFactor = _objectScaleFactors.TryGetValue(objectName, out float sf) ? sf : scaleDefault;
-        float maxDist = GetRenderDistance(objectName);
+        float maxDist = GetRenderDistance(objectName, CurrentObjectSet);
 
         if (!_placeholders.TryGetValue(objectName, out var list)) return;
 
@@ -1066,7 +1066,8 @@ public class WorldManager : MonoBehaviour
             float rotZ = ((posHash >> 16) & 0xFF) / 255f * 360f;
             GameObject obj = null;
 
-            if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh runtimeMesh) && runtimeMesh != null)
+            Mesh runtimeMesh = GetBestAvailableMesh(objectName);
+            if (runtimeMesh != null)
             {
                 obj = new GameObject(objectName);
                 obj.transform.SetParent(parent);
@@ -1087,8 +1088,8 @@ public class WorldManager : MonoBehaviour
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
-            ApplySizeCollider(obj, sizeStr);
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent);
+            ApplySizeCollider(obj, sizeStr, objectName);
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent, useOriginalMeshForHigh: sizeStr == "huge");
         }
     }
 
@@ -1107,26 +1108,33 @@ public class WorldManager : MonoBehaviour
         Debug.Log("<color=orange>[WorldManager]</color> Backup del vecchio bioma eseguito con successo.");
     }
 
-    // FIX TOTALE TRANSITION: Rimossa la condizione bloccante per garantire l'avvio dell'interpolazione
+    // Swap atomico tra bioma attivo e bioma appena generato, eseguito UNA SOLA VOLTA quando gli
+    // asset critici del nuovo bioma sono pronti (chiamato da LLMWorldDirector.TriggerTerrainTransition,
+    // agganciato a GenerateAsset.OnCriticalAssetsReady). Prima di questo momento il mondo attivo
+    // (_readyPrefabs/_pendingObjectNames/ecc., targetConfig) resta quello vecchio, invariato, per
+    // tutta la durata della generazione in background — niente più stato "misto" da gestire chunk
+    // per chunk mentre gli asset non sono ancora pronti (era la causa di lag e oggetti che
+    // apparivano/sparivano vicino al giocatore).
     public void ApplyNewConfig()
     {
-        // Se per qualche motivo il backup non è ancora stato effettuato, lo eseguiamo come fallback di emergenza
-        if (_oldReadyPrefabs == null || _oldReadyPrefabs.Count == 0)
-        {
-            BackupOldBiome();
-        }
+        // 1. Congela lo stato attivo corrente (ancora il vecchio bioma) in _old... PRIMA di
+        //    ricaricare — l'ordine è essenziale: se lo scambiassimo dopo, il "vecchio" salvato
+        //    sarebbe già il nuovo.
+        BackupOldBiome();
 
+        // 2. Ricarica _readyPrefabs/_pendingObjectNames/ecc. dal registro del nuovo bioma
+        //    (current_objects.json, ormai completo) e il config del terreno.
+        ReloadBiomePrefabs();
         targetConfig = LoadLatestConfig();
+
         isTransitioning = true;
         isPlayerInTransitionHUD = true;
-        
-        // Record horizontal start pos and forward direction of player
-        transitionStartPos2D = new Vector2(player.position.x, player.position.z);
-        
-        // Forward direction of player or camera
-        Vector3 forward = Camera.main != null ? Camera.main.transform.forward : player.forward;
-        transitionDir2D = new Vector2(forward.x, forward.z).normalized;
-        if (transitionDir2D.sqrMagnitude < 0.01f) transitionDir2D = Vector2.up; // Fallback
+
+        // Centro del blend radiale: la posizione del player nell'istante in cui gli asset critici
+        // sono pronti. Non serve più registrare una direzione — il blend si espande verso l'esterno
+        // in ogni direzione da questo punto, quindi qualunque percorso il player prenda dopo il
+        // trigger raggiunge comunque il nuovo bioma.
+        transitionCenter2D = new Vector2(player.position.x, player.position.z);
 
         lastPlayerPositionForTransition = player.position;
         lastUpdatedProgress = 0f;
@@ -1145,12 +1153,12 @@ public class WorldManager : MonoBehaviour
     void UpdateTransitionProgress()
     {
         Vector2 playerPos2D = new Vector2(player.position.x, player.position.z);
-        float projectedWalk = Vector2.Dot(playerPos2D - transitionStartPos2D, transitionDir2D);
+        float distFromCenter = Vector2.Distance(playerPos2D, transitionCenter2D);
         float totalDist = transitionLengthInChunks * targetConfig.chunkWidth;
         float startOffset = viewDistance * targetConfig.chunkWidth;
-        float playerProgress = Mathf.Clamp01((projectedWalk - startOffset) / totalDist);
+        float playerProgress = Mathf.Clamp01((distFromCenter - startOffset) / totalDist);
 
-        if (projectedWalk >= startOffset + totalDist)
+        if (distFromCenter >= startOffset + totalDist)
         {
             isPlayerInTransitionHUD = false;
             Debug.Log("<color=orange>[WorldManager]</color> Terrain transition completed successfully.");
@@ -1175,14 +1183,14 @@ public class WorldManager : MonoBehaviour
             }
         }
 
-        float metersRemaining = (startOffset + totalDist) - projectedWalk;
+        float metersRemaining = (startOffset + totalDist) - distFromCenter;
         float chunksRemaining = metersRemaining / targetConfig.chunkWidth;
         float percent = playerProgress * 100f;
 
         string statusMsg = "";
-        if (projectedWalk < startOffset)
+        if (distFromCenter < startOffset)
         {
-            float metersToStart = startOffset - projectedWalk;
+            float metersToStart = startOffset - distFromCenter;
             float chunksToStart = metersToStart / targetConfig.chunkWidth;
             statusMsg = $"[Transition] Walking to transition zone: {chunksToStart:F1} chunks (~{metersToStart:F0}m) remaining.\n" +
                         $"No terrain changes or asset deletions in the current area.";
@@ -1191,40 +1199,20 @@ public class WorldManager : MonoBehaviour
         {
             statusMsg = $"[Transition] Blending terrain: {percent:F0}% complete\n" +
                         $"Walk {chunksRemaining:F1} more chunks (~{metersRemaining:F0}m) to complete.\n" +
-                        $"No 3D assets spawned in the transition corridor.";
+                        $"Assets already blend to the new biome across the corridor.";
         }
         
         SetStatusText(statusMsg);
     }
 
+    // Decora un chunk con gli oggetti del VECCHIO bioma (istantanea congelata da BackupOldBiome).
+    // Passiamo semplicemente OldObjectSet a SpawnLayoutObjects invece di scambiare temporaneamente
+    // i campi di istanza _readyPrefabs/_pendingObjectNames/ecc. con i loro equivalenti _old...: uno
+    // scambio senza try/finally a protezione lasciava lo stato globale permanentemente corrotto se
+    // una qualsiasi eccezione veniva sollevata a metà del piazzamento — vedi il commento su
+    // BiomeObjectSet più sopra.
     void SpawnOldLayoutObjects(Chunk chunk, Vector3 worldPos, BiomeConfig cfg)
-    {
-        var tempPrefabs = _readyPrefabs;
-        var tempPending = _pendingObjectNames;
-        var tempScaleFactors = _objectScaleFactors;
-        var tempFreqChances = _objectFreqChances;
-        var tempTypes = _objectTypes;
-        var tempPriorities = _objectPriorities;
-        var tempSizes = _objectSizes;
-
-        _readyPrefabs = _oldReadyPrefabs;
-        _pendingObjectNames = _oldPendingObjectNames;
-        _objectScaleFactors = _oldObjectScaleFactors;
-        _objectFreqChances = _oldObjectFreqChances;
-        _objectTypes = _oldObjectTypes;
-        _objectPriorities = _oldObjectPriorities;
-        _objectSizes = _oldObjectSizes;
-
-        SpawnLayoutObjects(chunk, worldPos, cfg);
-
-        _readyPrefabs = tempPrefabs;
-        _pendingObjectNames = tempPending;
-        _objectScaleFactors = tempScaleFactors;
-        _objectFreqChances = tempFreqChances;
-        _objectTypes = tempTypes;
-        _objectPriorities = tempPriorities;
-        _objectSizes = tempSizes;
-    }
+        => SpawnLayoutObjects(chunk, worldPos, cfg, OldObjectSet);
 
     void RespawnObjectsForChunk(Chunk chunk, BiomeConfig cfg, bool useNewBiome)
     {
@@ -1244,12 +1232,12 @@ public class WorldManager : MonoBehaviour
         {
             if (useNewBiome)
             {
-                SpawnLayoutObjects(chunk, worldPos, cfg);
+                SpawnLayoutObjects(chunk, worldPos, cfg, CurrentObjectSet);
             }
         }
         else
         {
-            SpawnLayoutObjects(chunk, worldPos, cfg);
+            SpawnLayoutObjects(chunk, worldPos, cfg, CurrentObjectSet);
         }
     }
 
@@ -1443,36 +1431,68 @@ public class WorldManager : MonoBehaviour
     {
         if (string.IsNullOrEmpty(assetName)) return;
 
-        // Se la mesh base è già in cache, diamo per scontato che tutte le sue versioni LOD siano caricate
-        if (VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName)) return;
-
-        // Proviamo a caricare il file JSON base
-        string baseJson = LoadVoxJsonString(assetName);
-        if (string.IsNullOrEmpty(baseJson))
-        {
-            return;
-        }
-
-        Debug.Log($"[WorldManager] Caricamento dinamico a runtime delle mesh per '{assetName}'...");
+        // Controlliamo OGNI tier singolarmente, non solo il base: per gli oggetti che hanno solo
+        // le tre varianti LOD e mai un voxjson base (la maggioranza degli asset pre-esistenti, e
+        // qualunque baseline di build impacchettata da BuildAssetPacker) RuntimeMeshCache[assetName]
+        // (senza suffisso) non esiste MAI — quindi un controllo solo su quello ripeteva l'intero
+        // lavoro sotto (compresa la riscrittura degli asset .prefab in Editor via SaveAsAssetForData)
+        // ad OGNI singola chiamata invece che una volta sola, causando un loop di reimport continuo
+        // dell'AssetDatabase e mandando in stallo l'Editor non appena ne venivano piazzate molte
+        // istanze (es. un prop comune come "small rock" ripetuto in tanti chunk).
+        bool hasBase = VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName);
+        bool hasHigh = VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName + "_high");
+        bool hasMedium = VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName + "_medium");
+        bool hasLow = VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName + "_low");
+        if (hasBase && hasHigh && hasMedium && hasLow) return;
 
         var renderer = GetComponentInChildren<VoxelRenderer>();
         if (renderer == null) renderer = FindFirstObjectByType<VoxelRenderer>();
+        if (renderer == null) return;
 
-        if (renderer != null)
+        if (!hasBase)
         {
-            // Compiliamo il modello base originale
-            renderer.LoadFromJson(baseJson, assetName);
+            string baseJson = LoadVoxJsonString(assetName);
+            if (!string.IsNullOrEmpty(baseJson))
+            {
+                Debug.Log($"[WorldManager] Caricamento dinamico a runtime delle mesh per '{assetName}'...");
+                renderer.LoadFromJson(baseJson, assetName);
+            }
+        }
 
-            // Proviamo a caricare e compilare i modelli LOD
+        // Carichiamo le tier LOD mancanti indipendentemente dal fatto che il base esista: per gli
+        // asset di cui esiste solo il pacchetto LOD (build baseline impacchettata da
+        // BuildAssetPacker, o oggetti generati prima che venisse salvato anche il voxjson base) il
+        // file base non c'è mai, ma vogliamo comunque poter renderizzare l'oggetto dalle sue tier.
+        if (!hasHigh)
+        {
             string highJson = LoadVoxJsonString(assetName + "_high");
             if (!string.IsNullOrEmpty(highJson)) renderer.LoadFromJson(highJson, assetName + "_high");
+        }
 
+        if (!hasMedium)
+        {
             string medJson = LoadVoxJsonString(assetName + "_medium");
             if (!string.IsNullOrEmpty(medJson)) renderer.LoadFromJson(medJson, assetName + "_medium");
+        }
 
+        if (!hasLow)
+        {
             string lowJson = LoadVoxJsonString(assetName + "_low");
             if (!string.IsNullOrEmpty(lowJson)) renderer.LoadFromJson(lowJson, assetName + "_low");
         }
+    }
+
+    // Ritorna la prima mesh disponibile in cache per un asset, provando prima il base poi le tier
+    // LOD in ordine di dettaglio decrescente (_high, _medium, _low). Serve agli spawn-site
+    // (InstantiateAssetPrimitive, ReplacePlaceholders) perché per molti asset — quelli della
+    // baseline di build impacchettata da BuildAssetPacker, o generati prima del fix che salva anche
+    // il voxjson base — la tier "base" senza suffisso non esiste mai, solo le tre LOD.
+    Mesh GetBestAvailableMesh(string name)
+    {
+        if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh baseMesh) && baseMesh != null) return baseMesh;
+        foreach (string tier in new[] { "_high", "_medium", "_low" })
+            if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name + tier, out Mesh tierMesh) && tierMesh != null) return tierMesh;
+        return null;
     }
 
     private string LoadVoxJsonString(string objectName)
