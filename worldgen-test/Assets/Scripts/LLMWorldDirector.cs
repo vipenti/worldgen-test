@@ -18,6 +18,12 @@ public class LLMWorldDirector : MonoBehaviour
 {
     public TMP_InputField inputField;
     public string lmStudioEndpoint = "http://25.18.55.60:1234/v1/chat/completions";
+
+    // Se GameSettings è presente (pannello Opzioni), il suo indirizzo server sovrascrive sempre
+    // il campo Inspector qui sopra.
+    string EffectiveLmStudioEndpoint =>
+        GameSettings.Instance != null ? GameSettings.Instance.LlmEndpoint : lmStudioEndpoint;
+
     public string modelId = "qwen/qwen3.5-9b";
     public int maxTokens = 1024;
     [Tooltip("Enable Qwen3 native thinking for Step 2. Keep OFF — prompts use explicit <analysis> tags instead, native thinking wastes context budget.")]
@@ -196,7 +202,7 @@ public class LLMWorldDirector : MonoBehaviour
             "\"stream\": false" +
         "}";
 
-        using (UnityWebRequest request = new UnityWebRequest(lmStudioEndpoint, "POST"))
+        using (UnityWebRequest request = new UnityWebRequest(EffectiveLmStudioEndpoint, "POST"))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(chatPayload));
             request.downloadHandler = new DownloadHandlerBuffer();

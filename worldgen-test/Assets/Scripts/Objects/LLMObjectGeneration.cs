@@ -39,6 +39,11 @@ public class LLMObjectGeneration : MonoBehaviour
             ? PathSettings.GetImagesFolder()
             : outputFolder;
 
+    // Se GameSettings è presente (impostato dal pannello Opzioni), il suo indirizzo server
+    // sovrascrive sempre il campo Inspector — altrimenti si usa il valore locale come fallback.
+    string EffectiveServerAddress =>
+        GameSettings.Instance != null ? GameSettings.Instance.ImageServerBase : serverAddress;
+
     [Header("3D Generation")]
     public LLM3DGeneration llm3DGeneration;
     public bool autoGenerate = false;
@@ -81,10 +86,11 @@ public class LLMObjectGeneration : MonoBehaviour
             finalPrompt += $" Coherent with this color palette: {paletteColorDescription}.";
         }*/
 
-        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
+        string effectiveServer = EffectiveServerAddress;
+        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {effectiveServer}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
         string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-        using var req = new UnityWebRequest(serverAddress + "/generate_edit", "POST");
+        using var req = new UnityWebRequest(effectiveServer + "/generate_edit", "POST");
         req.uploadHandler   = new UploadHandlerRaw(bodyRaw);
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");

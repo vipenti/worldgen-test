@@ -15,6 +15,11 @@ public class GenerateTexture : MonoBehaviour
     [Header("Server")]
     public string serverUrl = "http://25.18.55.60:5000";
 
+    // Se GameSettings è presente (pannello Opzioni), il suo indirizzo server sovrascrive sempre
+    // il campo Inspector qui sopra — stesso server delle immagini oggetto (LLMObjectGeneration).
+    string EffectiveServerUrl =>
+        GameSettings.Instance != null ? GameSettings.Instance.ImageServerBase : serverUrl;
+
     [Header("Parametri")]
     public string materialName = "wood";
     [TextArea] public string negativePrompt = "";
@@ -54,7 +59,7 @@ public class GenerateTexture : MonoBehaviour
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
         string gsStr = guidanceScale.ToString("F1", CultureInfo.InvariantCulture);
         string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"tileable\":{tileable.ToString().ToLower()},\"steps\":{steps},\"guidance_scale\":{gsStr}}}";
-        UnityWebRequest req1 = MakePost($"{serverUrl}/create_image", body1);
+        UnityWebRequest req1 = MakePost($"{EffectiveServerUrl}/create_image", body1);
         yield return req1.SendWebRequest();
 
         if (req1.result != UnityWebRequest.Result.Success)
@@ -88,7 +93,7 @@ public class GenerateTexture : MonoBehaviour
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /extract_normal_map...");
         string strengthStr = normalStrength.ToString("F1", CultureInfo.InvariantCulture);
         string body2 = $"{{\"image_base64\":\"{imageBase64}\",\"strength\":{strengthStr}}}";
-        UnityWebRequest req2 = MakePost($"{serverUrl}/extract_normal_map", body2);
+        UnityWebRequest req2 = MakePost($"{EffectiveServerUrl}/extract_normal_map", body2);
         yield return req2.SendWebRequest();
 
         if (req2.result != UnityWebRequest.Result.Success)

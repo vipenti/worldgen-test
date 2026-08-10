@@ -35,7 +35,12 @@ public class LLM3DGeneration : MonoBehaviour
     [Header("References")]
     public VoxelRenderer voxelRenderer;
 
-    const string Endpoint = "http://25.18.55.60:7960/generate_vox_only";
+    const string DefaultEndpoint = "http://25.18.55.60:7960/generate_vox_only";
+
+    // Se GameSettings è presente (pannello Opzioni), il suo indirizzo server sovrascrive sempre
+    // l'endpoint di default qui sopra.
+    static string Endpoint =>
+        GameSettings.Instance != null ? GameSettings.Instance.Gen3DEndpoint : DefaultEndpoint;
 
     string OutputDir => Path.Combine("Assets", "Json", "objects");
 

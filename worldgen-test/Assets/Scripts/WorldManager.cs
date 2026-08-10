@@ -84,6 +84,25 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Fraction of lots left empty as a small park/plaza instead of holding a building.")]
     public float urbanParkChance = 0.12f;
 
+    [Header("Opzioni runtime (sovrascritte dal pannello Opzioni via GameSettings)")]
+    [Tooltip("Se false, il percorso/strada centrale del bioma non viene generato/renderizzato.")]
+    public bool enablePath = true;
+
+    // GameSettings scala le dimensioni cella (densità oggetti) e le renderDist* (render distance)
+    // senza toccare i campi Inspector sopra, che restano i valori "base" — se GameSettings.Instance
+    // è null (es. scena di test isolata) i moltiplicatori sono 1 e il comportamento è invariato.
+    float DensityMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.objectDensityMultiplier : 1f;
+    float RenderDistMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.renderDistanceMultiplier : 1f;
+
+    int ScaledCellSize(int baseCellSize) => Mathf.Max(1, Mathf.RoundToInt(baseCellSize / DensityMultiplier));
+
+    void ApplyGameSettingsWorldParams()
+    {
+        if (GameSettings.Instance == null) return;
+        enablePath = GameSettings.Instance.Data.enablePath;
+        transitionLengthInChunks = GameSettings.Instance.Data.transitionLengthInChunks;
+    }
+
     private Dictionary<string, GameObject> _readyPrefabs = new Dictionary<string, GameObject>();
     private List<string> _pendingObjectNames = new List<string>();
     private Dictionary<string, List<BillboardPlaceholder>> _placeholders = new Dictionary<string, List<BillboardPlaceholder>>();
@@ -184,6 +203,10 @@ public class WorldManager : MonoBehaviour
     {
         InitializePersistentDirectory();
 
+        ApplyGameSettingsWorldParams();
+        if (GameSettings.Instance != null)
+            GameSettings.Instance.OnWorldParamsChanged += ApplyGameSettingsWorldParams;
+
         player.gameObject.SetActive(false);
 
         var prefabRenderer = chunkPrefab.GetComponent<MeshRenderer>();
@@ -226,6 +249,8 @@ public class WorldManager : MonoBehaviour
         LLMWorldDirector.OnGenerationFailed -= HandleGenerationFailed;
         GenerateAsset.OnAssetProgress -= HandleAssetProgress;
         GenerateAsset.OnCriticalAssetsReady -= HandleCriticalAssetsReady;
+        if (GameSettings.Instance != null)
+            GameSettings.Instance.OnWorldParamsChanged -= ApplyGameSettingsWorldParams;
     }
 
     void LoadAtlasTexture()
@@ -459,8 +484,8 @@ public class WorldManager : MonoBehaviour
                 transitionCenter2D,
                 viewDistance * targetConfig.chunkWidth,
                 transitionLengthInChunks * targetConfig.chunkWidth,
-                pathWidth * 0.5f,
-                pathBlendWidth,
+                enablePath ? pathWidth * 0.5f : 0f,
+                enablePath ? pathBlendWidth : 0f,
                 pathLevel,
                 GetUrbanGridParams(),
                 closeToPlayer
@@ -566,7 +591,7 @@ public class WorldManager : MonoBehaviour
                     continue;
                 }
 
-                int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
+                int cellSize = ScaledCellSize(isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon))));
                 int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
                 int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
                 int gcx1 = Mathf.FloorToInt((float)(bx + w - 1) / cellSize);
@@ -612,7 +637,14 @@ public class WorldManager : MonoBehaviour
                     float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
                     InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
-                    int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
+                    // Cap a un massimo ragionevole (8 celle): con scaleFactor inflazionato
+                    // nell'Inspector (es. scaleBig/scaleHuge portati a 40-60 invece dei default
+                    // 7-15) questo raggio esplodeva senza limiti — per oggetti "priority 1" frequenti
+                    // (es. alberi "big, common") le zone escluse finivano per sovrapporsi e coprire
+                    // l'intero terreno visibile, impedendo a qualunque oggetto priority 2/3/4 di
+                    // trovare mai una cella libera dove piazzarsi (stesso bug già visto e corretto
+                    // per l'esclusione dei lotti urbani, qui nel percorso di scatter organico).
+                    int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), 8);
                     for (int dx = -footRadius; dx <= footRadius; dx++)
                     for (int dz = -footRadius; dz <= footRadius; dz++)
                     {
@@ -694,7 +726,13 @@ public class WorldManager : MonoBehaviour
                 position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
             });
 
-            int footRadius = Mathf.CeilToInt(blockSize * 0.5f);
+            // Esclude solo l'ingombro reale dell'edificio piazzato (bScale, già ridotto per stare
+            // nel lotto da GetBuildingScaleForLot), non l'intero lotto (blockSize) — prima di
+            // questo fix, con scaleHuge grande (es. 60) il lotto forzato a blockSize >= scaleHuge+2
+            // faceva escludere un raggio enorme attorno a ogni edificio, cancellando lo spazio per
+            // fontane/carretti/alberi (priority 2/3/4) anche se generati correttamente: il piazzale
+            // davanti alle case restava vuoto perché l'intera area era già "excluded".
+            int footRadius = Mathf.CeilToInt(bScale * 0.5f) + 1;
             for (int dx = -footRadius; dx <= footRadius; dx++)
             for (int dz = -footRadius; dz <= footRadius; dz++)
             {
@@ -761,7 +799,7 @@ public class WorldManager : MonoBehaviour
         {
             float fc = data.objectFreqChances.TryGetValue(name, out float f) ? f : 0.5f;
             bool isUnique = fc < 0f;
-            int cellSize = isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon)));
+            int cellSize = ScaledCellSize(isUnique ? cellUnique : (fc <= 0.03f ? cellSuperRare : (fc <= 0.10f ? cellRare : (fc <= 0.50f ? cellCommon : cellVeryCommon))));
 
             int gcx0 = Mathf.FloorToInt((float)bx / cellSize);
             int gcz0 = Mathf.FloorToInt((float)bz / cellSize);
@@ -796,7 +834,8 @@ public class WorldManager : MonoBehaviour
                 float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
                 InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
-                int footRadius = Mathf.CeilToInt(scaleFactor * 0.5f);
+                // Stesso cap applicato in SpawnLayoutObjects: vedi commento lì per il motivo.
+                int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), 8);
                 for (int dx = -footRadius; dx <= footRadius; dx++)
                 for (int dz = -footRadius; dz <= footRadius; dz++)
                 {
@@ -967,10 +1006,11 @@ public class WorldManager : MonoBehaviour
     float GetRenderDistance(string assetName, BiomeObjectSet data)
     {
         if (!data.objectSizes.TryGetValue(assetName, out string size)) size = "big";
-        return size switch {
+        float baseDist = size switch {
             "huge" => renderDistHuge, "big" => renderDistBig, "normal" => renderDistNormal,
             "small" => renderDistSmall, "tiny" => renderDistTiny, _ => renderDistBig
         };
+        return baseDist * RenderDistMultiplier;
     }
 
     static int PlacementHash(int x, int z, int seed)
@@ -1244,8 +1284,22 @@ public class WorldManager : MonoBehaviour
     void LoadBiomePrefabs()
     {
         _readyPrefabs.Clear(); _pendingObjectNames.Clear(); _objectScaleFactors.Clear();
-        _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();  
-        _objectSizes.Clear(); _uniqueSpawned.Clear(); _placeholders.Clear();
+        _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();
+        _objectSizes.Clear(); _uniqueSpawned.Clear();
+        // NON puliamo _placeholders qui. Questo metodo viene richiamato da ApplyNewConfig() ad ogni
+        // cambio bioma, nel momento in cui gli asset "critici" (Coda A) sono pronti — ma la Coda B
+        // (decorazioni minori) può benissimo essere ancora in generazione in background in quel
+        // momento (specialmente in build, dove ogni oggetto nuovo passa sempre dalla pipeline IA:
+        // vedi il ramo #else qui sotto). Se un billboard placeholder è già stato piazzato per un
+        // oggetto ancora in Coda B, e nel frattempo l'utente chiede un ALTRO cambio bioma prima che
+        // quella generazione finisca, un Clear() qui perderebbe il riferimento al placeholder: quando
+        // la generazione completa poco dopo, VoxelRenderer.OnPrefabSaved / GenerateAsset chiamano
+        // ReplacePlaceholders(name), che non trova più nulla da sostituire in _placeholders — il
+        // billboard resta invisibile per sempre, anche se l'oggetto risulta correttamente generato
+        // (motivo per cui il pannello Info lo mostrava "OK" ma non appariva mai nel mondo). La lista
+        // è indicizzata per nome ed è già "auto-pulente" (ReplacePlaceholders rimuove la propria
+        // chiave a fine sostituzione, e scarta da sé le entry i cui GameObject sono stati distrutti
+        // nel frattempo), quindi non serve svuotarla qui.
 
         string path = Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
         if (!File.Exists(path)) return;
@@ -1487,11 +1541,20 @@ public class WorldManager : MonoBehaviour
     // (InstantiateAssetPrimitive, ReplacePlaceholders) perché per molti asset — quelli della
     // baseline di build impacchettata da BuildAssetPacker, o generati prima del fix che salva anche
     // il voxjson base — la tier "base" senza suffisso non esiste mai, solo le tre LOD.
+    // Ordine invertito rispetto a prima: proviamo prima le tier LOD già ridotte (_high/_medium/
+    // _low, quella "_high" comunque limitata a HighGridSize — vedi VoxelRenderer/GenerateResolutions,
+    // mai il pieno dettaglio nativo) e solo se NESSUNA esiste ancora (asset appena generato, LOD non
+    // ancora calcolate) ripieghiamo sulla mesh base non compressa. Prima, preferendo sempre la base
+    // quando presente, il primo piazzamento di ogni oggetto (InstantiateAssetPrimitive,
+    // ReplacePlaceholders) mostrava la mesh a piena risoluzione nativa finché ObjectDistanceCuller
+    // non la sostituiva — per oggetti "tiny"/"small" (dove _high è comunque limitato a una
+    // risoluzione bassa) questo si vedeva come un lampo, o restava visibile stabilmente se lo
+    // scambio di ObjectDistanceCuller non scattava per qualche motivo.
     Mesh GetBestAvailableMesh(string name)
     {
-        if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh baseMesh) && baseMesh != null) return baseMesh;
         foreach (string tier in new[] { "_high", "_medium", "_low" })
             if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name + tier, out Mesh tierMesh) && tierMesh != null) return tierMesh;
+        if (VoxelRenderer.RuntimeMeshCache.TryGetValue(name, out Mesh baseMesh) && baseMesh != null) return baseMesh;
         return null;
     }
 

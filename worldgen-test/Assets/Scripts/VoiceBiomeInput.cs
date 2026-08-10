@@ -71,6 +71,24 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
 
         if (confirmPanel != null) confirmPanel.SetActive(false);
         SetLabel("Hold and speak...");
+
+        ApplyMicDeviceFromSettings();
+    }
+
+    void ApplyMicDeviceFromSettings()
+    {
+        if (microphoneRecord == null || GameSettings.Instance == null) return;
+        string device = GameSettings.Instance.Data.micDeviceName;
+        try
+        {
+            microphoneRecord.SelectedMicDevice = string.IsNullOrEmpty(device) ? null : device;
+        }
+        catch (System.ArgumentException)
+        {
+            // Il device salvato non è più disponibile (scollegato/rinominato) — resta sul default.
+            Debug.LogWarning($"[VoiceBiomeInput] Device microfono '{device}' non trovato, uso il default.");
+            microphoneRecord.SelectedMicDevice = null;
+        }
     }
 
     void OnEnable()
@@ -78,6 +96,7 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
         if (microphoneRecord != null) microphoneRecord.OnRecordStop += OnRecordStop;
         if (confirmButton != null) confirmButton.onClick.AddListener(OnConfirmClicked);
         if (cancelButton != null) cancelButton.onClick.AddListener(OnCancelClicked);
+        if (GameSettings.Instance != null) GameSettings.Instance.OnAudioSettingsChanged += ApplyMicDeviceFromSettings;
     }
 
     void OnDisable()
@@ -85,6 +104,7 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
         if (microphoneRecord != null) microphoneRecord.OnRecordStop -= OnRecordStop;
         if (confirmButton != null) confirmButton.onClick.RemoveListener(OnConfirmClicked);
         if (cancelButton != null) cancelButton.onClick.RemoveListener(OnCancelClicked);
+        if (GameSettings.Instance != null) GameSettings.Instance.OnAudioSettingsChanged -= ApplyMicDeviceFromSettings;
 
         // Se il componente viene disattivato a metà registrazione (cambio scena/pannello),
         // non lasciamo il microfono aperto in background.
