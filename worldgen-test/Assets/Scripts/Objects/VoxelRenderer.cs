@@ -92,8 +92,8 @@ public class VoxelRenderer : MonoBehaviour
         // disponibili fuori editor) — ma è proprio lì dentro che oggi parte OnPrefabSaved, l'evento
         // a cui WorldManager.HandlePrefabSaved è agganciato per sostituire i placeholder/billboard
         // invisibili con l'oggetto vero appena la sua mesh è pronta. Senza questo, in build nessun
-        // oggetto generato DOPO il primo caricamento (Coda B, o qualunque asset nato da una
-        // richiesta successiva) veniva mai mostrato: la mesh finiva comunque in RuntimeMeshCache,
+        // oggetto generato DOPO il primo caricamento (qualunque asset nato da una richiesta
+        // successiva) veniva mai mostrato: la mesh finiva comunque in RuntimeMeshCache,
         // ma niente notificava ai chunk già creati di andarla a riprendere — il mondo restava
         // sempre più spoglio man mano che si camminava e nuovi placeholder si accumulavano.
         // GameObject null: in build non esiste un prefab da assegnare a _readyPrefabs, lo spawn

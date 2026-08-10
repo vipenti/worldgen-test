@@ -18,7 +18,13 @@ public class GenerateAsset : MonoBehaviour
     public static bool              IsGenerating       { get; private set; }
     public static event Action         OnAllAssetsComplete;
     public static event Action<int, int> OnAssetProgress;
-    public static event Action         OnCriticalAssetsReady;
+    // Sblocca la transizione visiva verso il nuovo bioma (vedi LLMWorldDirector.TriggerTerrainTransition).
+    // Prima si sbloccava non appena la sola Coda A (macro-asset critici) finiva, mentre la Coda B
+    // (decorazioni minori) continuava a generare in sottofondo — il nuovo bioma appariva quindi già
+    // "vivo" ma pieno di billboard placeholder per gli oggetti minori, che poi comparivano a scatti
+    // mentre il giocatore ci camminava dentro. Ora c'è un'unica lista e questo evento scatta solo
+    // quando è TUTTA generata, quindi il bioma appare completo fin dal primo istante.
+    public static event Action         OnBiomeAssetsReady;
 
     public void GenerateNew(List<string> names)
     {
@@ -39,36 +45,23 @@ public class GenerateAsset : MonoBehaviour
         }
 
         IsGenerating = true;
-        ClassifyAssets(names, out List<string> queueA, out List<string> queueB);
 
         int total = names.Count;
         int done  = 0;
         OnAssetProgress?.Invoke(done, total);
 
-        // FASE 1: Generazione in background silente e forzata degli elementi della Coda A (Macro-Asset)
-        if (queueA.Count > 0)
+        // Genera TUTTI gli asset del nuovo bioma in un unico passaggio, in sequenza — niente più
+        // split in Coda A / Coda B: vedi il commento su OnBiomeAssetsReady per il motivo.
+        foreach (string name in names)
         {
-            foreach (string name in queueA)
-            {
-                yield return StartCoroutine(ProcessSingleAsset(name));
-                OnAssetProgress?.Invoke(++done, total);
-            }
-        }
-
-        // SBLOCCO GATING: I guardiani del bioma sono pronti in RAM, ora la mappa può finalmente iniziare a sfumare!
-        OnCriticalAssetsReady?.Invoke();
-
-        // FASE 2: Streaming di sfondo invisibile degli elementi minori (Coda B)
-        if (queueB.Count > 0)
-        {
-            foreach (string name in queueB)
-            {
-                yield return StartCoroutine(ProcessSingleAsset(name));
-                OnAssetProgress?.Invoke(++done, total);
-            }
+            yield return StartCoroutine(ProcessSingleAsset(name));
+            OnAssetProgress?.Invoke(++done, total);
         }
 
         IsGenerating = false;
+
+        // SBLOCCO GATING: il bioma è completo in RAM, ora la mappa può finalmente iniziare a sfumare.
+        OnBiomeAssetsReady?.Invoke();
         OnAllAssetsComplete?.Invoke();
     }
 
@@ -171,33 +164,6 @@ public class GenerateAsset : MonoBehaviour
     }
 
     private string CurrentObjectsListPath => Path.Combine(PathSettings.GetJsonFolder(), "current_objects.json");
-
-    void ClassifyAssets(List<string> names, out List<string> queueA, out List<string> queueB)
-    {
-        queueA = new List<string>(); queueB = new List<string>();
-        string listFilePath = CurrentObjectsListPath;
-        if (!File.Exists(listFilePath)) { queueB.AddRange(names); return; }
-
-        try
-        {
-            var root = JObject.Parse(File.ReadAllText(listFilePath));
-            foreach (string name in names)
-            {
-                if (root[name] != null && root[name].Type == JTokenType.Object)
-                {
-                    string size = root[name]["size"]?.ToString() ?? "big";
-                    string freq = root[name]["frequency"]?.ToString() ?? "common";
-                    bool isLarge = (size == "huge" || size == "big");
-                    bool isCommon = (freq == "very_common" || freq == "common");
-
-                    if (isLarge && isCommon) queueA.Add(name);
-                    else queueB.Add(name);
-                }
-                else queueB.Add(name);
-            }
-        }
-        catch (Exception) { queueB.AddRange(names); }
-    }
 
     IEnumerator GenerateAll()
     {

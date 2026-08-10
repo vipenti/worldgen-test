@@ -1,14 +1,16 @@
 {
-  "ancient stone spire": { "id": 101, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "gnarled tree": { "id": 102, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "giant mushroom": { "id": 103, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "purple moss patch": { "id": 104, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "glowing fungal turf": { "id": 105, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "twisted root": { "id": 106, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "stagnant pool": { "id": 107, "size": "normal", "frequency": "rare", "type": "structure", "priority": 4 },
-  "floating fairy light": { "id": 108, "size": "tiny", "frequency": "common", "type": "prop", "priority": 4 },
-  "bioluminescent rock": { "id": 109, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "glowing spore": { "id": 110, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "fallen leaf": { "id": 111, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "small stone": { "id": 112, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
+  "medieval castle": { "id": 45, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
+  "fortified city gate": { "id": 77, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
+  "half-timbered house": { "id": 79, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "wooden cottage": { "id": 88, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
+  "village blacksmith": { "id": 41, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
+  "oak tree": { "id": 0, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "wildflower": { "id": 90, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "tall grass tuft": { "id": 65, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "merchant stall": { "id": 80, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "stone well": { "id": 91, "size": "normal", "frequency": "unique", "type": "prop", "priority": 2 },
+  "wooden fence segment": { "id": 115, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
+  "wooden crate": { "id": 85, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 },
+  "stone block": { "id": 86, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 2 },
+  "wooden barrel": { "id": 83, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 }
 }

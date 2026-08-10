@@ -60,8 +60,9 @@ public class LLMWorldDirector : MonoBehaviour
 
     void OnEnable()
     {
-        // Ci agganciamo all'evento di sblocco della Coda A degli asset critici
-        GenerateAsset.OnCriticalAssetsReady += TriggerTerrainTransition;
+        // Ci agganciamo all'evento di sblocco: scatta solo quando TUTTI gli asset del nuovo bioma
+        // sono pronti (niente più Coda A/B — vedi GenerateAsset.OnBiomeAssetsReady).
+        GenerateAsset.OnBiomeAssetsReady += TriggerTerrainTransition;
 
         // inputField è null nella scena di prima generazione (lì il testo arriva già via
         // SendRequestToLLM chiamato direttamente da FirstGeneration, senza passare da un campo di
@@ -76,7 +77,7 @@ public class LLMWorldDirector : MonoBehaviour
 
     void OnDisable()
     {
-        GenerateAsset.OnCriticalAssetsReady -= TriggerTerrainTransition;
+        GenerateAsset.OnBiomeAssetsReady -= TriggerTerrainTransition;
 
         if (inputField == null) return;
 
@@ -348,7 +349,7 @@ public class LLMWorldDirector : MonoBehaviour
 
     /// <summary>
     /// Attiva la ricostruzione e l'interpolazione progressiva dei chunk a livello visivo.
-    /// Invocato unicamente quando la Coda A di GenerateAsset ha dato l'ok.
+    /// Invocato unicamente quando TUTTI gli asset del nuovo bioma sono pronti (GenerateAsset.OnBiomeAssetsReady).
     /// </summary>
     void TriggerTerrainTransition()
     {

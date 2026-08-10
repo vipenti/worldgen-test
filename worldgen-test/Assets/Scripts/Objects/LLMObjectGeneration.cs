@@ -27,8 +27,8 @@ public class LLMObjectGeneration : MonoBehaviour
     [Header("Output")]
     [Tooltip("Cartella dove salvare le immagini generate. Lascia vuoto (o \"Assets/...\") per usare " +
              "PathSettings.GetImagesFolder() — necessario perché in build \"Assets/...\" non esiste/non " +
-             "è scrivibile: la scrittura falliva silenziosamente e bloccava per sempre tutta la Coda B " +
-             "(la coroutine si fermava su un'eccezione non gestita, senza mai passare all'oggetto successivo).")]
+             "è scrivibile: la scrittura falliva silenziosamente e bloccava per sempre tutta la coda di " +
+             "generazione (la coroutine si fermava su un'eccezione non gestita, senza mai passare all'oggetto successivo).")]
     public string outputFolder = "Assets/GeneratedImages";
 
     // Percorso realmente usato: se il campo è vuoto o punta ancora al vecchio default valido solo in
@@ -116,7 +116,7 @@ public class LLMObjectGeneration : MonoBehaviour
         // mesh 3D parte comunque da imageData già in memoria pochi righe sotto). Se la scrittura
         // fallisse per qualunque motivo (permessi, disco pieno, cartella non valida) non deve
         // bloccare tutta la generazione — prima di questo try/catch un'eccezione qui lasciava
-        // IsGenerating bloccato a true per sempre, e con esso l'intera Coda A/B che segue in
+        // IsGenerating bloccato a true per sempre, e con esso l'intera coda che segue in
         // GenerateAsset.GenerateList (sequenziale: un item bloccato blocca tutti i successivi).
         try
         {

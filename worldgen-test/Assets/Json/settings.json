@@ -1,0 +1,11 @@
+{
+  "serverHost": "25.18.55.60",
+  "llmPort": 1234,
+  "imagePort": 5000,
+  "gen3dPort": 7960,
+  "micDeviceName": "",
+  "objectDensityMultiplier": 1.45524871,
+  "renderDistanceMultiplier": 1.55203962,
+  "transitionLengthInChunks": 32,
+  "enablePath": false
+}

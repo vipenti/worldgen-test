@@ -143,6 +143,11 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, string> _oldObjectSizes = new Dictionary<string, string>();
     private Dictionary<Vector2Int, bool> chunkIsNewBiome = new Dictionary<Vector2Int, bool>();
 
+    // Evita di ristampare lo stesso log "chunk tenuto in vita" ad ogni singola chiamata di
+    // RemoveFarChunks (può scattare più volte al secondo mentre si ruota la camera) finché quel
+    // chunk resta in attesa — un log solo quando inizia l'attesa, uno quando lo si molla davvero.
+    private HashSet<Vector2Int> _loggedKeepAliveChunks = new HashSet<Vector2Int>();
+
     // Bundle di SOLI RIFERIMENTI ai dati "oggetti disponibili" di un bioma — quello corrente (vivo,
     // mutato in continuazione man mano che gli asset finiscono di generarsi) o quello vecchio
     // (istantanea congelata da BackupOldBiome). Passato esplicitamente a SpawnLayoutObjects e a
@@ -207,6 +212,15 @@ public class WorldManager : MonoBehaviour
         if (GameSettings.Instance != null)
             GameSettings.Instance.OnWorldParamsChanged += ApplyGameSettingsWorldParams;
 
+        // Diagnostica temporanea: stampa i valori Inspector realmente in uso su questa
+        // piattaforma/scena. Serve a verificare in modo inequivocabile — confrontando due
+        // Player.log, uno da Editor Play e uno dalla build — se editor e build stanno davvero
+        // leggendo la stessa configurazione (stessa scena, stessi campi WorldManager) oppure no,
+        // invece di doverlo dedurre a occhio dal file .unity. Da rimuovere una volta chiuso il caso.
+        Debug.Log($"<color=cyan>[ScaleDiag]</color> isEditor={Application.isEditor} platform={Application.platform} scena='{gameObject.scene.name}' | " +
+            $"scaleHuge={scaleHuge} scaleBig={scaleBig} scaleNormal={scaleNormal} scaleSmall={scaleSmall} scaleTiny={scaleTiny} scaleDefault={scaleDefault} | " +
+            $"viewDistance={viewDistance} objectGroundOffset={objectGroundOffset} urbanBlockSize={urbanBlockSize} urbanStreetWidth={urbanStreetWidth}");
+
         player.gameObject.SetActive(false);
 
         var prefabRenderer = chunkPrefab.GetComponent<MeshRenderer>();
@@ -223,7 +237,7 @@ public class WorldManager : MonoBehaviour
         LLMWorldDirector.OnTerrainPipelineDone += HandleTerrainPipelineDone;
         LLMWorldDirector.OnGenerationFailed += HandleGenerationFailed;
         GenerateAsset.OnAssetProgress += HandleAssetProgress;
-        GenerateAsset.OnCriticalAssetsReady += HandleCriticalAssetsReady;
+        GenerateAsset.OnBiomeAssetsReady += HandleBiomeAssetsReady;
 
         targetConfig = LoadLatestConfig();
         oldConfig = targetConfig;
@@ -248,7 +262,7 @@ public class WorldManager : MonoBehaviour
         LLMWorldDirector.OnTerrainPipelineDone -= HandleTerrainPipelineDone;
         LLMWorldDirector.OnGenerationFailed -= HandleGenerationFailed;
         GenerateAsset.OnAssetProgress -= HandleAssetProgress;
-        GenerateAsset.OnCriticalAssetsReady -= HandleCriticalAssetsReady;
+        GenerateAsset.OnBiomeAssetsReady -= HandleBiomeAssetsReady;
         if (GameSettings.Instance != null)
             GameSettings.Instance.OnWorldParamsChanged -= ApplyGameSettingsWorldParams;
     }
@@ -330,10 +344,28 @@ public class WorldManager : MonoBehaviour
 
         if (currentPlayerChunk != lastPlayerChunk || Quaternion.Angle(currentCamRot, lastCameraRotation) > 4f)
         {
+            if (currentPlayerChunk != lastPlayerChunk) LogPlayerChunkStatus(currentPlayerChunk);
             UpdateChunks();
             lastPlayerChunk = currentPlayerChunk;
             lastCameraRotation = currentCamRot;
         }
+    }
+
+    // Diagnostica: ad ogni cambio di chunk del player, logga cosa contiene realmente il chunk in
+    // cui è appena entrato — separa il caso "non è mai stato deciso di piazzare nulla qui" (childCount
+    // basso per un chunk non ancora decorato/decorato con pochi hit RNG) da "è stato piazzato ma non
+    // si vede" (childCount alto ma a schermo sembra vuoto: allora il problema è nel rendering, non nel
+    // placement — cercare '[Decor]'/'[UrbanDecor]' per la coordinata di questo chunk per i dettagli).
+    void LogPlayerChunkStatus(Vector2Int coord)
+    {
+        if (!activeChunks.TryGetValue(coord, out Chunk chunk) || chunk == null)
+        {
+            Debug.Log($"<color=magenta>[Decor]</color> Player entrato nel chunk {coord}: non ancora creato/attivo.");
+            return;
+        }
+        float t = GetChunkTransitionT(coord);
+        Debug.Log($"<color=magenta>[Decor]</color> Player entrato nel chunk {coord}: {chunk.transform.childCount} figli (decorazioni reali+placeholder), " +
+            $"pending={chunk.PendingDecorCount}, isTransitioning={isTransitioning}, t={t:F2} ({(t < 0.5f ? "vecchio bioma" : "nuovo bioma")}), attivo={chunk.gameObject.activeSelf}.");
     }
 
     BiomeConfig LoadLatestConfig()
@@ -427,7 +459,24 @@ public class WorldManager : MonoBehaviour
             int distX = Mathf.Abs(chunk.Key.x - playerChunkPos.x);
             int distZ = Mathf.Abs(chunk.Key.y - playerChunkPos.y);
             if (distX > viewDistance + 1 || distZ > viewDistance + 1)
+            {
+                // Non distruggere ancora un chunk con decorazioni in attesa di generazione IA: il
+                // billboard placeholder è figlio suo, quindi morirebbe insieme a lui prima che
+                // l'asset sia pronto — quando la generazione poi completa (vedi ReplacePlaceholders)
+                // non ci sarebbe più nessun placeholder a cui agganciare la mesh, e la decorazione
+                // andrebbe persa per sempre anche se generata con successo. Resta comunque fuori
+                // vista/collider (il loop di stato in UpdateChunks lo salta già oltre viewDistance),
+                // costa solo la memoria di un chunk in più finché non si svuota la sua coda.
+                if (chunk.Value != null && chunk.Value.PendingDecorCount > 0)
+                {
+                    if (_loggedKeepAliveChunks.Add(chunk.Key))
+                        Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} tenuto in vita oltre il viewDistance: {chunk.Value.PendingDecorCount} decorazioni ancora in attesa di generazione.");
+                    continue;
+                }
+                if (_loggedKeepAliveChunks.Remove(chunk.Key))
+                    Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} liberato, tutte le decorazioni in attesa sono state risolte (o perse) — rimosso normalmente.");
                 coordsToRemove.Add(chunk.Key);
+            }
         }
         foreach (Vector2Int coord in coordsToRemove)
         {
@@ -637,14 +686,16 @@ public class WorldManager : MonoBehaviour
                     float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
                     InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
-                    // Cap a un massimo ragionevole (8 celle): con scaleFactor inflazionato
-                    // nell'Inspector (es. scaleBig/scaleHuge portati a 40-60 invece dei default
-                    // 7-15) questo raggio esplodeva senza limiti — per oggetti "priority 1" frequenti
-                    // (es. alberi "big, common") le zone escluse finivano per sovrapporsi e coprire
-                    // l'intero terreno visibile, impedendo a qualunque oggetto priority 2/3/4 di
-                    // trovare mai una cella libera dove piazzarsi (stesso bug già visto e corretto
-                    // per l'esclusione dei lotti urbani, qui nel percorso di scatter organico).
-                    int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), 8);
+                    // Cap relativo alla larghezza del chunk, non un valore assoluto fisso: con
+                    // chunkWidth=16 (default LLM) un cap fisso di 8 celle produce un quadrato
+                    // 17x17 — più grande dell'intero chunk 16x16. Il primo albero "big"/"huge"
+                    // priority 1 che riesce a piazzarsi (footRadius=4-8 con gli scale di default
+                    // 7-15) escludeva quindi l'INTERO chunk, impedendo per sempre a qualunque
+                    // oggetto priority 2/3/4 — o persino altri priority 1 — di trovare una cella
+                    // libera: da qui il mondo che sembrava mostrare sempre un solo tipo di
+                    // decorazione per chunk (o nessuna). w/5 lascia comunque spazio per diverse
+                    // decorazioni nello stesso chunk anche con gli scale factor più grandi.
+                    int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), Mathf.Max(1, w / 5));
                     for (int dx = -footRadius; dx <= footRadius; dx++)
                     for (int dz = -footRadius; dz <= footRadius; dz++)
                     {
@@ -701,6 +752,13 @@ public class WorldManager : MonoBehaviour
         var placedStructures = new List<StructureAnchor>();
         int blockSize = gridParams.blockSize;
 
+        // Diagnostica: la selezione dell'edificio per lotto sotto è un hash uniforme su
+        // buildingNames, SENZA distinguere frequenze ("unique"/"rare" pesano quanto "common") — un
+        // edificio "unique" ha quindi solo 1/N di possibilità per lotto, nessuna garanzia di comparire
+        // mai. Logghiamo la composizione del pool una volta per chunk per verificare sul campo se un
+        // nome sparisce per RNG sfortunata su pochi lotti o perché non è mai nel pool.
+        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: pool edifici ({buildingNames.Count}) = [{string.Join(", ", buildingNames)}], prop strada ({streetPropNames.Count}) = [{string.Join(", ", streetPropNames)}].");
+
         foreach (var (gcx, lotCenterX) in UrbanGrid.LotsInRange(bx, w, gridParams))
         foreach (var (gcz, lotCenterZ) in UrbanGrid.LotsInRange(bz, w, gridParams))
         {
@@ -721,6 +779,7 @@ public class WorldManager : MonoBehaviour
             float bGroundY = GetGroundY(lotCenterX, lotCenterZ, chunk.HeightMap[lcx, lcz]);
             float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
 
+            Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}, lotto ({gcx},{gcz}): scelto edificio '{bName}' (indice {Mathf.Abs(lotHash) % buildingNames.Count}/{buildingNames.Count}).");
             InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, data, bRotZ);
             placedStructures.Add(new StructureAnchor {
                 position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
@@ -751,8 +810,16 @@ public class WorldManager : MonoBehaviour
                 bool isUnique = fc < 0f;
                 int propSeed = PlacementHash(Mathf.RoundToInt(structure.position.x), Mathf.RoundToInt(structure.position.z), name.GetHashCode());
                 float spawnRoll = (propSeed & 0xFFFF) / 65535f;
-                if (!isUnique && spawnRoll > fc) continue;
-                if (isUnique && _uniqueSpawned.Contains(name)) continue;
+                if (!isUnique && spawnRoll > fc)
+                {
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — roll fallito ({spawnRoll:F2} > {fc:F2}, freq chance).");
+                    continue;
+                }
+                if (isUnique && _uniqueSpawned.Contains(name))
+                {
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — già piazzato altrove (unique).");
+                    continue;
+                }
 
                 int side = Mathf.Abs(propSeed) % 4;
                 float offsetDistance = (blockSize * 0.5f) + (urbanStreetWidth * 0.5f);
@@ -761,13 +828,22 @@ public class WorldManager : MonoBehaviour
 
                 int plx = Mathf.FloorToInt(propWorldPos.x - bx);
                 int plz = Mathf.FloorToInt(propWorldPos.z - bz);
-                if (plx < 0 || plx >= w || plz < 0 || plz >= w) continue;
-                if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel) continue;
+                if (plx < 0 || plx >= w || plz < 0 || plz >= w)
+                {
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — offset ({plx},{plz}) fuori dal chunk.");
+                    continue;
+                }
+                if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel)
+                {
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — cella ({plx},{plz}) {(excluded[plx, plz] ? "già occupata/esclusa" : "sott'acqua")}.");
+                    continue;
+                }
 
                 float pScale = data.objectScaleFactors.TryGetValue(name, out float ps) ? ps : scaleSmall;
                 float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
                 float rotZ = ((propSeed >> 16) & 0xFF) / 255f * 360f;
 
+                Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' piazzato presso '{structure.assetName}'.");
                 InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                 excluded[plx, plz] = true;
                 if (isUnique) _uniqueSpawned.Add(name);
@@ -834,8 +910,9 @@ public class WorldManager : MonoBehaviour
                 float rotZ = ((cellHash >> 16) & 0xFF) / 255f * 360f;
                 InstantiateAssetPrimitive(name, wx, groundY, wz, scaleFactor, chunk.transform, data, rotZ);
 
-                // Stesso cap applicato in SpawnLayoutObjects: vedi commento lì per il motivo.
-                int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), 8);
+                // Stesso cap relativo a w applicato in SpawnLayoutObjects: vedi commento lì per il motivo
+                // (un cap assoluto come "8" può superare l'intero chunk quando chunkWidth è piccolo).
+                int footRadius = Mathf.Min(Mathf.CeilToInt(scaleFactor * 0.5f), Mathf.Max(1, w / 5));
                 for (int dx = -footRadius; dx <= footRadius; dx++)
                 for (int dz = -footRadius; dz <= footRadius; dz++)
                 {
@@ -927,6 +1004,10 @@ public class WorldManager : MonoBehaviour
         }
         else
         {
+            var ownerChunk = parent != null ? parent.GetComponent<Chunk>() : null;
+            ownerChunk?.NotePendingDecorAdded();
+            string coordLabel = ownerChunk != null ? ownerChunk.ChunkCoord.ToString() : "?";
+            Debug.Log($"<color=yellow>[Decor]</color> Chunk {coordLabel}: '{name}' non ancora pronto, creato placeholder in attesa (pending nel chunk: {ownerChunk?.PendingDecorCount ?? -1}).");
             SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, visible: false);
             return;
         }
@@ -935,6 +1016,18 @@ public class WorldManager : MonoBehaviour
         {
             obj.transform.localScale = Vector3.one * scaleFactor;
             if (!data.objectSizes.TryGetValue(name, out string sizeStr)) sizeStr = "big";
+
+            // Diagnostica temporanea (vedi log gemello in InitRoutine): per gli oggetti huge/big,
+            // che sono quelli comparsi come "pilastri" giganti, stampiamo mesh nativa, scaleFactor
+            // e dimensione finale in world space — per capire se in build la MESH caricata ha
+            // bounds diversi da quelli in Editor (es. normalizzazione mancata / mesh sbagliata)
+            // oppure se il solo scaleFactor Inspector differisce (vedi log [ScaleDiag] a inizio sessione).
+            if (sizeStr == "huge" || sizeStr == "big")
+            {
+                Vector3 nativeBounds = runtimeMesh != null ? runtimeMesh.bounds.size : Vector3.zero;
+                Debug.Log($"<color=cyan>[ScaleDiag]</color> '{name}' (size={sizeStr}) mesh nativa={nativeBounds} scaleFactor={scaleFactor} → world size finale≈{nativeBounds * scaleFactor} (fonte mesh: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
+            }
+
             float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
@@ -1088,12 +1181,26 @@ public class WorldManager : MonoBehaviour
         float scaleFactor = _objectScaleFactors.TryGetValue(objectName, out float sf) ? sf : scaleDefault;
         float maxDist = GetRenderDistance(objectName, CurrentObjectSet);
 
-        if (!_placeholders.TryGetValue(objectName, out var list)) return;
+        if (!_placeholders.TryGetValue(objectName, out var list))
+        {
+            Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto, ma nessun chunk lo stava aspettando (nessun placeholder registrato).");
+            return;
+        }
 
         var toSpawn = new List<(Vector3 pos, Transform parent)>();
         foreach (var p in list) if (p != null) toSpawn.Add((p.transform.position, p.transform.parent));
-        foreach (var p in list) if (p != null) Destroy(p.gameObject);
+        foreach (var p in list)
+        {
+            if (p == null) continue;
+            var ownerChunk = p.transform.parent != null ? p.transform.parent.GetComponent<Chunk>() : null;
+            ownerChunk?.NotePendingDecorResolved();
+            Destroy(p.gameObject);
+        }
         _placeholders.Remove(objectName);
+
+        int lostCount = list.Count - toSpawn.Count;
+        Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto: sostituiti {toSpawn.Count} placeholder ancora vivi." +
+            (lostCount > 0 ? $" {lostCount} erano già stati distrutti insieme al loro chunk prima che la generazione finisse — persi." : ""));
 
         EnsureMeshCached(objectName);
 
@@ -1121,15 +1228,34 @@ public class WorldManager : MonoBehaviour
             {
                 obj = Instantiate(prefab, new Vector3(pos.x, groundY, pos.z), Quaternion.Euler(-90f, 0f, rotZ), parent);
             }
-            else continue;
+            else
+            {
+                var missedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
+                Debug.LogWarning($"<color=orange>[Decor]</color> Chunk {(missedChunk != null ? missedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' segnalato pronto ma nessuna mesh/prefab trovato — decorazione saltata.");
+                continue;
+            }
 
             obj.transform.localScale = Vector3.one * scaleFactor;
+
+            // Diagnostica temporanea (vedi log gemelli in InitRoutine e InstantiateAssetPrimitive):
+            // questo è il path di piazzamento più comune per huge/big (edifici, alberi), dato che
+            // arrivano quasi sempre da un placeholder risolto in modo asincrono dopo la generazione
+            // IA, non da InstantiateAssetPrimitive diretto.
+            if (sizeStr == "huge" || sizeStr == "big")
+            {
+                Vector3 nativeBounds = runtimeMesh != null ? runtimeMesh.bounds.size : Vector3.zero;
+                Debug.Log($"<color=cyan>[ScaleDiag]</color> '{objectName}' (size={sizeStr}) mesh nativa={nativeBounds} scaleFactor={scaleFactor} → world size finale≈{nativeBounds * scaleFactor} (fonte mesh: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
+            }
+
             float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
             ApplySizeCollider(obj, sizeStr, objectName);
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent, useOriginalMeshForHigh: sizeStr == "huge");
+
+            var placedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
+            Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' piazzato (placeholder risolto).");
         }
     }
 
@@ -1148,9 +1274,9 @@ public class WorldManager : MonoBehaviour
         Debug.Log("<color=orange>[WorldManager]</color> Backup del vecchio bioma eseguito con successo.");
     }
 
-    // Swap atomico tra bioma attivo e bioma appena generato, eseguito UNA SOLA VOLTA quando gli
-    // asset critici del nuovo bioma sono pronti (chiamato da LLMWorldDirector.TriggerTerrainTransition,
-    // agganciato a GenerateAsset.OnCriticalAssetsReady). Prima di questo momento il mondo attivo
+    // Swap atomico tra bioma attivo e bioma appena generato, eseguito UNA SOLA VOLTA quando TUTTI gli
+    // asset del nuovo bioma sono pronti (chiamato da LLMWorldDirector.TriggerTerrainTransition,
+    // agganciato a GenerateAsset.OnBiomeAssetsReady). Prima di questo momento il mondo attivo
     // (_readyPrefabs/_pendingObjectNames/ecc., targetConfig) resta quello vecchio, invariato, per
     // tutta la durata della generazione in background — niente più stato "misto" da gestire chunk
     // per chunk mentre gli asset non sono ancora pronti (era la causa di lag e oggetti che
@@ -1287,13 +1413,12 @@ public class WorldManager : MonoBehaviour
         _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();
         _objectSizes.Clear(); _uniqueSpawned.Clear();
         // NON puliamo _placeholders qui. Questo metodo viene richiamato da ApplyNewConfig() ad ogni
-        // cambio bioma, nel momento in cui gli asset "critici" (Coda A) sono pronti — ma la Coda B
-        // (decorazioni minori) può benissimo essere ancora in generazione in background in quel
-        // momento (specialmente in build, dove ogni oggetto nuovo passa sempre dalla pipeline IA:
-        // vedi il ramo #else qui sotto). Se un billboard placeholder è già stato piazzato per un
-        // oggetto ancora in Coda B, e nel frattempo l'utente chiede un ALTRO cambio bioma prima che
-        // quella generazione finisca, un Clear() qui perderebbe il riferimento al placeholder: quando
-        // la generazione completa poco dopo, VoxelRenderer.OnPrefabSaved / GenerateAsset chiamano
+        // cambio bioma, ormai solo quando TUTTI gli asset del nuovo bioma sono pronti — ma se
+        // l'utente chiede un ALTRO cambio bioma mentre quella generazione successiva è ancora in
+        // corso in background (specialmente in build, dove ogni oggetto nuovo passa sempre dalla
+        // pipeline IA: vedi il ramo #else qui sotto), un billboard placeholder può già essere stato
+        // piazzato per un suo oggetto. Un Clear() qui perderebbe il riferimento a quel placeholder:
+        // quando la generazione completa poco dopo, VoxelRenderer.OnPrefabSaved / GenerateAsset chiamano
         // ReplacePlaceholders(name), che non trova più nulla da sostituire in _placeholders — il
         // billboard resta invisibile per sempre, anche se l'oggetto risulta correttamente generato
         // (motivo per cui il pannello Info lo mostrava "OK" ma non appariva mai nel mondo). La lista
@@ -1378,9 +1503,9 @@ public class WorldManager : MonoBehaviour
         SetStatusText($"[Assets] Creating 3D models: {done}/{total} ({percent:F0}%)");
     }
 
-    void HandleCriticalAssetsReady()
+    void HandleBiomeAssetsReady()
     {
-        logPanel?.LogEvent("[Transition] Critical assets loaded! Interpolation starting.");
+        logPanel?.LogEvent("[Transition] All biome assets loaded! Interpolation starting.");
     }
 
     private float GetObjectMinY(GameObject obj, float fallbackY)

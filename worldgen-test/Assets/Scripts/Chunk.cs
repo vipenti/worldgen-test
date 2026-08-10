@@ -103,6 +103,20 @@ public class Chunk : MonoBehaviour
     private bool hasGeneratedOnce = false;
     private bool hasColliderBuilt = false;
 
+    // Coordinata chunk, esposta per il logging diagnostico in WorldManager (piazzamento/
+    // reperimento decorazioni).
+    public Vector2Int ChunkCoord => chunkPos;
+
+    // Numero di decorazioni ancora in attesa che la loro generazione IA finisca (billboard
+    // placeholder invisibili piazzati da WorldManager.InstantiateAssetPrimitive). Finché > 0,
+    // WorldManager.RemoveFarChunks evita di distruggere questo chunk: il placeholder in attesa
+    // è figlio del chunk, quindi morirebbe con lui prima che l'asset sia pronto, perdendo per
+    // sempre quella decorazione anche se la generazione poi va a buon fine (vedi
+    // ReplacePlaceholders — non c'è più nessun placeholder a cui agganciare la mesh risolta).
+    public int PendingDecorCount { get; private set; }
+    public void NotePendingDecorAdded() => PendingDecorCount++;
+    public void NotePendingDecorResolved() => PendingDecorCount = Mathf.Max(0, PendingDecorCount - 1);
+
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
     public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary,
                            bool isTransitioning, Vector2 transitionCenter2D, float innerRadius, float blendWidth,
