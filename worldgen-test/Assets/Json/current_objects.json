@@ -1,16 +1,14 @@
 {
-  "medieval castle": { "id": 45, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "fortified city gate": { "id": 77, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
-  "half-timbered house": { "id": 79, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
-  "wooden cottage": { "id": 88, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
-  "village blacksmith": { "id": 41, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
-  "oak tree": { "id": 0, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "wildflower": { "id": 90, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "tall grass tuft": { "id": 65, "size": "tiny", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "merchant stall": { "id": 80, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
-  "stone well": { "id": 91, "size": "normal", "frequency": "unique", "type": "prop", "priority": 2 },
-  "wooden fence segment": { "id": 115, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
-  "wooden crate": { "id": 85, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 },
-  "stone block": { "id": 86, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 2 },
-  "wooden barrel": { "id": 83, "size": "small", "frequency": "common", "type": "clutter", "priority": 2 }
+  "oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "birch tree": { "id": 1, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "wild fern": { "id": 114, "size": "tiny", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 66, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "wild deer": { "id": 70, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "wild rabbit": { "id": 71, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "fallen log": { "id": 69, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "large rock": { "id": 68, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 72, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "wooden stick": { "id": 74, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "mushroom": { "id": 73, "size": "tiny", "frequency": "rare", "type": "vegetation", "priority": 4 },
+  "small stone": { "id": 112, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
 }
