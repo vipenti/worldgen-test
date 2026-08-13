@@ -1,15 +1,17 @@
 {
-  "timber-framed cottage": { "id": 28, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
-  "thatched roof cottage": { "id": 29, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
-  "stone well": { "id": 30, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "wooden fence": { "id": 31, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
+  "half-timbered house": { "id": 33, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "stone cottage": { "id": 34, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "blacksmith forge": { "id": 35, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
   "oak tree": { "id": 32, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
   "pine tree": { "id": 26, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
   "leafy bush": { "id": 2, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "tall grass": { "id": 14, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "tall grass": { "id": 14, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "dried leaf": { "id": 13, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "horse-drawn cart": { "id": 36, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "wooden barrel": { "id": 37, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
+  "market stall": { "id": 38, "size": "small", "frequency": "rare", "type": "prop", "priority": 2 },
+  "stone water fountain": { "id": 39, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
   "fallen log": { "id": 8, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
   "small rock": { "id": 10, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "capuchin monkey": { "id": 5, "size": "normal", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "mossy stone": { "id": 12, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "termite mound": { "id": 9, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 }
+  "sharp rock": { "id": 11, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
 }

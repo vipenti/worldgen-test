@@ -409,28 +409,16 @@ public class Chunk : MonoBehaviour
                     finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, pathLevel, pathInfluence));
                 }
 
-                // Appiattimento della griglia stradale urbana (isStructuredBiome), incluse le
-                // strade principali più larghe: stessa griglia (UrbanGrid) usata da WorldManager
-                // per piazzare i lotti/edifici, così il terreno resta piatto sotto le strade
-                // indipendentemente dal rumore del bioma. Pesato per voxelT: se questo punto è
-                // ancora dal lato "vecchio" del blend (voxelT basso), niente appiattimento — le
-                // strade del bioma nuovo non devono comparire su terreno non ancora transizionato.
-                if (target.isStructuredBiome && voxelT > 0f)
-                {
-                    var sampleX = UrbanGrid.SampleAxis(worldX, urbanGrid);
-                    var sampleZ = UrbanGrid.SampleAxis(worldZ, urbanGrid);
-                    float distToStreet = Mathf.Min(
-                        sampleX.isStreet ? sampleX.distToEdge : float.MaxValue,
-                        sampleZ.isStreet ? sampleZ.distToEdge : float.MaxValue);
-                    float streetBlendWidth = Mathf.Max(pathBlendWidth * 0.35f, 3f);
-                    if (distToStreet < streetBlendWidth)
-                    {
-                        float streetBlendT    = Mathf.Clamp01(distToStreet / streetBlendWidth);
-                        float streetInfluence = (1f - Mathf.SmoothStep(0f, 1f, streetBlendT)) * voxelT;
-                        int streetLevel = Mathf.RoundToInt(target.baseTerrainHeight);
-                        finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, streetLevel, streetInfluence));
-                    }
-                }
+                // NOTA: qui prima c'era un appiattimento fisico dell'altezza sotto la griglia
+                // stradale urbana (isStructuredBiome) — tirava finalHeight verso un livello piatto
+                // (target.baseTerrainHeight) in una banda attorno a ogni strada. Il blend tra
+                // terreno naturale (rumoroso) e banda piatta creava dislivelli/buche visibili
+                // proprio al bordo strada-lotto, specie su terreno collinare. La griglia (UrbanGrid)
+                // resta usata da WorldManager per piazzare lotti/edifici e qui sotto per la
+                // texturizzazione della strada (vedi "Rivestimento delle strade urbane" in
+                // Pass 2) — è diventata puramente concettuale per l'altezza: le strade seguono il
+                // terreno naturale, si riconoscono solo dalla texture uniforme, non da un piano
+                // scavato nel terreno.
 
                 HeightMap[x, z] = finalHeight;
             }
@@ -510,12 +498,15 @@ public class Chunk : MonoBehaviour
                     }
                 }
 
-                // Rivestimento delle strade urbane (isStructuredBiome): forza il tile "surface"
-                // puro (senza le patch di terra/fiori/cespugli usate sopra per i lotti), così le
-                // strade restano una pavimentazione uniforme invece di ereditare le variazioni
-                // pensate per il terreno naturale. "middle" non va bene qui: è il materiale di
+                // Rivestimento delle strade urbane (isStructuredBiome): forza il tile "rock"
+                // (pietra/pavimentazione — con fallback a deepTileID, stesso pattern usato sopra
+                // per la variabile "rock"), non "surface". "surface" era la stessa identica tile
+                // già usata di default per TUTTO il terreno non patchato (vedi "byte surfaceTile =
+                // surface;" sopra) — quindi la strada risultava visivamente indistinguibile dal
+                // resto del terreno, si toglievano solo le patch fiori/cespugli senza introdurre
+                // un materiale davvero diverso. "middle" resta scartato: è il materiale di
                 // sotto-superficie del bioma (spesso terra/erba), non pensato per essere visto in
-                // superficie, ed è quello che dava l'effetto "prato fiorito" sulla strada.
+                // superficie.
                 // Gating su voxelT >= 0.5: stessa soglia usata da WorldManager per decidere se un
                 // chunk è "abbastanza nuovo" da ricevere decorazioni del bioma nuovo — sotto quella
                 // soglia il punto è ancora considerato vecchio bioma, niente pavimentazione.
@@ -523,7 +514,7 @@ public class Chunk : MonoBehaviour
                 {
                     bool onStreet = UrbanGrid.SampleAxis(worldX, urbanGrid).isStreet
                                  || UrbanGrid.SampleAxis(worldZ, urbanGrid).isStreet;
-                    if (onStreet) surfaceTile = surface;
+                    if (onStreet) surfaceTile = rock;
                 }
 
                 int minHeight = Mathf.Max(0, finalHeight - 3);
