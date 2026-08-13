@@ -40,11 +40,14 @@ public class GenerateResolutions : MonoBehaviour
     // Risoluzioni di griglia configurabili
     public static int LowGridSize = 8;
     public static int MediumGridSize = 16;
-    public static int HighGridSize = 32;
-    // Griglia della tier "_superhigh" (solo oggetti "big"/"huge", vedi VoxelRenderer). 64 = il
-    // doppio di HighGridSize: un salto già notevole di dettaglio (4-8x più voxel a seconda che
-    // la forma sia piena o a guscio) restando ben al di sotto del costo della mesh originale non
-    // decimata, che su un edificio grande può arrivare a milioni di voxel/poligoni.
+    // Alzato da 32 a 40 (+25% lineare, circa 2x i voxel nel caso di forma piena) — a 32 la tier
+    // "_high" restava troppo grezza su oggetti dettagliati come animali/creature, specie ora che
+    // "small" (che include "single animals", vedi ClassificationSystem) arriva a questa tier
+    // invece di essere limitato a Medium.
+    public static int HighGridSize = 40;
+    // Griglia della tier "_superhigh" (solo oggetti "big"/"huge", vedi VoxelRenderer) — un salto
+    // di dettaglio notevole restando ben al di sotto del costo della mesh originale non decimata,
+    // che su un edificio grande può arrivare a milioni di voxel/poligoni.
     public static int SuperHighGridSize = 64;
 
     /// <summary>

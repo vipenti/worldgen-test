@@ -2290,7 +2290,7 @@ MonoBehaviour:
   - footstepType: snow
     clips:
     - {fileID: 8300000, guid: 5e8b0581f5aab7c4d9190864052cb14e, type: 3}
-  defaultFootstepClip: {fileID: 8300000, guid: 4d541b18b3a1afc4692b75878c0303ec, type: 3}
+  defaultFootstepClip: {fileID: 8300000, guid: 76d8b51e6cf36f04397eefbf973912a2, type: 3}
   stepDistance: 6
   pitchVariation: 0.08
   volumeVariation: 0.1
@@ -10792,9 +10792,17 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LLMWorldDirector
   inputField: {fileID: 880284052}
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
-  modelId: qwen/qwen3.6-27b
+  modelId: qwen/qwen3.5-9b
   maxTokens: 12288
+  maxTokensThinking: 12288
+  thinkingForDescription: 0
   thinkingForParams: 0
+  thinkingForAssetList: 0
+  logThinkingToConsole: 0
+  parallelizeStep2And3: 1
+  thinkingDirective: "<|think|> Think briefly and efficiently. Focus only on the
+    key decisions that affect the output \u2014 skip restating the instructions or
+    listing every rule you're checking."
   generateTexture: {fileID: 1573031125}
   generateAsset: {fileID: 1772015175}
   worldManager: {fileID: 0}
@@ -11612,10 +11620,8 @@ MonoBehaviour:
   serverUrl: http://25.18.55.60:5000
   materialName: wood
   negativePrompt: blurry, seams, low quality, distorted, watermark
-  tileable: 1
   normalStrength: 5
   steps: 4
-  guidanceScale: 0
 --- !u!114 &1573031126
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -12761,6 +12767,9 @@ MonoBehaviour:
   ssSamplingSteps: 12
   slatGuidanceStrength: 3
   slatSamplingSteps: 12
+  lowres: 0
+  maxBusyRetries: 5
+  busyRetryDelaySeconds: 2
   voxelRenderer: {fileID: 1772015172}
 --- !u!114 &1772015174
 MonoBehaviour:
@@ -12781,8 +12790,6 @@ MonoBehaviour:
     lighting, sharp details, a touch of cozy game aesthetic.
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
-  quality: 1
-  transparent: 0
   serverAddress: http://25.18.55.60:5000
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 1772015173}
@@ -12803,6 +12810,9 @@ MonoBehaviour:
   assetFolder: Assets/GeneratedAsset
   llmObjectGeneration: {fileID: 1772015174}
   worldManager: {fileID: 1447165635}
+  useSecondTrellisInstance: 1
+  trellisBusyMaxRetries: 8
+  trellisBusyRetryDelaySeconds: 2
 --- !u!4 &1772015176
 Transform:
   m_ObjectHideFlags: 0

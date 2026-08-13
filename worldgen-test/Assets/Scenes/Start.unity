@@ -310,10 +310,8 @@ MonoBehaviour:
   serverUrl: http://25.18.55.60:5000
   materialName: wood
   negativePrompt: 
-  tileable: 0
   normalStrength: 5
   steps: 4
-  guidanceScale: 0
 --- !u!114 &226235708
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -344,9 +342,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LLMWorldDirector
   inputField: {fileID: 0}
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
-  modelId: qwen/qwen3.6-27b
+  modelId: google/gemma-4-e4b
   maxTokens: 12228
-  thinkingForParams: 0
+  maxTokensThinking: 12288
+  thinkingForParams: 1
+  thinkingForAssetList: 1
+  logThinkingToConsole: 1
+  parallelizeStep2And3: 1
+  thinkingDirective: "<|think|> Think briefly and efficiently. Focus only on the
+    key decisions that affect the output \u2014 skip restating the instructions or
+    listing every rule you're checking."
   generateTexture: {fileID: 226235707}
   generateAsset: {fileID: 226235708}
   worldManager: {fileID: 0}
@@ -378,11 +383,11 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::LLMObjectGeneration
   object_name: house
-  stylePrompt: A reference image of a stylized house. Neutral pastel blue background,
-    frontal view, no bases or ground, studio lighting.
+  stylePrompt: A beautiful, high-quality 3D render of a single realistic house. High
+    definition, soft lighting, vibrant color palette. The object is perfectly centered
+    against a clean, plain, neutral background (like pastel blue or cream). Studio
+    lighting, sharp details, a touch of cozy game aesthetic.
   negativePrompt: ground, floor, base, text, watermark, multiple elements
-  quality: 1
-  transparent: 0
   serverAddress: http://25.18.55.60:5000
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 226235713}
@@ -425,6 +430,9 @@ MonoBehaviour:
   ssSamplingSteps: 12
   slatGuidanceStrength: 3
   slatSamplingSteps: 12
+  lowres: 0
+  maxBusyRetries: 5
+  busyRetryDelaySeconds: 2
   voxelRenderer: {fileID: 226235712}
 --- !u!114 &226235714
 MonoBehaviour:
@@ -456,10 +464,8 @@ MonoBehaviour:
   serverUrl: http://25.18.55.60:5000
   materialName: wood
   negativePrompt: 
-  tileable: 0
   normalStrength: 5
   steps: 4
-  guidanceScale: 0
 --- !u!1 &348590148
 GameObject:
   m_ObjectHideFlags: 0

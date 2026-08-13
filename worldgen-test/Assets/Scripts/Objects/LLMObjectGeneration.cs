@@ -8,8 +8,6 @@ using System.Collections;
 
 public class LLMObjectGeneration : MonoBehaviour
 {
-    public enum Quality { low, high, super_high }
-
     [Header("Object")]
     public string object_name = "house";
 
@@ -20,8 +18,6 @@ public class LLMObjectGeneration : MonoBehaviour
     public string negativePrompt = "shadow, background, ground, floor, base, text, watermark, multiple elements";
 
     [Header("Generation")]
-    public Quality quality = Quality.low;
-    public bool transparent = false;
     public string serverAddress = "http://25.18.55.60:5000";
 
     [Header("Output")]
@@ -72,10 +68,14 @@ public class LLMObjectGeneration : MonoBehaviour
 
     void OnValidate()
     {
-        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background on a super thin white plane. Low cube resolution, frontal view, studio lighting.";
-        stylePrompt = $"A beautiful, high-quality 3D render of a single realistic {object_name}. High definition, soft lighting, vibrant color palette. The object is perfectly centered against a clean, plain, neutral background (like pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.";
-        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background. Low cube resolution, isometric view, studio lighting.";
+        stylePrompt = BuildStylePrompt(object_name);
     }
+
+    // Estratto da OnValidate così che GenerateAsset possa costruire lo stesso identico prompt per
+    // la pipeline batch (produttore Flux/SDXL + doppio consumer Trellis) senza duplicare il
+    // template altrove — un'unica fonte di verità per come viene descritto un oggetto.
+    public static string BuildStylePrompt(string objectName) =>
+        $"A beautiful, high-quality 3D render of a single realistic {objectName}. High definition, soft lighting, vibrant color palette. The object is perfectly centered against a clean, plain, neutral background (like pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.";
 
     IEnumerator PostRequest()
     {
@@ -86,11 +86,14 @@ public class LLMObjectGeneration : MonoBehaviour
             finalPrompt += $" Coherent with this color palette: {paletteColorDescription}.";
         }*/
 
+        // Endpoint e schema allineati a GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md: /create_image (non
+        // più /generate_edit), "quality":"high" fisso — requisito del server, non un'opzione — e
+        // niente più campo "transparent" (non fa parte dello schema richiesta attuale).
         string effectiveServer = EffectiveServerAddress;
-        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {effectiveServer}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
-        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
+        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {effectiveServer}/create_image | oggetto: {object_name} | prompt finale: {finalPrompt}");
+        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\"}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-        using var req = new UnityWebRequest(effectiveServer + "/generate_edit", "POST");
+        using var req = new UnityWebRequest(effectiveServer + "/create_image", "POST");
         req.uploadHandler   = new UploadHandlerRaw(bodyRaw);
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");

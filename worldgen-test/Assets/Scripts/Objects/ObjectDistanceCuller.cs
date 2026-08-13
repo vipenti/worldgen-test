@@ -185,21 +185,41 @@ public class ObjectDistanceCuller : MonoBehaviour
 
     private void RegisterToLODManager()
     {
-        if (LODManager.Instance != null)
+        if (LODManager.Instance == null)
         {
-            LODManager.Instance.Register(this);
-        }
-        else
-        {
-            // Crea un LODManager al volo se non esiste in scena
+            // Crea un LODManager al volo se non esiste in scena. Serve anche gestire il caso in
+            // cui il GameObject "LODManager" esiste già ma Instance è comunque null — succede dopo
+            // un domain reload a caldo (es. ricompilazione di uno script mentre si è in Play Mode):
+            // i campi static vengono azzerati, ma gli oggetti già in scena sopravvivono senza che
+            // il loro Awake() (l'unico punto che ripopola Instance) rigiri. Prima qui si assumeva
+            // ciecamente che Instance fosse valorizzato dopo questo blocco, con NullReferenceException
+            // a valle se il GameObject esisteva già ma orfano di Instance.
             var go = GameObject.Find("LODManager");
             if (go == null)
             {
                 go = new GameObject("LODManager");
                 go.AddComponent<LODManager>();
             }
-            LODManager.Instance.Register(this);
+            else
+            {
+                var existing = go.GetComponent<LODManager>();
+                if (existing == null)
+                    go.AddComponent<LODManager>();
+                else
+                    // Awake() gira una sola volta per istanza — se il componente esisteva già da
+                    // prima del reload, non ripartirà mai da solo. Ripristiniamo Instance a mano,
+                    // esattamente quello che avrebbe fatto Awake() la prima volta.
+                    LODManager.Instance = existing;
+            }
+
+            if (LODManager.Instance == null)
+            {
+                Debug.LogWarning($"[ObjectDistanceCuller] LODManager.Instance ancora null dopo il tentativo di ripristino su '{go.name}' — registrazione di '{name}' saltata per questo frame.");
+                return;
+            }
         }
+
+        LODManager.Instance.Register(this);
     }
 
     private void UnregisterFromLODManager()

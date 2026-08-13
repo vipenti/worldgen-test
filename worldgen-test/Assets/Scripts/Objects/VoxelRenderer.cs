@@ -163,7 +163,10 @@ public class VoxelRenderer : MonoBehaviour
 
             // Cap voxel density by the object's in-game size classification: "tiny" props
             // (pebbles, tiny flowers...) never need more than low-resolution cubes even up
-            // close, and "small" props (small rocks, bushes...) top out at medium.
+            // close, e "small" props (small rocks, bushes, piccole creature...) restano cappati
+            // a Medium anche per la tier "_high" — voluto: gli animali/oggetti che devono
+            // arrivare alla vera tier High vanno classificati "normal", non "small" (vedi la
+            // regola SIZE in Prompts.ClassificationSystem, aggiornata di conseguenza).
             bool isTiny = sizeCategoryForLODs == "tiny";
             bool isSmall = sizeCategoryForLODs == "small";
 

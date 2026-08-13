@@ -1,14 +1,15 @@
 {
-  "desert pyramid": { "id": 14, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "desert sphinx": { "id": 15, "size": "huge", "frequency": "unique", "type": "structure", "priority": 1 },
-  "merchant tent": { "id": 16, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "giant cactus": { "id": 12, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "desert palm tree": { "id": 10, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "dead bush cluster": { "id": 11, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "sandstone rock": { "id": 122, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "desert camel": { "id": 17, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "desert well": { "id": 13, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
-  "small rock": { "id": 63, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "wooden crate": { "id": 85, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "bone fragment": { "id": 123, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 }
+  "timber-framed cottage": { "id": 28, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "thatched roof cottage": { "id": 29, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "stone well": { "id": 30, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "wooden fence": { "id": 31, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
+  "oak tree": { "id": 32, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "pine tree": { "id": 26, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "leafy bush": { "id": 2, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "tall grass": { "id": 14, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "fallen log": { "id": 8, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "small rock": { "id": 10, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "capuchin monkey": { "id": 5, "size": "normal", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "mossy stone": { "id": 12, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "termite mound": { "id": 9, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 }
 }

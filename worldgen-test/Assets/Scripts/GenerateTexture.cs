@@ -23,12 +23,14 @@ public class GenerateTexture : MonoBehaviour
     [Header("Parametri")]
     public string materialName = "wood";
     [TextArea] public string negativePrompt = "";
-    public bool tileable = false;
     public float normalStrength = 5.0f;
 
-    [Header("Qualità (SD Turbo: steps 1-4, guidanceScale 0)")]
+    // Backend attuale è FLUX.1-schnell dietro /create_image (non più SD Turbo): niente
+    // guidance_scale, la qualità si controlla col campo fisso "quality":"high" richiesto dal
+    // server (vedi GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md) — "tileable"/"guidance_scale" non
+    // fanno parte dello schema richiesta attuale e sono stati rimossi.
+    [Header("Qualità")]
     public int steps = 4;
-    public float guidanceScale = 0.0f;
 
     public static event Action<Texture2D, string> OnTextureGenerated;
     public static event Action<Texture2D>         OnNormalGenerated;
@@ -55,10 +57,10 @@ public class GenerateTexture : MonoBehaviour
         string palettePrompt = string.IsNullOrEmpty(paletteColorDescription) ? "" : $" The colors is {paletteColorDescription}.";
         //string prompt = $"Seamless flat tileable texture of a {materialName} to be applied on cube faces of a cozy game. Simple, clean characteristic of the material. Top-down orthographic 90-degree view.{palettePrompt}";
         string prompt = $"Top-down aerial view of a texture tile of pure {materialName} material. very low details, cartoonish style, {palettePrompt}. Flat colors, soft shading, minimal highlights. Absolutely NO other elements or materials. Only the isolated surface pattern of {materialName}, filling the entire frame completely.";
-        // Step 1: genera immagine
+        // Step 1: genera immagine — "quality":"high" è un requisito fisso del server (vedi
+        // GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md), non un'opzione: va sempre mandato così.
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
-        string gsStr = guidanceScale.ToString("F1", CultureInfo.InvariantCulture);
-        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"tileable\":{tileable.ToString().ToLower()},\"steps\":{steps},\"guidance_scale\":{gsStr}}}";
+        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"quality\":\"high\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"steps\":{steps}}}";
         UnityWebRequest req1 = MakePost($"{EffectiveServerUrl}/create_image", body1);
         yield return req1.SendWebRequest();
 

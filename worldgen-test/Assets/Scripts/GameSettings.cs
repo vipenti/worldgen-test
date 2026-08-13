@@ -18,6 +18,10 @@ public class GameSettingsData
     public int llmPort = 1234;
     public int imagePort = 5000;
     public int gen3dPort = 7960;
+    // Seconda istanza Trellis in parallelo alla prima (vedi GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md).
+    // Default 7960+1 per convenzione, ma NON confermato per questo server specifico — verificare
+    // prima di attivare GenerateAsset.useSecondTrellisInstance.
+    public int gen3dPort2 = 7961;
 
     // ── Audio input ─────────────────────────────────────────────────────
     // null/"" = usa il device di default del sistema.
@@ -91,6 +95,7 @@ public class GameSettings : MonoBehaviour
     public string LlmEndpoint => $"http://{Data.serverHost}:{Data.llmPort}/v1/chat/completions";
     public string ImageServerBase => $"http://{Data.serverHost}:{Data.imagePort}";
     public string Gen3DEndpoint => $"http://{Data.serverHost}:{Data.gen3dPort}/generate_vox_only";
+    public string Gen3DEndpoint2 => $"http://{Data.serverHost}:{Data.gen3dPort2}/generate_vox_only";
 
     // ── Setter "applica + salva + notifica" usati dal pannello Opzioni ─────
     public void ApplyServerSettings(string host, int llmPort, int imagePort, int gen3dPort)

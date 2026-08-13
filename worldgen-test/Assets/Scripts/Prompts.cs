@@ -114,10 +114,12 @@ STRICT ARCHITECTURAL & MODULARITY RULES:
 1. THINK IN HIERARCHIES: You must plan the environment from massive architectural focal points down to ground-level props. Do not skip large buildings. For modern, futuristic, or sci-fi cities, Structures MUST be real towering buildings (e.g. skyscraper, tower, dome habitat) — never a ground or pavement material.
 2. NO TERRAIN TILES: Every item must be a standalone 3-dimensional model generated ABOVE the ground. No flat pavement, grass tiles, or road blocks. FORBIDDEN examples: 'concrete slab', 'asphalt tile', 'pavement block', 'road tile' — these are ground textures, not standalone assets, and must never appear in the output list.
 3. THE SINGULAR MANDATE (NO CLUSTERS): Every asset MUST be a single, standalone, isolated item. You are strictly FORBIDDEN from using plural forms or collective words. Do NOT use words like: 'clump', 'cluster', 'patch', 'pile', 'stack', 'group', 'set', 'bunch', 'massive', 'collection', or plurals like 'crates', 'barrels', 'stones'. (e.g., never list 'pile of chairs', list 'wooden chair' instead; never list 'bushes', list 'small bush' instead).
-4. GENERIC & REUSABLE: Keep descriptions short, lowercase, and extremely straightforward (e.g., 'medieval house', 'pine tree', 'stone'). Avoid overly complex or specific adjectives to maximize asset reusability across multiple worlds. Always include basic rocks or stones in natural, rural, or outdoor biomes.
+4. GENERIC & REUSABLE: Keep descriptions short, lowercase, and extremely straightforward (e.g., 'medieval house', 'pine tree', 'stone'). Avoid overly complex or specific adjectives to maximize asset reusability across multiple worlds. Always include basic rocks or stones in natural, rural, or outdoor biomes — but keep them small, human-scale ground props (see rule 5).
+5. NO GIANT ROCKS OR BOULDERS: Rocks and stones must always be small, human-scale props (e.g. 'small rock', 'sharp rock', 'mossy stone'). NEVER use a size-emphasizing name like 'boulder', 'large boulder', 'giant rock', 'massive stone', 'huge rock', or 'rock formation' — these are FORBIDDEN regardless of biome. If the world needs a big natural landmark, use a real structure or terrain feature instead, never an oversized rock.
 6. NUMBER: You MUST produce a final list containing exactly 10 to 15 assets total in the JSON array.
 7. NO MULTIPLE OBJECTS OR AGGREGATIONS: Do NOT include any objects that cannot be placed on the ground. Only include individual, standalone items.
 8. NO TERRAIN ELEMENTS: Dunes, piles, cliffs are not allowed. Only include individual, standalone items that can be placed on the ground.
+9. NO WATER BODIES: Never list a pool, pond, water pond, puddle, lake, or any other body of standing water as an asset. Water placement is a structural terrain feature handled separately by the terrain generator (liquid layer, water level), not a standalone 3D model — FORBIDDEN examples: 'water pond', 'small pool', 'pond', 'puddle', 'lake'.
 
 OUTPUT FORMAT PROTOCOL:
 You must strictly follow this two-part output format. No conversational text outside these blocks.
@@ -214,8 +216,8 @@ Output:
     STRICT SCALE RULES:
     - 'huge': Massive skyscrapers, castles, main cathedral towers, or monolithic landmarks.
     - 'big': Standard residential houses, shops, trees, temples.
-    - 'normal': human characters, vehicles, small boats, or medium-sized props like market stalls or fountains.
-    - 'small': Bushes, furniture pieces, single animals, fences, or fallen logs.
+    - 'normal': human characters, vehicles, small boats, medium-to-large animals (deer, wolves, monkeys, big cats), or medium-sized props like market stalls or fountains.
+    - 'small': Bushes, furniture pieces, small animals (birds, rabbits, cats, small dogs), fences, or fallen logs.
     - 'tiny': Individual flowers, mushrooms, small pebbles, or micro ground clutter.
 
     CRITICAL REQUIREMENT: Output ONLY a raw, flat JSON object mapping each object to its size string. Do not write markdown blocks (```json), conversational prose, or analysis.
@@ -421,6 +423,84 @@ Output:
       ""taxi car"": 2,
       ""sidewalk maple tree"": 3,
       ""trash bin"": 4
+    }
+
+    World Description Context: ";
+    // NOTE: SizeSystem/FrequencySystem/TypeSystem/PrioritySystem sopra non sono più chiamati dalla
+    // pipeline (vedi ClassificationSystem sotto, che li sostituisce con una singola richiesta) —
+    // lasciati qui solo come riferimento/rollback, si possono rimuovere quando confermato stabile.
+
+    // ── PASS 4 (merged): size + frequency + type + priority in un'unica chiamata ─────────────
+    // Sostituisce le 4 chiamate sequenziali sopra (stesso identico input, 4 assi indipendenti
+    // dello stesso oggetto) con una sola richiesta HTTP: stesso identico risultato ma senza pagare
+    // 4 volte il prompt-processing di un system prompt quasi identico. ExtractTagValues in
+    // LLMWorldDirector già sapeva leggere il formato annidato { "oggetto": { "campo": valore } },
+    // quindi il parsing lato client non è cambiato.
+    public static string ClassificationSystem(string objectList) =>
+    @"You are a Technical Game Data Compiler. Given a world description and a list of assets, classify EACH object across four independent axes: size, frequency, type, and priority.
+
+    OBJECTS TO PROCESS: " + objectList + @"
+
+    ── SIZE ── (height compared to a standard human player character, ~1.7 meters tall)
+    - 'huge': Massive skyscrapers, castles, main cathedral towers, or monolithic landmarks.
+    - 'big': Standard residential houses, shops, trees, temples.
+    - 'normal': human characters, vehicles, small boats, medium-to-large animals (deer, wolves, monkeys, big cats), or medium-sized props like market stalls or fountains.
+    - 'small': Bushes, furniture pieces, small animals (birds, rabbits, cats, small dogs), fences, or fallen logs.
+    - 'tiny': Individual flowers, mushrooms, small pebbles, or micro ground clutter.
+
+    ── FREQUENCY ── (how common the object should be in this specific biome)
+    - 'unique': Exactly ONE single instance exists in the entire world layout. Max 1 unique asset per world.
+    - 'super_rare': Very few instances across the landscape.
+    - 'rare': Scattered occasionally.
+    - 'common': Present in most standard areas.
+    - 'very_common': Fills the background landscape everywhere as basic filler.
+
+    ── TYPE ── (functional placement behavior)
+    - 'structure': Core foundations, buildings, large architecture, or major infrastructure (e.g., houses, blacksmiths, towers, bridges).
+    - 'prop': Functional urban, indoor, or thematic furniture items interacting with paths or structures (e.g., lamps, benches, tables, carts, wells, boats).
+    - 'vegetation': Natural living flora, organic greenery, trees, or plants (e.g., trees, bushes, flowers, ferns).
+    - 'clutter': Small ground details, debris, scatter residue, or tiny loose blocks (e.g., single stones, twigs, loose barrels, leaf piles).
+    CRITICAL CONSTRAINT: Artificial infrastructure (like bridges), buildings, or vehicles (like cars and boats) can NEVER be classified as vegetation or clutter. They must be structures or props.
+
+    ── PRIORITY ── (layout pass order, integer 1 to 4)
+    - 1: Primary Architectural Pillars ('structure' behaviors). Buildings, towers, or foundations spawned first to establish spatial centers.
+    - 2: Relational Attached Props ('prop' behaviors). Urban items, furniture, or vehicles spawned second, directly anchored or adjacent to priority 1 foundations.
+    - 3: Standard Large Greenery (Trees and large flora inside 'vegetation' behaviors). Foliage spawned third in remaining open spaces.
+    - 4: Micro Ground Filler (Micro flowers, tiny clutter, small rocks, or leaves). Spawned last as tiny surface decorations.
+
+    CRITICAL REQUIREMENT: Output ONLY a raw JSON object. Each key is an object name; each value is a nested object with exactly the four fields ""size"", ""frequency"", ""type"", ""priority"" (priority as an integer 1-4, the other three as the strings defined above). Do not write markdown blocks (```json), conversational prose, or analysis.
+
+    ### EXAMPLES
+
+    World: A quiet, basic forest filled with dense canopies and small clearings.
+    Output:
+    {
+      ""forest tree"": { ""size"": ""big"", ""frequency"": ""very_common"", ""type"": ""vegetation"", ""priority"": 3 },
+      ""birch tree"": { ""size"": ""big"", ""frequency"": ""common"", ""type"": ""vegetation"", ""priority"": 3 },
+      ""bush"": { ""size"": ""small"", ""frequency"": ""common"", ""type"": ""vegetation"", ""priority"": 3 },
+      ""fallen log"": { ""size"": ""small"", ""frequency"": ""rare"", ""type"": ""clutter"", ""priority"": 4 },
+      ""pinecone"": { ""size"": ""tiny"", ""frequency"": ""very_common"", ""type"": ""clutter"", ""priority"": 4 }
+    }
+
+    World: A peaceful medieval village featuring small houses and a central gathering square.
+    Output:
+    {
+      ""village house"": { ""size"": ""big"", ""frequency"": ""common"", ""type"": ""structure"", ""priority"": 1 },
+      ""blacksmith forge"": { ""size"": ""big"", ""frequency"": ""unique"", ""type"": ""structure"", ""priority"": 1 },
+      ""wooden bench"": { ""size"": ""small"", ""frequency"": ""rare"", ""type"": ""prop"", ""priority"": 2 },
+      ""stone well"": { ""size"": ""normal"", ""frequency"": ""unique"", ""type"": ""prop"", ""priority"": 2 },
+      ""flowering bush"": { ""size"": ""small"", ""frequency"": ""common"", ""type"": ""vegetation"", ""priority"": 3 },
+      ""small stone"": { ""size"": ""tiny"", ""frequency"": ""very_common"", ""type"": ""clutter"", ""priority"": 4 }
+    }
+
+    World: A bustling modern city downtown with vertical office towers and wide concrete sidewalks.
+    Output:
+    {
+      ""corporate glass skyscraper"": { ""size"": ""huge"", ""frequency"": ""common"", ""type"": ""structure"", ""priority"": 1 },
+      ""traffic light pole"": { ""size"": ""normal"", ""frequency"": ""common"", ""type"": ""prop"", ""priority"": 2 },
+      ""taxi car"": { ""size"": ""normal"", ""frequency"": ""common"", ""type"": ""prop"", ""priority"": 2 },
+      ""sidewalk maple tree"": { ""size"": ""big"", ""frequency"": ""common"", ""type"": ""vegetation"", ""priority"": 3 },
+      ""trash bin"": { ""size"": ""small"", ""frequency"": ""very_common"", ""type"": ""clutter"", ""priority"": 4 }
     }
 
     World Description Context: ";

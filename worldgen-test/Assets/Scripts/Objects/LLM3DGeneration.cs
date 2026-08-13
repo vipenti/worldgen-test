@@ -16,6 +16,7 @@ class VoxOnlyRequest
     public int    ss_sampling_steps      = 12;
     public float  slat_guidance_strength = 3.0f;
     public int    slat_sampling_steps    = 12;
+    public bool   lowres                 = false;
 }
 
 
@@ -31,6 +32,13 @@ public class LLM3DGeneration : MonoBehaviour
     public int   ssSamplingSteps       = 12;
     public float slatGuidanceStrength  = 3.0f;
     public int   slatSamplingSteps     = 12;
+    public bool  lowres                = false;
+
+    [Header("Retry")]
+    [Tooltip("Trellis accetta una sola generazione alla volta e risponde 503 se occupato (vedi GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md). Numero di ritentativi prima di arrendersi.")]
+    public int   maxBusyRetries        = 5;
+    [Tooltip("Attesa tra un retry e l'altro dopo un 503.")]
+    public float busyRetryDelaySeconds = 2f;
 
     [Header("References")]
     public VoxelRenderer voxelRenderer;
@@ -119,28 +127,51 @@ public class LLM3DGeneration : MonoBehaviour
             ss_sampling_steps      = ssSamplingSteps,
             slat_guidance_strength = slatGuidanceStrength,
             slat_sampling_steps    = slatSamplingSteps,
+            lowres                 = lowres,
         };
 
         var bytes = Encoding.UTF8.GetBytes(JsonUtility.ToJson(request));
 
-        using var req = new UnityWebRequest(Endpoint, "POST");
-        req.uploadHandler   = new UploadHandlerRaw(bytes);
-        req.downloadHandler = new DownloadHandlerBuffer();
-        req.SetRequestHeader("Content-Type", "application/json");
-        req.timeout = 180;
-
-        Debug.Log($"LLM3DGeneration: generazione '{name}'...");
-        yield return req.SendWebRequest();
-
-        if (req.result != UnityWebRequest.Result.Success)
+        // Trellis accetta una sola generazione alla volta e risponde 503 "Server is busy" se è
+        // già occupato (vedi GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md) — prima qui un 503 veniva
+        // trattato come fallimento definitivo, senza mai ritentare.
+        int attempt = 0;
+        while (true)
         {
-            Debug.LogError($"LLM3DGeneration: {req.responseCode} {req.error}\n{req.downloadHandler.text}");
-            IsGenerating = false;
-            yield break;
-        }
+            using var req = new UnityWebRequest(Endpoint, "POST");
+            req.uploadHandler   = new UploadHandlerRaw(bytes);
+            req.downloadHandler = new DownloadHandlerBuffer();
+            req.SetRequestHeader("Content-Type", "application/json");
+            req.timeout = 180;
 
-        Debug.Log($"LLM3DGeneration: risposta ricevuta ({req.downloadHandler.data.Length} bytes)");
-        voxelRenderer?.LoadFromJson(req.downloadHandler.text, name);
+            Debug.Log($"LLM3DGeneration: generazione '{name}'...");
+            yield return req.SendWebRequest();
+
+            if (req.responseCode == 503)
+            {
+                attempt++;
+                if (attempt > maxBusyRetries)
+                {
+                    Debug.LogError($"LLM3DGeneration: '{name}' — Trellis ancora occupato dopo {maxBusyRetries} tentativi, rinuncio.");
+                    IsGenerating = false;
+                    yield break;
+                }
+                Debug.Log($"LLM3DGeneration: '{name}' — Trellis occupato (503), retry {attempt}/{maxBusyRetries} tra {busyRetryDelaySeconds}s...");
+                yield return new WaitForSeconds(busyRetryDelaySeconds);
+                continue;
+            }
+
+            if (req.result != UnityWebRequest.Result.Success)
+            {
+                Debug.LogError($"LLM3DGeneration: {req.responseCode} {req.error}\n{req.downloadHandler.text}");
+                IsGenerating = false;
+                yield break;
+            }
+
+            Debug.Log($"LLM3DGeneration: risposta ricevuta ({req.downloadHandler.data.Length} bytes)");
+            voxelRenderer?.LoadFromJson(req.downloadHandler.text, name);
+            break;
+        }
 
         IsGenerating = false;
     }

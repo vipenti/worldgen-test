@@ -388,18 +388,38 @@ public class WorldManager : MonoBehaviour
             $"pending={chunk.PendingDecorCount}, isTransitioning={isTransitioning}, t={t:F2} ({(t < 0.5f ? "vecchio bioma" : "nuovo bioma")}), attivo={chunk.gameObject.activeSelf}.");
     }
 
+    BiomeConfig FallbackConfig() => new BiomeConfig {
+        perlinScale = 0.1f, chunkHeight = 64, chunkWidth = 16,
+        surfaceTileID = 1, middleTileID = 2, deepTileID = 3,
+        liquidTileID = 13, waterLevel = 5,
+        octaves = 4, ridgeFactor = 0f, warpStrength = 0.2f
+    };
+
     BiomeConfig LoadLatestConfig()
     {
         string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
         if (File.Exists(path))
-            return JsonUtility.FromJson<BiomeConfig>(File.ReadAllText(path));
+        {
+            var cfg = JsonUtility.FromJson<BiomeConfig>(File.ReadAllText(path));
 
-        return new BiomeConfig {
-            perlinScale = 0.1f, chunkHeight = 64, chunkWidth = 16,
-            surfaceTileID = 1, middleTileID = 2, deepTileID = 3,
-            liquidTileID = 13, waterLevel = 5,
-            octaves = 4, ridgeFactor = 0f, warpStrength = 0.2f
-        };
+            // BiomeConfig.chunkWidth/chunkHeight non hanno un field initializer, quindi se il
+            // JSON dell'LLM arriva senza questi campi (risposta troncata/malformata — vedi
+            // ExtractRawField in LLMWorldDirector, che semplicemente omette un campo se non lo
+            // trova) JsonUtility li lascia a 0 senza segnalare nulla. chunkWidth=0 propaga in
+            // divisioni (player.position.x / chunkWidth) che diventano Infinity, e
+            // Mathf.FloorToInt(Infinity) restituisce int.MinValue — che poi manda in
+            // OverflowException il primo Mathf.Abs a valle (es. UpdateTransitionProgress).
+            // Meglio degradare a un bioma valido ma "sbagliato" piuttosto che un crash a runtime.
+            if (cfg == null || cfg.chunkWidth <= 0 || cfg.chunkHeight <= 0)
+            {
+                Debug.LogWarning($"[WorldManager] llm_generated.json ha chunkWidth/chunkHeight non validi (chunkWidth={cfg?.chunkWidth}, chunkHeight={cfg?.chunkHeight}) — uso la configurazione di fallback per evitare un crash.");
+                return FallbackConfig();
+            }
+
+            return cfg;
+        }
+
+        return FallbackConfig();
     }
 
     // Chiamato ogni frame da Update() senza alcun gating (a differenza di UpdateChunks). Attiva
