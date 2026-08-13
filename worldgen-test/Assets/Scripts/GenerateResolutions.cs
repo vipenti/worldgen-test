@@ -6,9 +6,13 @@ using Newtonsoft.Json.Linq;
 
 public enum ModelResolution
 {
-    Low,     // Bassa risoluzione (es. max 32 voxel sul lato più lungo)
-    Medium,  // Media risoluzione (es. max 64 voxel sul lato più lungo)
-    High     // Alta risoluzione (es. max 128 voxel sul lato più lungo)
+    Low,       // Bassa risoluzione (es. max 32 voxel sul lato più lungo)
+    Medium,    // Media risoluzione (es. max 64 voxel sul lato più lungo)
+    High,      // Alta risoluzione (es. max 128 voxel sul lato più lungo)
+    SuperHigh  // Tier più dettagliata, solo per oggetti "big"/"huge" (vedi VoxelRenderer) —
+               // un downsampling comunque, non la mesh originale non decimata: quest'ultima
+               // può arrivare a milioni di voxel su edifici molto grandi ed era troppo pesante
+               // da usare come LOD più vicino.
 }
 
 [Serializable]
@@ -37,6 +41,11 @@ public class GenerateResolutions : MonoBehaviour
     public static int LowGridSize = 8;
     public static int MediumGridSize = 16;
     public static int HighGridSize = 32;
+    // Griglia della tier "_superhigh" (solo oggetti "big"/"huge", vedi VoxelRenderer). 64 = il
+    // doppio di HighGridSize: un salto già notevole di dettaglio (4-8x più voxel a seconda che
+    // la forma sia piena o a guscio) restando ben al di sotto del costo della mesh originale non
+    // decimata, che su un edificio grande può arrivare a milioni di voxel/poligoni.
+    public static int SuperHighGridSize = 64;
 
     /// <summary>
     /// Uniforma il voxjson fornito in base al parametro di risoluzione specificato.
@@ -221,6 +230,8 @@ public class GenerateResolutions : MonoBehaviour
                 return MediumGridSize;
             case ModelResolution.High:
                 return HighGridSize;
+            case ModelResolution.SuperHigh:
+                return SuperHighGridSize;
             default:
                 return MediumGridSize;
         }

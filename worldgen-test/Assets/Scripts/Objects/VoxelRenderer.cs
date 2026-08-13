@@ -67,8 +67,9 @@ public class VoxelRenderer : MonoBehaviour
     {
         if (string.IsNullOrEmpty(rawJson)) return;
 
-        // Check if this is already an LOD name (ends with _low, _medium, or _high)
-        bool isLOD = assetName.EndsWith("_low") || assetName.EndsWith("_medium") || assetName.EndsWith("_high");
+        // Check if this is already an LOD name (ends with _low, _medium, _high or _superhigh)
+        bool isLOD = assetName.EndsWith("_low") || assetName.EndsWith("_medium") || assetName.EndsWith("_high")
+            || assetName.EndsWith("_superhigh");
 
         if (isLOD)
         {
@@ -134,16 +135,26 @@ public class VoxelRenderer : MonoBehaviour
         //   cache statica viva quanto il processo — la generazione IA di un oggetto nuovo in build
         //   resta quindi in memoria per tutta la sessione corrente e basta, esattamente come gli
         //   oggetti della baseline spedita in Resources/Baseline.
+        // Solo gli oggetti "big"/"huge" ricevono anche la tier "_superhigh": è quella usata da
+        // ObjectDistanceCuller come LOD più vicino per queste due categorie al posto della mesh
+        // originale non decimata (che su un edificio grande può pesare milioni di voxel/poligoni).
+        // Per tutte le altre size la fedeltà di "_high" è già sufficiente anche da vicino.
+        string sizeCategoryForLODs = GetSizeCategory(assetName);
+        bool needsSuperHigh = sizeCategoryForLODs == "big" || sizeCategoryForLODs == "huge";
+
 #if UNITY_EDITOR
         string baseFolder = PathSettings.GetObjectsFolder();
         string lowPath = Path.Combine(baseFolder, assetName + "_low.voxjson");
         string medPath = Path.Combine(baseFolder, assetName + "_medium.voxjson");
         string highPath = Path.Combine(baseFolder, assetName + "_high.voxjson");
-        bool needLODs = !File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath);
+        string superHighPath = Path.Combine(baseFolder, assetName + "_superhigh.voxjson");
+        bool needLODs = !File.Exists(lowPath) || !File.Exists(medPath) || !File.Exists(highPath)
+            || (needsSuperHigh && !File.Exists(superHighPath));
 #else
         bool needLODs = !RuntimeMeshCache.ContainsKey(assetName + "_low")
             || !RuntimeMeshCache.ContainsKey(assetName + "_medium")
-            || !RuntimeMeshCache.ContainsKey(assetName + "_high");
+            || !RuntimeMeshCache.ContainsKey(assetName + "_high")
+            || (needsSuperHigh && !RuntimeMeshCache.ContainsKey(assetName + "_superhigh"));
 #endif
 
         if (needLODs)
@@ -153,9 +164,8 @@ public class VoxelRenderer : MonoBehaviour
             // Cap voxel density by the object's in-game size classification: "tiny" props
             // (pebbles, tiny flowers...) never need more than low-resolution cubes even up
             // close, and "small" props (small rocks, bushes...) top out at medium.
-            string sizeCategory = GetSizeCategory(assetName);
-            bool isTiny = sizeCategory == "tiny";
-            bool isSmall = sizeCategory == "small";
+            bool isTiny = sizeCategoryForLODs == "tiny";
+            bool isSmall = sizeCategoryForLODs == "small";
 
             ModelResolution mediumResolution = isTiny ? ModelResolution.Low : ModelResolution.Medium;
             ModelResolution highResolution = isTiny ? ModelResolution.Low
@@ -165,6 +175,7 @@ public class VoxelRenderer : MonoBehaviour
             string jsonLow = GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.Low);
             string jsonMedium = GenerateResolutions.UniformVoxJson(rawJson, mediumResolution);
             string jsonHigh = GenerateResolutions.UniformVoxJson(rawJson, highResolution);
+            string jsonSuperHigh = needsSuperHigh ? GenerateResolutions.UniformVoxJson(rawJson, ModelResolution.SuperHigh) : null;
 
 #if UNITY_EDITOR
             try
@@ -173,6 +184,7 @@ public class VoxelRenderer : MonoBehaviour
                 File.WriteAllText(lowPath, jsonLow);
                 File.WriteAllText(medPath, jsonMedium);
                 File.WriteAllText(highPath, jsonHigh);
+                if (needsSuperHigh) File.WriteAllText(superHighPath, jsonSuperHigh);
             }
             catch (Exception ex)
             {
@@ -183,15 +195,18 @@ public class VoxelRenderer : MonoBehaviour
             VoxelData dataLow = ParseJson(jsonLow);
             VoxelData dataMedium = ParseJson(jsonMedium);
             VoxelData dataHigh = ParseJson(jsonHigh);
+            VoxelData dataSuperHigh = needsSuperHigh ? ParseJson(jsonSuperHigh) : null;
 
             GenerateRuntimeMeshForData(assetName + "_low", dataLow);
             GenerateRuntimeMeshForData(assetName + "_medium", dataMedium);
             GenerateRuntimeMeshForData(assetName + "_high", dataHigh);
+            if (needsSuperHigh) GenerateRuntimeMeshForData(assetName + "_superhigh", dataSuperHigh);
 
 #if UNITY_EDITOR
             SaveAsAssetForData(assetName + "_low", dataLow);
             SaveAsAssetForData(assetName + "_medium", dataMedium);
             SaveAsAssetForData(assetName + "_high", dataHigh);
+            if (needsSuperHigh) SaveAsAssetForData(assetName + "_superhigh", dataSuperHigh);
 #endif
         }
     }

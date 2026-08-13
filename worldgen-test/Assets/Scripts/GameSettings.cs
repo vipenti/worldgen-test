@@ -33,6 +33,21 @@ public class GameSettingsData
     public int transitionLengthInChunks = 8;
     // Se false, non viene generato/renderizzato il percorso/strada centrale del bioma.
     public bool enablePath = true;
+
+    // Moltiplicatori applicati a scaleHuge/Big/Normal/Small/Tiny di WorldManager, uno per
+    // categoria di size (stesso pattern di objectDensityMultiplier: il campo Inspector resta il
+    // valore "base", il moltiplicatore si applica al momento in cui l'oggetto viene registrato —
+    // non è retroattivo sugli oggetti già piazzati, solo su quelli del prossimo bioma/chunk).
+    public float scaleHugeMultiplier = 1f;
+    public float scaleBigMultiplier = 1f;
+    public float scaleNormalMultiplier = 1f;
+    public float scaleSmallMultiplier = 1f;
+    public float scaleTinyMultiplier = 1f;
+
+    // Moltiplicatori applicati a pathWidth/pathBlendWidth di WorldManager (larghezza del
+    // percorso/strada centrale del bioma e ampiezza della sua sfumatura ai bordi).
+    public float pathWidthMultiplier = 1f;
+    public float pathBlendWidthMultiplier = 1f;
 }
 
 /// <summary>
@@ -101,6 +116,25 @@ public class GameSettings : MonoBehaviour
         Data.renderDistanceMultiplier = Mathf.Max(0.1f, renderDistanceMultiplier);
         Data.transitionLengthInChunks = Mathf.Max(1, transitionLengthInChunks);
         Data.enablePath = enablePath;
+        Save();
+        OnWorldParamsChanged?.Invoke();
+    }
+
+    public void ApplyObjectScale(float hugeMultiplier, float bigMultiplier, float normalMultiplier, float smallMultiplier, float tinyMultiplier)
+    {
+        Data.scaleHugeMultiplier = Mathf.Max(0.1f, hugeMultiplier);
+        Data.scaleBigMultiplier = Mathf.Max(0.1f, bigMultiplier);
+        Data.scaleNormalMultiplier = Mathf.Max(0.1f, normalMultiplier);
+        Data.scaleSmallMultiplier = Mathf.Max(0.1f, smallMultiplier);
+        Data.scaleTinyMultiplier = Mathf.Max(0.1f, tinyMultiplier);
+        Save();
+        OnWorldParamsChanged?.Invoke();
+    }
+
+    public void ApplyPathDimensions(float widthMultiplier, float blendWidthMultiplier)
+    {
+        Data.pathWidthMultiplier = Mathf.Max(0.1f, widthMultiplier);
+        Data.pathBlendWidthMultiplier = Mathf.Max(0.1f, blendWidthMultiplier);
         Save();
         OnWorldParamsChanged?.Invoke();
     }

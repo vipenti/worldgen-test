@@ -28,7 +28,7 @@ public class ObjectDistanceCuller : MonoBehaviour
     private Mesh mediumMesh;
     private Mesh lowMesh;
 
-    public void Initialize(Transform playerTransform, float maxDistance, string objectName = "", float highPercent = 0.25f, float medPercent = 0.50f, bool useOriginalMeshForHigh = false)
+    public void Initialize(Transform playerTransform, float maxDistance, string objectName = "", float highPercent = 0.25f, float medPercent = 0.50f, bool useSuperHighForClosest = false)
     {
         player = playerTransform;
         this.objectName = objectName;
@@ -114,30 +114,34 @@ public class ObjectDistanceCuller : MonoBehaviour
             if (mediumMesh == null) mediumMesh = highMesh;
             if (lowMesh == null) lowMesh = mediumMesh;
 
-            // Per gli oggetti "huge" (edifici grandi) la tier "_high" è comunque limitata a
-            // HighGridSize (32 voxel sul lato più lungo, vedi GenerateResolutions), che su un
-            // edificio enorme risulta troppo grezza anche da vicino. In questo caso usiamo la
-            // mesh originale non decimata (quella salvata come "{objectName}.prefab"/cache
-            // senza suffisso, generata comunque per ogni oggetto prima del downsampling in
-            // low/medium/high) come livello più dettagliato, al posto di "_high".
-            if (useOriginalMeshForHigh)
+            // Per gli oggetti "big"/"huge" la tier "_high" è comunque limitata a HighGridSize
+            // (32 voxel sul lato più lungo, vedi GenerateResolutions), che su un edificio grande
+            // risulta troppo grezza anche da vicino. In questo caso usiamo la tier "_superhigh"
+            // (un downsampling più fitto, es. 64 voxel — vedi GenerateResolutions.SuperHighGridSize)
+            // come livello più dettagliato, al posto di "_high". Non usiamo più la mesh originale
+            // non decimata: su un edificio molto grande può arrivare a milioni di voxel/poligoni
+            // ed era troppo pesante da renderizzare da vicino.
+            if (useSuperHighForClosest)
             {
-                Mesh original = null;
-                if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName, out Mesh om) && om != null)
-                    original = om;
+                Mesh superHigh = null;
+                if (VoxelRenderer.RuntimeMeshCache.TryGetValue(objectName + "_superhigh", out Mesh shm) && shm != null)
+                    superHigh = shm;
 #if UNITY_EDITOR
-                if (original == null)
+                if (superHigh == null)
                 {
-                    string origPrefabPath = $"Assets/GeneratedAsset/{objectName}.prefab";
-                    var origPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(origPrefabPath);
-                    if (origPrefab != null)
+                    string superHighPrefabPath = $"Assets/GeneratedAsset/{objectName}_superhigh.prefab";
+                    var superHighPrefab = UnityEditor.AssetDatabase.LoadAssetAtPath<GameObject>(superHighPrefabPath);
+                    if (superHighPrefab != null)
                     {
-                        var mf = origPrefab.GetComponentInChildren<MeshFilter>();
-                        if (mf != null) original = mf.sharedMesh;
+                        var mf = superHighPrefab.GetComponentInChildren<MeshFilter>();
+                        if (mf != null) superHigh = mf.sharedMesh;
                     }
                 }
 #endif
-                if (original != null) highMesh = original;
+                // Se la tier "_superhigh" non è (ancora) disponibile — es. oggetto generato prima
+                // di questa modifica e non ancora rigenerato — restiamo su "_high" invece di
+                // ripiegare sulla mesh originale non decimata.
+                if (superHigh != null) highMesh = superHigh;
             }
         }
         else if (meshFilter != null)

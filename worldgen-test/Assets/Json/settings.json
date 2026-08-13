@@ -4,8 +4,15 @@
   "imagePort": 5000,
   "gen3dPort": 7960,
   "micDeviceName": "",
-  "objectDensityMultiplier": 1.45524871,
+  "objectDensityMultiplier": 1.10426378,
   "renderDistanceMultiplier": 1.55203962,
-  "transitionLengthInChunks": 32,
-  "enablePath": false
+  "transitionLengthInChunks": 24,
+  "enablePath": true,
+  "scaleHugeMultiplier": 1.0,
+  "scaleBigMultiplier": 1.0,
+  "scaleNormalMultiplier": 1.0,
+  "scaleSmallMultiplier": 1.0,
+  "scaleTinyMultiplier": 1.0,
+  "pathWidthMultiplier": 1.0,
+  "pathBlendWidthMultiplier": 1.0
 }

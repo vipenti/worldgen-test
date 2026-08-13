@@ -105,8 +105,9 @@ public class GenerateAsset : MonoBehaviour
             yield break;
         }
 
-        // 2b. Fallback per gli asset di cui esistono solo le tre varianti LOD ma non il voxjson
-        // base — sia gli oggetti generati prima che VoxelRenderer iniziasse a salvare anche quello
+        // 2b. Fallback per gli asset di cui esistono solo le varianti LOD (_low/_medium/_high, più
+        // _superhigh per big/huge) ma non il voxjson base — sia gli oggetti generati prima che
+        // VoxelRenderer iniziasse a salvare anche quello
         // (persistentDataPath/Assets/Json/objects in Editor), sia gli oggetti della baseline di
         // build: BuildAssetPacker impacchetta in Resources/Baseline/objects esattamente gli stessi
         // file voxjson presenti in Assets/Json/objects al momento dell'export, quindi senza questo
@@ -121,7 +122,7 @@ public class GenerateAsset : MonoBehaviour
             bool foundAnyLOD = false;
             var voxelRenderer = worldManager.GetComponentInChildren<VoxelRenderer>();
 
-            foreach (string tier in new[] { "_high", "_medium", "_low" })
+            foreach (string tier in new[] { "_superhigh", "_high", "_medium", "_low" })
             {
                 string tierName = name + tier;
                 string diskPath = Path.Combine(objectsFolder, tierName + ".voxjson");
@@ -233,6 +234,8 @@ public class GenerateAsset : MonoBehaviour
             if (File.Exists(lowPrefabPath)) { File.Delete(lowPrefabPath); File.Delete(lowPrefabPath + ".meta"); }
             string highPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_high.prefab");
             if (File.Exists(highPrefabPath)) { File.Delete(highPrefabPath); File.Delete(highPrefabPath + ".meta"); }
+            string superHighPrefabPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + "_superhigh.prefab");
+            if (File.Exists(superHighPrefabPath)) { File.Delete(superHighPrefabPath); File.Delete(superHighPrefabPath + ".meta"); }
 
             // Elimina anche i voxjson dei livelli LOD (non il modello base): finché esistono su
             // disco, VoxelRenderer li considera già generati e salta la ricostruzione, quindi i
@@ -244,11 +247,14 @@ public class GenerateAsset : MonoBehaviour
             if (File.Exists(medVoxJsonPath)) File.Delete(medVoxJsonPath);
             string highVoxJsonPath = Path.Combine(objectsFolder, name + "_high.voxjson");
             if (File.Exists(highVoxJsonPath)) File.Delete(highVoxJsonPath);
+            string superHighVoxJsonPath = Path.Combine(objectsFolder, name + "_superhigh.voxjson");
+            if (File.Exists(superHighVoxJsonPath)) File.Delete(superHighVoxJsonPath);
 
             VoxelRenderer.RuntimeMeshCache.Remove(name);
             VoxelRenderer.RuntimeMeshCache.Remove(name + "_low");
             VoxelRenderer.RuntimeMeshCache.Remove(name + "_medium");
             VoxelRenderer.RuntimeMeshCache.Remove(name + "_high");
+            VoxelRenderer.RuntimeMeshCache.Remove(name + "_superhigh");
         }
 
 #if UNITY_EDITOR

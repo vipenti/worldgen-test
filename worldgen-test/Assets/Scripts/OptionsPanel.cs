@@ -14,7 +14,9 @@ using UnityEngine.UI;
 ///    <see cref="GameSettings"/>, che è l'unica sorgente di verità letta da tutti gli script
 ///    di rete — vedi GameSettings.cs).
 /// 2) Parametri mondo — densità oggetti, render distance, ampiezza transizione bioma, on/off
-///    del percorso centrale, applicati live tramite GameSettings.ApplyWorldParams.
+///    del percorso centrale, scala oggetti per categoria di size (huge/big/normal/small/tiny) e
+///    dimensioni del percorso (larghezza/sfumatura ai bordi), applicati live tramite
+///    GameSettings.ApplyWorldParams / ApplyObjectScale / ApplyPathDimensions.
 /// 3) Info mondo — dump di sola lettura di llm_generated.json (parametri bioma corrente) e
 ///    current_objects.json (catalogo oggetti del bioma), con verifica su disco di quali
 ///    oggetti hanno già un voxjson generato.
@@ -58,6 +60,32 @@ public class OptionsPanel : MonoBehaviour
     public Slider transitionSlider;
     public TMP_Text transitionValueLabel;
     public Toggle pathToggle;
+
+    [Header("Sezione Parametri mondo — Scala oggetti (per categoria size)")]
+    [Tooltip("0.5x - 2x, scala WorldManager.scaleHuge.")]
+    public Slider scaleHugeSlider;
+    public TMP_Text scaleHugeValueLabel;
+    [Tooltip("0.5x - 2x, scala WorldManager.scaleBig.")]
+    public Slider scaleBigSlider;
+    public TMP_Text scaleBigValueLabel;
+    [Tooltip("0.5x - 2x, scala WorldManager.scaleNormal.")]
+    public Slider scaleNormalSlider;
+    public TMP_Text scaleNormalValueLabel;
+    [Tooltip("0.5x - 2x, scala WorldManager.scaleSmall.")]
+    public Slider scaleSmallSlider;
+    public TMP_Text scaleSmallValueLabel;
+    [Tooltip("0.5x - 2x, scala WorldManager.scaleTiny.")]
+    public Slider scaleTinySlider;
+    public TMP_Text scaleTinyValueLabel;
+
+    [Header("Sezione Parametri mondo — Percorso/strada")]
+    [Tooltip("0.5x - 2x, scala WorldManager.pathWidth (larghezza del percorso centrale).")]
+    public Slider pathWidthSlider;
+    public TMP_Text pathWidthValueLabel;
+    [Tooltip("0.5x - 2x, scala WorldManager.pathBlendWidth (sfumatura ai bordi del percorso).")]
+    public Slider pathBlendWidthSlider;
+    public TMP_Text pathBlendWidthValueLabel;
+
     public Button applyMondoButton;
     [Tooltip("Facoltativo: testo di avviso mostrato quando si modificano parametri che si applicano solo alla PROSSIMA generazione/transizione, non retroattivamente.")]
     public TMP_Text mondoHintLabel;
@@ -70,7 +98,7 @@ public class OptionsPanel : MonoBehaviour
     {
         if (panelRoot != null) panelRoot.SetActive(false);
         if (mondoHintLabel != null)
-            mondoHintLabel.text = "Density and transition apply from the next biome/chunk change; render distance and path are immediate.";
+            mondoHintLabel.text = "Density, object scale and transition apply from the next biome/chunk change; render distance and path (on/off, width, blend) are immediate.";
     }
 
     void OnEnable()
@@ -87,6 +115,13 @@ public class OptionsPanel : MonoBehaviour
         if (densitySlider != null) densitySlider.onValueChanged.AddListener(OnDensityChanged);
         if (renderDistSlider != null) renderDistSlider.onValueChanged.AddListener(OnRenderDistChanged);
         if (transitionSlider != null) transitionSlider.onValueChanged.AddListener(OnTransitionChanged);
+        if (scaleHugeSlider != null) scaleHugeSlider.onValueChanged.AddListener(OnScaleHugeChanged);
+        if (scaleBigSlider != null) scaleBigSlider.onValueChanged.AddListener(OnScaleBigChanged);
+        if (scaleNormalSlider != null) scaleNormalSlider.onValueChanged.AddListener(OnScaleNormalChanged);
+        if (scaleSmallSlider != null) scaleSmallSlider.onValueChanged.AddListener(OnScaleSmallChanged);
+        if (scaleTinySlider != null) scaleTinySlider.onValueChanged.AddListener(OnScaleTinyChanged);
+        if (pathWidthSlider != null) pathWidthSlider.onValueChanged.AddListener(OnPathWidthChanged);
+        if (pathBlendWidthSlider != null) pathBlendWidthSlider.onValueChanged.AddListener(OnPathBlendWidthChanged);
     }
 
     void OnDisable()
@@ -103,6 +138,13 @@ public class OptionsPanel : MonoBehaviour
         if (densitySlider != null) densitySlider.onValueChanged.RemoveListener(OnDensityChanged);
         if (renderDistSlider != null) renderDistSlider.onValueChanged.RemoveListener(OnRenderDistChanged);
         if (transitionSlider != null) transitionSlider.onValueChanged.RemoveListener(OnTransitionChanged);
+        if (scaleHugeSlider != null) scaleHugeSlider.onValueChanged.RemoveListener(OnScaleHugeChanged);
+        if (scaleBigSlider != null) scaleBigSlider.onValueChanged.RemoveListener(OnScaleBigChanged);
+        if (scaleNormalSlider != null) scaleNormalSlider.onValueChanged.RemoveListener(OnScaleNormalChanged);
+        if (scaleSmallSlider != null) scaleSmallSlider.onValueChanged.RemoveListener(OnScaleSmallChanged);
+        if (scaleTinySlider != null) scaleTinySlider.onValueChanged.RemoveListener(OnScaleTinyChanged);
+        if (pathWidthSlider != null) pathWidthSlider.onValueChanged.RemoveListener(OnPathWidthChanged);
+        if (pathBlendWidthSlider != null) pathBlendWidthSlider.onValueChanged.RemoveListener(OnPathBlendWidthChanged);
     }
 
     void Update()
@@ -200,9 +242,24 @@ public class OptionsPanel : MonoBehaviour
         if (transitionSlider != null) transitionSlider.SetValueWithoutNotify(data.transitionLengthInChunks);
         if (pathToggle != null) pathToggle.isOn = data.enablePath;
 
+        if (scaleHugeSlider != null) scaleHugeSlider.SetValueWithoutNotify(data.scaleHugeMultiplier);
+        if (scaleBigSlider != null) scaleBigSlider.SetValueWithoutNotify(data.scaleBigMultiplier);
+        if (scaleNormalSlider != null) scaleNormalSlider.SetValueWithoutNotify(data.scaleNormalMultiplier);
+        if (scaleSmallSlider != null) scaleSmallSlider.SetValueWithoutNotify(data.scaleSmallMultiplier);
+        if (scaleTinySlider != null) scaleTinySlider.SetValueWithoutNotify(data.scaleTinyMultiplier);
+        if (pathWidthSlider != null) pathWidthSlider.SetValueWithoutNotify(data.pathWidthMultiplier);
+        if (pathBlendWidthSlider != null) pathBlendWidthSlider.SetValueWithoutNotify(data.pathBlendWidthMultiplier);
+
         OnDensityChanged(data.objectDensityMultiplier);
         OnRenderDistChanged(data.renderDistanceMultiplier);
         OnTransitionChanged(data.transitionLengthInChunks);
+        OnScaleHugeChanged(data.scaleHugeMultiplier);
+        OnScaleBigChanged(data.scaleBigMultiplier);
+        OnScaleNormalChanged(data.scaleNormalMultiplier);
+        OnScaleSmallChanged(data.scaleSmallMultiplier);
+        OnScaleTinyChanged(data.scaleTinyMultiplier);
+        OnPathWidthChanged(data.pathWidthMultiplier);
+        OnPathBlendWidthChanged(data.pathBlendWidthMultiplier);
     }
 
     void ApplyGenerali()
@@ -236,6 +293,13 @@ public class OptionsPanel : MonoBehaviour
     void OnDensityChanged(float v) { if (densityValueLabel != null) densityValueLabel.text = $"{v:F2}x"; }
     void OnRenderDistChanged(float v) { if (renderDistValueLabel != null) renderDistValueLabel.text = $"{v:F2}x"; }
     void OnTransitionChanged(float v) { if (transitionValueLabel != null) transitionValueLabel.text = $"{(int)v} chunks"; }
+    void OnScaleHugeChanged(float v) { if (scaleHugeValueLabel != null) scaleHugeValueLabel.text = $"{v:F2}x"; }
+    void OnScaleBigChanged(float v) { if (scaleBigValueLabel != null) scaleBigValueLabel.text = $"{v:F2}x"; }
+    void OnScaleNormalChanged(float v) { if (scaleNormalValueLabel != null) scaleNormalValueLabel.text = $"{v:F2}x"; }
+    void OnScaleSmallChanged(float v) { if (scaleSmallValueLabel != null) scaleSmallValueLabel.text = $"{v:F2}x"; }
+    void OnScaleTinyChanged(float v) { if (scaleTinyValueLabel != null) scaleTinyValueLabel.text = $"{v:F2}x"; }
+    void OnPathWidthChanged(float v) { if (pathWidthValueLabel != null) pathWidthValueLabel.text = $"{v:F2}x"; }
+    void OnPathBlendWidthChanged(float v) { if (pathBlendWidthValueLabel != null) pathBlendWidthValueLabel.text = $"{v:F2}x"; }
 
     void ApplyMondo()
     {
@@ -249,6 +313,17 @@ public class OptionsPanel : MonoBehaviour
         int transition = transitionSlider != null ? Mathf.RoundToInt(transitionSlider.value) : 8;
         bool path = pathToggle == null || pathToggle.isOn;
         GameSettings.Instance.ApplyWorldParams(density, renderDist, transition, path);
+
+        float scaleHugeM = scaleHugeSlider != null ? scaleHugeSlider.value : 1f;
+        float scaleBigM = scaleBigSlider != null ? scaleBigSlider.value : 1f;
+        float scaleNormalM = scaleNormalSlider != null ? scaleNormalSlider.value : 1f;
+        float scaleSmallM = scaleSmallSlider != null ? scaleSmallSlider.value : 1f;
+        float scaleTinyM = scaleTinySlider != null ? scaleTinySlider.value : 1f;
+        GameSettings.Instance.ApplyObjectScale(scaleHugeM, scaleBigM, scaleNormalM, scaleSmallM, scaleTinyM);
+
+        float pathWidthM = pathWidthSlider != null ? pathWidthSlider.value : 1f;
+        float pathBlendWidthM = pathBlendWidthSlider != null ? pathBlendWidthSlider.value : 1f;
+        GameSettings.Instance.ApplyPathDimensions(pathWidthM, pathBlendWidthM);
     }
 
     // ── Sezione Info mondo ──────────────────────────────────────────────

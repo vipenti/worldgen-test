@@ -88,13 +88,33 @@ public class WorldManager : MonoBehaviour
     [Tooltip("Se false, il percorso/strada centrale del bioma non viene generato/renderizzato.")]
     public bool enablePath = true;
 
-    // GameSettings scala le dimensioni cella (densità oggetti) e le renderDist* (render distance)
-    // senza toccare i campi Inspector sopra, che restano i valori "base" — se GameSettings.Instance
-    // è null (es. scena di test isolata) i moltiplicatori sono 1 e il comportamento è invariato.
+    // GameSettings scala le dimensioni cella (densità oggetti), le renderDist* (render distance),
+    // la scala per categoria di size e pathWidth/pathBlendWidth, senza toccare i campi Inspector
+    // sopra, che restano i valori "base" — se GameSettings.Instance è null (es. scena di test
+    // isolata) i moltiplicatori sono 1 e il comportamento è invariato.
     float DensityMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.objectDensityMultiplier : 1f;
     float RenderDistMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.renderDistanceMultiplier : 1f;
+    float PathWidthMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.pathWidthMultiplier : 1f;
+    float PathBlendWidthMultiplier => GameSettings.Instance != null ? GameSettings.Instance.Data.pathBlendWidthMultiplier : 1f;
 
     int ScaledCellSize(int baseCellSize) => Mathf.Max(1, Mathf.RoundToInt(baseCellSize / DensityMultiplier));
+
+    // Moltiplicatore di scala per categoria di size, uno per huge/big/normal/small/tiny (vedi
+    // GameSettingsData). Come DensityMultiplier: 1 se GameSettings.Instance è null.
+    float ScaleMultiplierFor(string size)
+    {
+        if (GameSettings.Instance == null) return 1f;
+        var d = GameSettings.Instance.Data;
+        return size switch
+        {
+            "huge" => d.scaleHugeMultiplier,
+            "big" => d.scaleBigMultiplier,
+            "normal" => d.scaleNormalMultiplier,
+            "small" => d.scaleSmallMultiplier,
+            "tiny" => d.scaleTinyMultiplier,
+            _ => 1f
+        };
+    }
 
     void ApplyGameSettingsWorldParams()
     {
@@ -533,8 +553,8 @@ public class WorldManager : MonoBehaviour
                 transitionCenter2D,
                 viewDistance * targetConfig.chunkWidth,
                 transitionLengthInChunks * targetConfig.chunkWidth,
-                enablePath ? pathWidth * 0.5f : 0f,
-                enablePath ? pathBlendWidth : 0f,
+                enablePath ? pathWidth * PathWidthMultiplier * 0.5f : 0f,
+                enablePath ? pathBlendWidth * PathBlendWidthMultiplier : 0f,
                 pathLevel,
                 GetUrbanGridParams(),
                 closeToPlayer
@@ -1033,7 +1053,7 @@ public class WorldManager : MonoBehaviour
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
             ApplySizeCollider(obj, sizeStr, name);
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent, useOriginalMeshForHigh: sizeStr == "huge");
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent, useSuperHighForClosest: sizeStr == "huge" || sizeStr == "big");
         }
     }
 
@@ -1057,9 +1077,9 @@ public class WorldManager : MonoBehaviour
             if (obj.GetComponent<BoxCollider>() is BoxCollider oldBox) Destroy(oldBox);
             if (obj.GetComponent<MeshCollider>() != null) return; // già presente
 
-            // Bake fisico SEMPRE dalla tier "_high" a risoluzione capped (mai dalla mesh originale
-            // non decimata usata come LOD visivo più vicino per gli huge — vedi
-            // ObjectDistanceCuller.useOriginalMeshForHigh — né da qualunque LOD sia visivamente
+            // Bake fisico SEMPRE dalla tier "_high" a risoluzione capped (mai dalla tier
+            // "_superhigh" usata come LOD visivo più vicino per big/huge — vedi
+            // ObjectDistanceCuller.useSuperHighForClosest — né da qualunque LOD sia visivamente
             // attivo in questo istante). Il collider non ha bisogno della stessa fedeltà del
             // rendering, e viene bakato una volta sola qui: ObjectDistanceCuller non lo tocca più
             // ai cambi di LOD, quindi niente più ribake fisico sincrono ogni volta che il player si
@@ -1252,7 +1272,7 @@ public class WorldManager : MonoBehaviour
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
             ApplySizeCollider(obj, sizeStr, objectName);
-            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent, useOriginalMeshForHigh: sizeStr == "huge");
+            obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent, useSuperHighForClosest: sizeStr == "huge" || sizeStr == "big");
 
             var placedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
             Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' piazzato (placeholder risolto).");
@@ -1460,9 +1480,9 @@ public class WorldManager : MonoBehaviour
         catch (System.Exception e) { Debug.LogError($"Parsing current_objects failed: {e.Message}"); }
     }
     
-    float SizeToScale(string size) => size switch {
+    float SizeToScale(string size) => (size switch {
         "huge" => scaleHuge, "big" => scaleBig, "normal" => scaleNormal, "small" => scaleSmall, "tiny" => scaleTiny, _ => scaleDefault
-    };
+    }) * ScaleMultiplierFor(size);
 
     float FreqToChance(string freq) => freq switch {
         "very_common" => 1.00f, "common" => 0.50f, "rare" => 0.10f, "super_rare" => 0.03f, "unique" => -1f, _ => 0.50f
@@ -1658,6 +1678,19 @@ public class WorldManager : MonoBehaviour
         {
             string lowJson = LoadVoxJsonString(assetName + "_low");
             if (!string.IsNullOrEmpty(lowJson)) renderer.LoadFromJson(lowJson, assetName + "_low");
+        }
+
+        // Tier "_superhigh" (solo per big/huge, vedi VoxelRenderer/ObjectDistanceCuller). Non entra
+        // nella guardia hasBase/hasHigh/hasMedium/hasLow qui sopra apposta: per tiny/small/normal
+        // questo file non esiste mai, quindi se lo mettessimo in quella guardia il controllo
+        // "già tutto pronto, esci subito" non scatterebbe mai per loro e questa funzione rifarebbe
+        // il lavoro sopra ad OGNI chiamata (vedi commento in cima sul loop di reimport). Qui invece
+        // il tentativo silenzioso avviene solo quando il corpo gira comunque (prima volta per
+        // quell'asset), e per big/huge la mesh finisce comunque cache-ata per le chiamate successive.
+        if (!VoxelRenderer.RuntimeMeshCache.ContainsKey(assetName + "_superhigh"))
+        {
+            string superHighJson = LoadVoxJsonString(assetName + "_superhigh");
+            if (!string.IsNullOrEmpty(superHighJson)) renderer.LoadFromJson(superHighJson, assetName + "_superhigh");
         }
     }
 
