@@ -1,15 +1,12 @@
 {
-  "jungle tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "palm tree": { "id": 1, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
-  "fern bush": { "id": 2, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
-  "tropical flower": { "id": 3, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
-  "mossy rock": { "id": 4, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "monkey": { "id": 5, "size": "normal", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "parrot": { "id": 6, "size": "small", "frequency": "rare", "type": "vegetation", "priority": 3 },
-  "ground creature": { "id": 7, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "fallen log": { "id": 8, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "sharp rock": { "id": 9, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "vine coil": { "id": 10, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 },
-  "seed pod": { "id": 11, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "leaf litter": { "id": 12, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
+  "tall oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "pine tree": { "id": 1, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "colorful flower patch": { "id": 2, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
+  "low bush": { "id": 3, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "wild rabbit": { "id": 4, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "small rock": { "id": 5, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "fallen log": { "id": 6, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "acorn": { "id": 7, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 8, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "mossy stone": { "id": 9, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 }
 }

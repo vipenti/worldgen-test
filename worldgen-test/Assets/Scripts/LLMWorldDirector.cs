@@ -315,6 +315,22 @@ public class LLMWorldDirector : MonoBehaviour
 
                 onSuccess(raw);
             }
+            else
+            {
+                // Prima un fallimento qui (server LM Studio non raggiungibile, crashato, "Channel
+                // Error", timeout di rete...) veniva ignorato del tutto in silenzio: onSuccess non
+                // veniva mai invocato, la coroutine finiva comunque, e ogni chiamante a valle
+                // controlla solo "if (!string.IsNullOrEmpty(risposta))" — quindi quel passo della
+                // pipeline si fermava senza che nulla in game lo segnalasse, indistinguibile da
+                // "sta ancora generando". Ora almeno l'errore HTTP finisce in console con i
+                // dettagli, e diventa visibile anche nel LogPanel in game via OnGenerationFailed
+                // (che WorldManager.HandleGenerationFailed già ascolta).
+                string label = string.IsNullOrEmpty(callLabel) ? "" : $" ({callLabel})";
+                Debug.LogError($"[LLMWorldDirector] Chiamata LLM fallita{label}: {request.result} — " +
+                    $"{request.error} (HTTP {request.responseCode})\n{request.downloadHandler?.text}");
+                OnGenerationFailed?.Invoke($"Chiamata al modello fallita{label}: {request.error}. " +
+                    "Controlla che LM Studio sia in esecuzione e riprova.");
+            }
         }
     }
 
@@ -349,7 +365,22 @@ public class LLMWorldDirector : MonoBehaviour
             assistantText = StripThinkingTags(assistantText);
             cleanJson = ExtractFirstJsonObject(assistantText);
         }
-        catch (Exception) { yield break; }
+        catch (Exception ex)
+        {
+            // Prima veniva inghiottita in silenzio: llm_generated.json restava quello vecchio
+            // senza nessuna indicazione del perché, indistinguibile da un bug diverso. Ora almeno
+            // si vede in console cosa ha risposto il modello e perché il parsing è fallito.
+            Debug.LogError($"[LLMWorldDirector] Impossibile analizzare la risposta LLM per i parametri del terreno: {ex.Message}\nRisposta grezza:\n{rawResponse}");
+            OnGenerationFailed?.Invoke("Risposta del modello non valida per i parametri del terreno. Riprova.");
+            yield break;
+        }
+
+        if (string.IsNullOrEmpty(cleanJson))
+        {
+            Debug.LogError($"[LLMWorldDirector] Nessun oggetto JSON trovato nella risposta LLM per i parametri del terreno. Risposta grezza:\n{rawResponse}");
+            OnGenerationFailed?.Invoke("Il modello non ha restituito i parametri del terreno. Riprova.");
+            yield break;
+        }
 
         var materials = LoadMaterials();
         var resolved  = new Dictionary<string, int>();
@@ -382,6 +413,35 @@ public class LLMWorldDirector : MonoBehaviour
         }
 
         string finalJson = BuildFinalJson(cleanJson, resolved);
+
+        // GUARDIA CRITICA: se l'LLM non ha prodotto chunkHeight/chunkWidth (capita quando il
+        // modello locale non rispetta per intero lo schema JSON richiesto — non genera
+        // un'eccezione, semplicemente omette quei due campi dalla risposta), BuildFinalJson li
+        // ometterebbe in silenzio anche dal JSON finale. BiomeConfig.chunkWidth/chunkHeight non
+        // hanno un field initializer, quindi JsonUtility li leggerebbe come 0 al prossimo
+        // caricamento (vedi WorldManager.LoadLatestConfig) — 0 propaga in divisioni
+        // (player.position.x / chunkWidth) che diventano Infinity/NaN, e WorldManager lo rileva e
+        // sostituisce l'INTERO bioma con FallbackConfig() invece di andare in crash. Il problema
+        // vero però nasceva PRIMA di questo controllo: si sovrascriveva comunque
+        // llm_generated.json con un JSON incompleto, buttando via un bioma precedente
+        // perfettamente valido per sostituirlo con uno rotto — motivo per cui un cambio di bioma
+        // poteva sembrare "fallire" senza nessun errore visibile in game (il gating riguarda solo
+        // la presenza degli asset 3D, non la validità del BiomeConfig). Ora validiamo PRIMA di
+        // scrivere: se manca chunkHeight o chunkWidth non tocchiamo il file — il bioma precedente
+        // (valido) resta attivo — logghiamo il JSON incompleto per capire cosa ha davvero
+        // risposto il modello, e propaghiamo l'errore su OnGenerationFailed così diventa visibile
+        // anche nel LogPanel in game (WorldManager.HandleGenerationFailed è già in ascolto).
+        bool hasChunkHeight = ExtractRawField(cleanJson, "chunkHeight") != null;
+        bool hasChunkWidth  = ExtractRawField(cleanJson, "chunkWidth") != null;
+        if (!hasChunkHeight || !hasChunkWidth)
+        {
+            string missing = (!hasChunkHeight ? "chunkHeight " : "") + (!hasChunkWidth ? "chunkWidth" : "");
+            Debug.LogError($"[LLMWorldDirector] Risposta LLM incompleta: mancano '{missing.Trim()}' — " +
+                $"llm_generated.json NON aggiornato (resta il bioma precedente). JSON ricevuto dal modello:\n{cleanJson}");
+            OnGenerationFailed?.Invoke("Il modello non ha generato tutti i parametri del terreno richiesti. Riprova.");
+            yield break;
+        }
+
         string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
         File.WriteAllText(path, finalJson);
     }

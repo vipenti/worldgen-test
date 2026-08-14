@@ -1,5 +1,7 @@
 {
   "mossy_jungle_grass": { "id": 0, "footstepType": "grass" },
   "rich_dark_soil": { "id": 1, "footstepType": "soft" },
-  "jungle_stone": { "id": 2, "footstepType": "hard" }
+  "jungle_stone": { "id": 2, "footstepType": "hard" },
+  "fresh_water": { "id": 3, "footstepType": "fluid" },
+  "beige_sand": { "id": 4, "footstepType": "soft" }
 }

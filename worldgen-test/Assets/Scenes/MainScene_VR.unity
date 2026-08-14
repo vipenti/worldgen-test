@@ -1145,6 +1145,61 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &128743479
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 128743481}
+  - component: {fileID: 128743480}
+  m_Layer: 0
+  m_Name: Automatizer
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &128743480
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 128743479}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 657bc82e9279ee647b9a0f619f3f0b78, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::AutoPromptSequencer
+  llmWorldDirector: {fileID: 0}
+  prompts:
+  - A green forest with tall trees, flowers and some deers and bushes
+  - A structured medieval city on gentle hills, with houses, some trees, benches,
+    light lamp, and merchants, some tall buldings, at least three types of houses,
+    MUST BE A STRUCTURED BIOME
+  - The desert golden hills with tall palms, an oasis and some dried bushes
+  - A rocky vulcanic landscape with giant dragon (they are rare)
+  delayBetweenPrompts: 1
+  loopSequence: 0
+  perPromptTimeout: 300
+--- !u!4 &128743481
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 128743479}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 5.35966, y: -0, z: -264.7787}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &139093082
 GameObject:
   m_ObjectHideFlags: 0
@@ -7616,7 +7671,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &880284051
 RectTransform:
   m_ObjectHideFlags: 0
@@ -10248,6 +10303,7 @@ GameObject:
   - component: {fileID: 1447165635}
   - component: {fileID: 1447165636}
   - component: {fileID: 1447165637}
+  - component: {fileID: 1447165638}
   m_Layer: 0
   m_Name: VoxelTerrain
   m_TagString: Untagged
@@ -10308,8 +10364,8 @@ MonoBehaviour:
   scaleHuge: 60
   scaleBig: 40
   scaleNormal: 10
-  scaleSmall: 8
-  scaleTiny: 1
+  scaleSmall: 3.8
+  scaleTiny: 1.6
   scaleDefault: 5
   cellVeryCommon: 50
   cellCommon: 60
@@ -10340,14 +10396,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: Assembly-CSharp::LLMWorldDirector
   inputField: {fileID: 880284052}
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
-  modelId: qwen/qwen3.6-27b
-  maxTokens: 12288
-  maxTokensThinking: 12288
-  thinkingForDescription: 1
+  modelId: qwen/qwen3.5-9b
+  maxTokens: 124000
+  maxTokensThinking: 124000
+  thinkingForDescription: 0
   thinkingForParams: 0
-  thinkingForAssetList: 1
-  logThinkingToConsole: 1
-  parallelizeStep2And3: 0
+  thinkingForAssetList: 0
+  logThinkingToConsole: 0
+  parallelizeStep2And3: 1
   thinkingDirective: "<|think|> Think briefly and efficiently. Focus only on the
     key decisions that affect the output \u2014 skip restating the instructions or
     listing every rule you're checking."
@@ -10369,6 +10425,22 @@ MonoBehaviour:
   highDistance: 0
   mediumDistance: 0
   maxDistance: 0
+--- !u!114 &1447165638
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1447165632}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 49ac728a8c63e7e43bafab1fa3a02b9b, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::WorldSnapshotLoader
+  worldManager: {fileID: 0}
+  sessionFolderName: 
+  loadOnStart: 0
+  delayBetweenBiomes: 2
 --- !u!1 &1472413731
 GameObject:
   m_ObjectHideFlags: 0
@@ -11375,6 +11447,12 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1634537603}
+    - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1634537604}
+    - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1634537605}
     - targetCorrespondingSourceObject: {fileID: 1767192433, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2134091350}
@@ -11441,6 +11519,34 @@ MonoBehaviour:
   pitchVariation: 0.08
   volumeVariation: 0.1
   baseVolume: 0.6
+--- !u!114 &1634537604
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1634537599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ad091341b6baf045ae32a733c6f6535, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::VRPathRecorder
+  target: {fileID: 0}
+  sampleInterval: 0.1
+  flushEverySamples: 10
+--- !u!114 &1634537605
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1634537599}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 5bc381a004d4ede48a47856337dc52e7, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: Assembly-CSharp::BiomeSnapshotRecorder
+  target: {fileID: 0}
 --- !u!1 &1651245722
 GameObject:
   m_ObjectHideFlags: 0
@@ -12528,8 +12634,8 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::VRSprintController
   moveProvider: {fileID: 0}
-  sprintHand: 4
-  sprintButton: 0
+  sprintHand: 5
+  sprintButton: 4
   sprintMultiplier: 1.8
 --- !u!1 &1831747901
 GameObject:
@@ -13943,7 +14049,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &2011451472
 RectTransform:
   m_ObjectHideFlags: 0
@@ -15192,3 +15298,4 @@ SceneRoots:
   - {fileID: 276228652}
   - {fileID: 498794098}
   - {fileID: 1634537598}
+  - {fileID: 128743481}

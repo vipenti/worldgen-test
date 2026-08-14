@@ -1,15 +1,12 @@
 {
-  "jungle tree": 0,
-  "palm tree": 1,
-  "fern bush": 2,
-  "tropical flower": 3,
-  "mossy rock": 4,
-  "monkey": 5,
-  "parrot": 6,
-  "ground creature": 7,
-  "fallen log": 8,
-  "sharp rock": 9,
-  "vine coil": 10,
-  "seed pod": 11,
-  "leaf litter": 12
+  "tall oak tree": 0,
+  "pine tree": 1,
+  "colorful flower patch": 2,
+  "low bush": 3,
+  "wild rabbit": 4,
+  "small rock": 5,
+  "fallen log": 6,
+  "acorn": 7,
+  "pinecone": 8,
+  "mossy stone": 9
 }
