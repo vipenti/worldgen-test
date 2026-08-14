@@ -81,6 +81,14 @@ public class Chunk : MonoBehaviour
     public float[,] LayoutMap { get; private set; }
     public int[,]   HeightMap { get; private set; }
 
+    // Fascia [min,max] di Y realmente riempita per ogni colonna (x,z), calcolata già in
+    // GenerateMapDataInterpolated (Pass 2) — GenerateMesh la riusa per scandire solo quella fascia
+    // invece dell'intera colonna 0..chunkHeight, che con chunkHeight fino a 150 (vedi
+    // Prompts.ParametricSystem) significava iterare aria vuota per la stragrande maggioranza dei
+    // livelli Y di ogni colonna.
+    private int[,] _columnMinY;
+    private int[,] _columnMaxY;
+
     // Saved properties for dynamic interpolation updating
     private Vector2Int chunkPos;
     private BiomeConfig oldConfig;
@@ -126,9 +134,16 @@ public class Chunk : MonoBehaviour
         chunkWidth  = targetBinary.chunkWidth;
         chunkHeight = Mathf.Max(oldBinary.chunkHeight, targetBinary.chunkHeight);
 
-        map       = new byte[chunkWidth, 256, chunkWidth];
+        // Dimensionato sulla vera chunkHeight del bioma (prima era fisso a 256 indipendentemente dal
+        // valore configurato, es. 55-64 nei biomi tipici) — meno memoria e un Array.Clear più corto
+        // ad ogni rigenerazione (vedi GenerateMapDataInterpolated). Un'istanza di Chunk non viene mai
+        // riutilizzata per un'altra coordinata con chunkHeight diverso (WorldManager ne crea sempre
+        // una nuova via Instantiate), quindi non serve gestire un ridimensionamento successivo.
+        map       = new byte[chunkWidth, chunkHeight, chunkWidth];
         HeightMap = new int[chunkWidth, chunkWidth];
         LayoutMap = new float[chunkWidth, chunkWidth];
+        _columnMinY = new int[chunkWidth, chunkWidth];
+        _columnMaxY = new int[chunkWidth, chunkWidth];
         
         if (mesh == null)
         {
@@ -376,26 +391,34 @@ public class Chunk : MonoBehaviour
                     voxelT = Mathf.Clamp01((distFromCenter - innerRadius) / blendWidth);
                 }
 
-                float rawOld, rawTarget;
+                // rawTarget serve sempre; rawOld serve SOLO quando isTransitioning è true — fuori
+                // transizione voxelT resta 1f per l'intera colonna (vedi sopra), quindi
+                // Mathf.Lerp(rawOld, rawTarget, 1f) restituisce esattamente rawTarget a prescindere
+                // da rawOld. Calcolare comunque rawOld (2°-3° chiamata a ComputeHeightNew/SampleNoise
+                // per colonna, ciascuna con più campionamenti Perlin) era quindi lavoro sprecato per
+                // la stragrande maggioranza dei chunk, che non sono mai in transizione.
+                float rawTarget;
                 if (target.scaleMacro > 0f)
                 {
                     rawTarget = ComputeHeightNew(worldX, worldZ, target);
-                    rawOld    = old.scaleMacro > 0f
-                        ? ComputeHeightNew(worldX, worldZ, old)
-                        : SampleNoise(worldX, worldZ, old) * old.chunkHeight;
                 }
                 else
                 {
-                    float noiseOld    = SampleNoise(worldX, worldZ, old);
-                    float noiseTarget = SampleNoise(worldX, worldZ, target);
-                    rawOld    = noiseOld    * old.chunkHeight;
-                    rawTarget = noiseTarget * target.chunkHeight;
+                    rawTarget = SampleNoise(worldX, worldZ, target) * target.chunkHeight;
                     if (target.ridgeLayerAmplitude > 0f)
                         rawTarget += SampleRidgedNoise(worldX, worldZ, target.ridgeLayerScale, target.octaves)
                                      * target.ridgeLayerAmplitude * target.chunkHeight;
                     if (target.billowLayerAmplitude > 0f)
                         rawTarget += SampleBillowNoise(worldX, worldZ, target.billowLayerScale, target.octaves)
                                      * target.billowLayerAmplitude * target.chunkHeight;
+                }
+
+                float rawOld = 0f;
+                if (isTransitioning)
+                {
+                    rawOld = target.scaleMacro > 0f
+                        ? (old.scaleMacro > 0f ? ComputeHeightNew(worldX, worldZ, old) : SampleNoise(worldX, worldZ, old) * old.chunkHeight)
+                        : SampleNoise(worldX, worldZ, old) * old.chunkHeight;
                 }
 
                 int finalHeight = Mathf.FloorToInt(Mathf.Lerp(rawOld, rawTarget, voxelT));
@@ -446,8 +469,20 @@ public class Chunk : MonoBehaviour
 
                 int finalHeight = HeightMap[x, z];
 
-                float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
-                bool useNew  = dither < voxelT;
+                // Fuori transizione voxelT è sempre 1f (vedi sopra), e Mathf.PerlinNoise restituisce
+                // sempre un valore < 1 — quindi "dither < voxelT" sarebbe comunque sempre vero: il
+                // sample Perlin è superfluo e lo saltiamo, evitando ~una chiamata per colonna per la
+                // stragrande maggioranza dei chunk (non in transizione).
+                bool useNew;
+                if (isTransitioning)
+                {
+                    float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
+                    useNew = dither < voxelT;
+                }
+                else
+                {
+                    useNew = true;
+                }
 
                 byte surface = useNew ? target.surfaceTileID : old.surfaceTileID;
                 byte middle  = useNew ? target.middleTileID  : old.middleTileID;
@@ -519,6 +554,8 @@ public class Chunk : MonoBehaviour
 
                 int minHeight = Mathf.Max(0, finalHeight - 3);
                 int maxHeight = Mathf.Max(finalHeight, waterLevel);
+                _columnMinY[x, z] = minHeight;
+                _columnMaxY[x, z] = maxHeight;
                 for (int y = minHeight; y <= maxHeight; y++)
                 {
                     if (y > finalHeight)
@@ -604,11 +641,19 @@ public class Chunk : MonoBehaviour
     {
         vertices.Clear(); triangles.Clear(); uvs.Clear();
 
+        // Scandisce solo la fascia [_columnMinY, _columnMaxY] già nota per ogni colonna (calcolata
+        // in GenerateMapDataInterpolated, Pass 2) invece di 0..chunkHeight per intero — con
+        // chunkHeight fino a 150 e una fascia riempita tipicamente di 4-10 blocchi, questo taglia le
+        // iterazioni della stragrande maggioranza dell'aria vuota sopra/sotto il terreno. L'ordine
+        // x,z,y (invece di x,y,z) non cambia nulla: CreateFace non dipende dall'ordine di visita.
         for (int x = 0; x < chunkWidth; x++)
         {
-            for (int y = 0; y < chunkHeight; y++)
+            for (int z = 0; z < chunkWidth; z++)
             {
-                for (int z = 0; z < chunkWidth; z++)
+                int yMin = Mathf.Max(0, _columnMinY[x, z]);
+                int yMax = Mathf.Min(_columnMaxY[x, z], chunkHeight - 1);
+
+                for (int y = yMin; y <= yMax; y++)
                 {
                     if (map[x, y, z] == 0) continue;
 

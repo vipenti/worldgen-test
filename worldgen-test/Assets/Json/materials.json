@@ -3,5 +3,15 @@
   "rich_dark_soil": { "id": 1, "footstepType": "soft" },
   "jungle_stone": { "id": 2, "footstepType": "hard" },
   "fresh_water": { "id": 3, "footstepType": "fluid" },
-  "beige_sand": { "id": 4, "footstepType": "soft" }
+  "beige_sand": { "id": 4, "footstepType": "soft" },
+  "grey_concrete_pavement": { "id": 5, "footstepType": "hard" },
+  "obsidian_patches": { "id": 6, "footstepType": "hard" },
+  "dark_basalt": { "id": 7, "footstepType": "hard" },
+  "rough_stone": { "id": 8, "footstepType": "hard" },
+  "granite_deep_rock": { "id": 9, "footstepType": "hard" },
+  "packed_snow": { "id": 10, "footstepType": "snow" },
+  "frozen_soil": { "id": 11, "footstepType": "hard" },
+  "frozen_water": { "id": 12, "footstepType": "snow" },
+  "ice_crystal": { "id": 13, "footstepType": "snow" },
+  "alpine_grass": { "id": 14, "footstepType": "grass" }
 }

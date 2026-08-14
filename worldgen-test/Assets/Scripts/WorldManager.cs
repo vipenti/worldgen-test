@@ -30,8 +30,24 @@ public class WorldManager : MonoBehaviour
     public float transitionSpeedMultiplier = 1.0f;
     [Tooltip("Lunghezza in chunk del cammino necessario a completare la transizione globale.")]
     public int transitionLengthInChunks = 8;
-    [Tooltip("Cuscinetto extra (in metri) oltre il cono visivo per attivare i chunk in anticipo.")]
+    [Tooltip("Cuscinetto extra (in metri) oltre il cono visivo per attivare i chunk in anticipo (soglia di INGRESSO — vedi anche frustumExitMargin per l'isteresi in uscita).")]
     public float frustumPadding = 24f;
+    [Tooltip("Margine AGGIUNTIVO (oltre frustumPadding) richiesto perché un chunk già visibile venga disattivato. Crea una fascia di isteresi tra soglia di ingresso e di uscita: senza questo, un chunk esattamente sul bordo del cono visivo può attivarsi/disattivarsi ad ogni piccola rotazione della camera, ritriggerando ad ogni flip la cascata OnEnable/OnDisable su tutte le sue decorazioni (vedi ObjectDistanceCuller).")]
+    public float frustumExitMargin = 40f;
+    [Tooltip("Intervallo minimo (secondi) tra due scansioni frustum consecutive scatenate SOLO dalla rotazione della camera (non dal movimento del giocatore, sempre istantaneo). Throttling per evitare di ricalcolare il frustum — e potenzialmente attivare/disattivare decine di chunk — quasi ad ogni frame durante una rotazione continua.")]
+    public float rotationUpdateInterval = 0.1f;
+
+    [Header("Chunk Creation Throttling")]
+    [Tooltip("I chunk nell'anello 3x3 attorno al giocatore vengono sempre creati subito (serve terreno/collider immediati). Oltre quel raggio, se ne creano al massimo questi per frame invece di crearli tutti insieme — con viewDistance alto o quando il giocatore sprinta e più chunk mancano contemporaneamente, crearli tutti in un frame è un picco di lavoro sincrono (rumore Perlin + meshing + spawn decorazioni) che si sente come uno stutter.")]
+    public int maxChunksCreatedPerFrame = 2;
+    [Tooltip("Distanza dal giocatore entro cui il MeshCollider di un oggetto big/huge appena piazzato viene cucinato SUBITO (serve collisione immediata vicino al giocatore). Oltre questa distanza il bake viene messo in coda e spalmato su più frame — vedi maxCollidersBakedPerFrame.")]
+    public float immediateColliderBakeDistance = 40f;
+    [Tooltip("Quanti MeshCollider big/huge in coda (oltre immediateColliderBakeDistance) vengono cucinati al massimo per frame. Cuocere un MeshCollider è un'operazione fisica non banale — se un chunk nuovo piazza più alberi/edifici grandi insieme, farli tutti nello stesso frame del meshing del terreno è un altro picco.")]
+    public int maxCollidersBakedPerFrame = 2;
+    [Tooltip("Logga in console ogni scelta di edificio/lotto/prop nei biomi strutturati (città/villaggi) — utile per debug della distribuzione, ma genera molte allocazioni di stringa ad ogni chunk urbano creato. OFF di default.")]
+    public bool verboseUrbanDecorLogging = false;
+    [Tooltip("Logga in console diagnostica dettagliata per OGNI oggetto piazzato/risolto ([ScaleDiag], mesh/scala) e per ogni cambio di chunk del giocatore ([Decor]) — utile per debug, ma con decine di oggetti per chunk è una riga di console (e un'allocazione di stringa) per ciascuno. OFF di default.")]
+    public bool verboseSpawnDiagnostics = false;
 
     [Header("Per-Size Rendering Distances (LOD)")]
     public float renderDistHuge = 250f;
@@ -168,6 +184,30 @@ public class WorldManager : MonoBehaviour
     // RemoveFarChunks (può scattare più volte al secondo mentre si ruota la camera) finché quel
     // chunk resta in attesa — un log solo quando inizia l'attesa, uno quando lo si molla davvero.
     private HashSet<Vector2Int> _loggedKeepAliveChunks = new HashSet<Vector2Int>();
+
+    // Time.time dell'ultimo UpdateChunks() scatenato dalla rotazione — vedi rotationUpdateInterval.
+    private float lastRotationUpdateTime = -999f;
+
+    // Buffer riutilizzati per evitare allocazioni GC ad ogni UpdateChunks()/RemoveFarChunks(), che
+    // con il vecchio codice giravano quasi ogni frame durante una rotazione della camera (vedi
+    // rotationUpdateInterval): GeometryUtility.CalculateFrustumPlanes(Camera) alloca un nuovo
+    // Plane[6] ad ogni chiamata se non gli si passa un array — usiamo invece l'overload non
+    // allocante con questo array cachato. Stesso discorso per la List<Vector2Int> di
+    // RemoveFarChunks, riusata con Clear() invece di essere ricreata ogni volta.
+    private readonly Plane[] _cachedFrustumPlanes = new Plane[6];
+    private readonly List<Vector2Int> _coordsToRemoveBuffer = new List<Vector2Int>();
+
+    // Coda dei chunk mancanti oltre l'anello "vicino" (vedi maxChunksCreatedPerFrame): UpdateChunks
+    // ci accoda le coordinate invece di creare tutto subito, DrainPendingChunkCreations() (chiamata
+    // ogni frame da Update, non gated dal throttle di rotazione) ne smaltisce un numero limitato per
+    // frame. _queuedChunkCoords evita doppioni in coda con un controllo O(1) invece di scandire la
+    // Queue.
+    private readonly Queue<Vector2Int> _pendingChunkCreations = new Queue<Vector2Int>();
+    private readonly HashSet<Vector2Int> _queuedChunkCoords = new HashSet<Vector2Int>();
+
+    // Coda dei bake MeshCollider per oggetti big/huge piazzati lontano dal giocatore (vedi
+    // immediateColliderBakeDistance/maxCollidersBakedPerFrame in ApplySizeCollider).
+    private readonly Queue<(GameObject obj, Mesh mesh)> _pendingColliderBakes = new Queue<(GameObject, Mesh)>();
 
     // Bundle di SOLI RIFERIMENTI ai dati "oggetti disponibili" di un bioma — quello corrente (vivo,
     // mutato in continuazione man mano che gli asset finiscono di generarsi) o quello vecchio
@@ -363,13 +403,38 @@ public class WorldManager : MonoBehaviour
 
         Quaternion currentCamRot = Camera.main != null ? Camera.main.transform.rotation : player.rotation;
 
-        if (currentPlayerChunk != lastPlayerChunk || Quaternion.Angle(currentCamRot, lastCameraRotation) > 4f)
+        bool positionChanged = currentPlayerChunk != lastPlayerChunk;
+        bool rotationChanged = Quaternion.Angle(currentCamRot, lastCameraRotation) > 4f;
+
+        // Il movimento resta istantaneo (serve subito per creare/rimuovere chunk e collider), ma la
+        // sola rotazione della camera NON scatena più UpdateChunks() ad ogni frame in cui supera i
+        // 4°: con mouseSensitivity senza deltaTime (vedi MouseLook.cs) quella soglia viene superata
+        // quasi ogni frame durante una rotazione, e UpdateChunks() ricalcola il frustum e può
+        // attivare/disattivare decine di chunk (con relativa cascata OnEnable/OnDisable sui figli —
+        // vedi ObjectDistanceCuller) ad ogni singola chiamata. Un throttle a tempo capa quante volte
+        // al secondo scatta tutto questo, senza ritardi percepibili sulla comparsa/scomparsa dei
+        // chunk ai bordi del cono visivo (rotationUpdateInterval è pensato per restare impercettibile).
+        // lastCameraRotation NON viene aggiornato quando l'update è saltato per throttling: il delta
+        // angolare accumulato resta quindi visibile al frame successivo, quindi nessuna rotazione
+        // viene mai "persa", solo posticipata di al più rotationUpdateInterval secondi.
+        bool rotationDue = rotationChanged && (Time.time - lastRotationUpdateTime >= rotationUpdateInterval);
+
+        if (positionChanged || rotationDue)
         {
-            if (currentPlayerChunk != lastPlayerChunk) LogPlayerChunkStatus(currentPlayerChunk);
+            if (positionChanged) LogPlayerChunkStatus(currentPlayerChunk);
             UpdateChunks();
             lastPlayerChunk = currentPlayerChunk;
             lastCameraRotation = currentCamRot;
+            lastRotationUpdateTime = Time.time;
         }
+
+        // Svuota le code di lavoro differito (creazione chunk oltre l'anello "vicino" e bake dei
+        // MeshCollider big/huge lontani) SEMPRE, ogni frame, indipendentemente dal throttle sopra —
+        // è proprio questo a spalmare il lavoro su più frame invece di farlo tutto insieme quando
+        // UpdateChunks() scatta. Entrambi i metodi sono no-op economici (solo un controllo sulla
+        // coda) quando non c'è nulla in attesa.
+        DrainPendingChunkCreations();
+        DrainPendingColliderBakes();
     }
 
     // Diagnostica: ad ogni cambio di chunk del player, logga cosa contiene realmente il chunk in
@@ -379,6 +444,7 @@ public class WorldManager : MonoBehaviour
     // placement — cercare '[Decor]'/'[UrbanDecor]' per la coordinata di questo chunk per i dettagli).
     void LogPlayerChunkStatus(Vector2Int coord)
     {
+        if (!verboseSpawnDiagnostics) return; // l'intero metodo esiste solo per loggare
         if (!activeChunks.TryGetValue(coord, out Chunk chunk) || chunk == null)
         {
             Debug.Log($"<color=magenta>[Decor]</color> Player entrato nel chunk {coord}: non ancora creato/attivo.");
@@ -446,16 +512,38 @@ public class WorldManager : MonoBehaviour
         int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
         float cSize = targetConfig.chunkWidth;
 
-        Plane[] cameraPlanes = Camera.main != null ? GeometryUtility.CalculateFrustumPlanes(Camera.main) : null;
+        // Overload non allocante: passando un array cachato invece di lasciare che Unity ne alloc
+        // uno nuovo ad ogni chiamata evitiamo un Plane[6] di garbage ad ogni UpdateChunks() (che con
+        // il vecchio codice girava quasi ogni frame durante una rotazione della camera).
+        Plane[] cameraPlanes = null;
+        if (Camera.main != null)
+        {
+            GeometryUtility.CalculateFrustumPlanes(Camera.main, _cachedFrustumPlanes);
+            cameraPlanes = _cachedFrustumPlanes;
+        }
 
         for (int x = -viewDistance; x <= viewDistance; x++)
         {
             for (int z = -viewDistance; z <= viewDistance; z++)
             {
                 Vector2Int chunkCoord = new Vector2Int(pX + x, pZ + z);
-                if (!activeChunks.ContainsKey(chunkCoord))
+                if (activeChunks.ContainsKey(chunkCoord)) continue;
+
+                // L'anello 3x3 attorno al giocatore nasce sempre subito (serve terreno/collider
+                // immediati sotto i piedi — stesso raggio "vicino" già usato altrove per i collider e
+                // per lo spawn iniziale). Tutto il resto va in coda e viene creato un tot per frame da
+                // DrainPendingChunkCreations(): evita che un intero anello di chunk mancanti (es.
+                // giocatore che sprinta e attraversa più confini, o primo spawn) venga generato tutto
+                // insieme nello stesso frame — vedi Chunk.GenerateMapDataInterpolated/GenerateMesh,
+                // ognuno già non banale da solo.
+                bool isCloseSafety = Mathf.Abs(x) <= 1 && Mathf.Abs(z) <= 1;
+                if (isCloseSafety)
                 {
                     CreateChunk(chunkCoord);
+                }
+                else if (_queuedChunkCoords.Add(chunkCoord))
+                {
+                    _pendingChunkCreations.Enqueue(chunkCoord);
                 }
             }
         }
@@ -479,7 +567,13 @@ public class WorldManager : MonoBehaviour
                 Vector3 center = new Vector3(chunkCoord.x * cSize + cSize * 0.5f, targetConfig.chunkHeight * 0.5f, chunkCoord.y * cSize + cSize * 0.5f);
                 Vector3 size = new Vector3(cSize, targetConfig.chunkHeight, cSize);
                 Bounds chunkBounds = new Bounds(center, size);
-                chunkBounds.Expand(frustumPadding);
+                // Isteresi: un chunk già attivo resta tale finché non esce oltre il margine PIÙ
+                // LARGO (frustumPadding + frustumExitMargin); uno già inattivo si riattiva col
+                // margine normale (frustumPadding). Senza questa differenza, un chunk esattamente
+                // sul bordo del cono visivo poteva attivarsi/disattivarsi ad ogni piccola rotazione
+                // della camera, ritriggerando ad ogni flip la cascata OnEnable/OnDisable sui figli.
+                float padding = kvp.Value.gameObject.activeSelf ? frustumPadding + frustumExitMargin : frustumPadding;
+                chunkBounds.Expand(padding);
                 isInsideFrustum = GeometryUtility.TestPlanesAABB(cameraPlanes, chunkBounds);
             }
 
@@ -492,9 +586,58 @@ public class WorldManager : MonoBehaviour
         RemoveFarChunks(new Vector2Int(pX, pZ));
     }
 
+    // Smaltisce fino a maxChunksCreatedPerFrame coordinate dalla coda (vedi UpdateChunks). Chiamata
+    // ogni frame da Update(), sempre — è questo, non UpdateChunks(), a garantire che il backlog si
+    // svuoti entro pochi frame anche se il giocatore si ferma subito dopo aver attraversato un
+    // confine di chunk (altrimenti, essendo la coda popolata solo dentro UpdateChunks, un giocatore
+    // fermo non la farebbe mai avanzare).
+    void DrainPendingChunkCreations()
+    {
+        if (_pendingChunkCreations.Count == 0) return;
+
+        int pX = Mathf.FloorToInt(player.position.x / targetConfig.chunkWidth);
+        int pZ = Mathf.FloorToInt(player.position.z / targetConfig.chunkWidth);
+
+        int created = 0;
+        while (created < maxChunksCreatedPerFrame && _pendingChunkCreations.Count > 0)
+        {
+            Vector2Int coord = _pendingChunkCreations.Dequeue();
+            _queuedChunkCoords.Remove(coord);
+
+            if (activeChunks.ContainsKey(coord)) continue; // creato nel frattempo per altra via
+            // Il giocatore può essersi allontanato da quando la coordinata è stata accodata:
+            // scartiamo silenziosamente quelle ormai fuori raggio invece di sprecare il budget di
+            // questo frame su un chunk che RemoveFarChunks butterebbe via al prossimo giro comunque.
+            if (Mathf.Abs(coord.x - pX) > viewDistance + 1 || Mathf.Abs(coord.y - pZ) > viewDistance + 1) continue;
+
+            CreateChunk(coord);
+            created++;
+        }
+    }
+
+    // Smaltisce fino a maxCollidersBakedPerFrame bake MeshCollider in coda (vedi ApplySizeCollider).
+    // Stesso motivo di DrainPendingChunkCreations: chiamata ogni frame da Update(), non solo quando
+    // UpdateChunks() scatta.
+    void DrainPendingColliderBakes()
+    {
+        if (_pendingColliderBakes.Count == 0) return;
+
+        int baked = 0;
+        while (baked < maxCollidersBakedPerFrame && _pendingColliderBakes.Count > 0)
+        {
+            var (obj, colliderMesh) = _pendingColliderBakes.Dequeue();
+            if (obj == null) continue; // chunk/oggetto distrutto nel frattempo (es. troppo lontano)
+            if (obj.GetComponent<MeshCollider>() != null) continue; // già gestito altrove
+
+            obj.AddComponent<MeshCollider>().sharedMesh = colliderMesh;
+            baked++;
+        }
+    }
+
     void RemoveFarChunks(Vector2Int playerChunkPos)
     {
-        List<Vector2Int> coordsToRemove = new List<Vector2Int>();
+        List<Vector2Int> coordsToRemove = _coordsToRemoveBuffer;
+        coordsToRemove.Clear();
         foreach (var chunk in activeChunks)
         {
             int distX = Mathf.Abs(chunk.Key.x - playerChunkPos.x);
@@ -510,11 +653,11 @@ public class WorldManager : MonoBehaviour
                 // costa solo la memoria di un chunk in più finché non si svuota la sua coda.
                 if (chunk.Value != null && chunk.Value.PendingDecorCount > 0)
                 {
-                    if (_loggedKeepAliveChunks.Add(chunk.Key))
+                    if (_loggedKeepAliveChunks.Add(chunk.Key) && verboseSpawnDiagnostics)
                         Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} tenuto in vita oltre il viewDistance: {chunk.Value.PendingDecorCount} decorazioni ancora in attesa di generazione.");
                     continue;
                 }
-                if (_loggedKeepAliveChunks.Remove(chunk.Key))
+                if (_loggedKeepAliveChunks.Remove(chunk.Key) && verboseSpawnDiagnostics)
                     Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} liberato, tutte le decorazioni in attesa sono state risolte (o perse) — rimosso normalmente.");
                 coordsToRemove.Add(chunk.Key);
             }
@@ -631,12 +774,19 @@ public class WorldManager : MonoBehaviour
         bool[,] excluded = new bool[w, w];
         List<StructureAnchor> placedStructures = new List<StructureAnchor>();
 
+        // Riusata ad ogni passata di priorità (Clear invece di un nuovo LINQ .Where().ToList() per
+        // passata, 4 volte per chunk) — stesso risultato, senza le allocazioni del delegate/iteratore
+        // LINQ né una nuova List per ciascuna delle 4 passate.
+        var passObjects = new List<string>(allNames.Count);
+
         for (int currentPriority = 1; currentPriority <= 4; currentPriority++)
         {
-            var passObjects = allNames.Where(n => {
+            passObjects.Clear();
+            foreach (string n in allNames)
+            {
                 int pr = data.objectPriorities.TryGetValue(n, out int pVal) ? pVal : 3;
-                return pr == currentPriority;
-            }).ToList();
+                if (pr == currentPriority) passObjects.Add(n);
+            }
 
             if (passObjects.Count == 0) continue;
 
@@ -783,10 +933,24 @@ public class WorldManager : MonoBehaviour
             if (sx.isStreet || sz.isStreet) excluded[x, z] = true;
         }
 
-        var buildingNames = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 1 && !LooksLikeGroundTile(n)).ToList();
-        var streetPropNames = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 2).ToList();
-        var decorNames3 = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 3).ToList();
-        var decorNames4 = allNames.Where(n => (data.objectPriorities.TryGetValue(n, out int p) ? p : 3) == 4).ToList();
+        // Un solo passaggio su allNames invece di 4 LINQ .Where().ToList() separate (ognuna una
+        // scansione completa + una List allocata) — stesso risultato, un quarto delle scansioni e
+        // delle allocazioni per chunk urbano creato.
+        var buildingNames = new List<string>();
+        var streetPropNames = new List<string>();
+        var decorNames3 = new List<string>();
+        var decorNames4 = new List<string>();
+        foreach (string n in allNames)
+        {
+            int p = data.objectPriorities.TryGetValue(n, out int pVal) ? pVal : 3;
+            switch (p)
+            {
+                case 1: if (!LooksLikeGroundTile(n)) buildingNames.Add(n); break;
+                case 2: streetPropNames.Add(n); break;
+                case 3: decorNames3.Add(n); break;
+                default: decorNames4.Add(n); break;
+            }
+        }
 
         if (buildingNames.Count == 0) return; // No real structures registered yet for this biome.
 
@@ -797,8 +961,11 @@ public class WorldManager : MonoBehaviour
         // buildingNames, SENZA distinguere frequenze ("unique"/"rare" pesano quanto "common") — un
         // edificio "unique" ha quindi solo 1/N di possibilità per lotto, nessuna garanzia di comparire
         // mai. Logghiamo la composizione del pool una volta per chunk per verificare sul campo se un
-        // nome sparisce per RNG sfortunata su pochi lotti o perché non è mai nel pool.
-        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: pool edifici ({buildingNames.Count}) = [{string.Join(", ", buildingNames)}], prop strada ({streetPropNames.Count}) = [{string.Join(", ", streetPropNames)}].");
+        // nome sparisce per RNG sfortunata su pochi lotti o perché non è mai nel pool. Dietro un flag
+        // (OFF di default): con molti chunk urbani creati insieme, queste log a interpolazione di
+        // stringa erano una sorgente non trascurabile di garbage GC proprio nei frame già più pesanti.
+        if (verboseUrbanDecorLogging)
+            Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: pool edifici ({buildingNames.Count}) = [{string.Join(", ", buildingNames)}], prop strada ({streetPropNames.Count}) = [{string.Join(", ", streetPropNames)}].");
 
         foreach (var (gcx, lotCenterX) in UrbanGrid.LotsInRange(bx, w, gridParams))
         foreach (var (gcz, lotCenterZ) in UrbanGrid.LotsInRange(bz, w, gridParams))
@@ -820,7 +987,8 @@ public class WorldManager : MonoBehaviour
             float bGroundY = GetGroundY(lotCenterX, lotCenterZ, chunk.HeightMap[lcx, lcz]);
             float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
 
-            Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}, lotto ({gcx},{gcz}): scelto edificio '{bName}' (indice {Mathf.Abs(lotHash) % buildingNames.Count}/{buildingNames.Count}).");
+            if (verboseUrbanDecorLogging)
+                Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}, lotto ({gcx},{gcz}): scelto edificio '{bName}' (indice {Mathf.Abs(lotHash) % buildingNames.Count}/{buildingNames.Count}).");
             InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, data, bRotZ);
             placedStructures.Add(new StructureAnchor {
                 position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
@@ -853,12 +1021,14 @@ public class WorldManager : MonoBehaviour
                 float spawnRoll = (propSeed & 0xFFFF) / 65535f;
                 if (!isUnique && spawnRoll > fc)
                 {
-                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — roll fallito ({spawnRoll:F2} > {fc:F2}, freq chance).");
+                    if (verboseUrbanDecorLogging)
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — roll fallito ({spawnRoll:F2} > {fc:F2}, freq chance).");
                     continue;
                 }
                 if (isUnique && _uniqueSpawned.Contains(name))
                 {
-                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — già piazzato altrove (unique).");
+                    if (verboseUrbanDecorLogging)
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — già piazzato altrove (unique).");
                     continue;
                 }
 
@@ -871,12 +1041,14 @@ public class WorldManager : MonoBehaviour
                 int plz = Mathf.FloorToInt(propWorldPos.z - bz);
                 if (plx < 0 || plx >= w || plz < 0 || plz >= w)
                 {
-                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — offset ({plx},{plz}) fuori dal chunk.");
+                    if (verboseUrbanDecorLogging)
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — offset ({plx},{plz}) fuori dal chunk.");
                     continue;
                 }
                 if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel)
                 {
-                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — cella ({plx},{plz}) {(excluded[plx, plz] ? "già occupata/esclusa" : "sott'acqua")}.");
+                    if (verboseUrbanDecorLogging)
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — cella ({plx},{plz}) {(excluded[plx, plz] ? "già occupata/esclusa" : "sott'acqua")}.");
                     continue;
                 }
 
@@ -884,7 +1056,8 @@ public class WorldManager : MonoBehaviour
                 float pGroundY = GetGroundY(propWorldPos.x, propWorldPos.z, chunk.HeightMap[plx, plz]);
                 float rotZ = ((propSeed >> 16) & 0xFF) / 255f * 360f;
 
-                Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' piazzato presso '{structure.assetName}'.");
+                if (verboseUrbanDecorLogging)
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' piazzato presso '{structure.assetName}'.");
                 InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                 excluded[plx, plz] = true;
                 if (isUnique) _uniqueSpawned.Add(name);
@@ -1047,8 +1220,11 @@ public class WorldManager : MonoBehaviour
         {
             var ownerChunk = parent != null ? parent.GetComponent<Chunk>() : null;
             ownerChunk?.NotePendingDecorAdded();
-            string coordLabel = ownerChunk != null ? ownerChunk.ChunkCoord.ToString() : "?";
-            Debug.Log($"<color=yellow>[Decor]</color> Chunk {coordLabel}: '{name}' non ancora pronto, creato placeholder in attesa (pending nel chunk: {ownerChunk?.PendingDecorCount ?? -1}).");
+            if (verboseSpawnDiagnostics)
+            {
+                string coordLabel = ownerChunk != null ? ownerChunk.ChunkCoord.ToString() : "?";
+                Debug.Log($"<color=yellow>[Decor]</color> Chunk {coordLabel}: '{name}' non ancora pronto, creato placeholder in attesa (pending nel chunk: {ownerChunk?.PendingDecorCount ?? -1}).");
+            }
             SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, visible: false);
             return;
         }
@@ -1063,7 +1239,10 @@ public class WorldManager : MonoBehaviour
             // e dimensione finale in world space — per capire se in build la MESH caricata ha
             // bounds diversi da quelli in Editor (es. normalizzazione mancata / mesh sbagliata)
             // oppure se il solo scaleFactor Inspector differisce (vedi log [ScaleDiag] a inizio sessione).
-            if (sizeStr == "huge" || sizeStr == "big")
+            // Dietro verboseSpawnDiagnostics (OFF di default): con più oggetti big/huge per chunk
+            // (alberi, edifici...) era una riga di console — e un'allocazione di stringa — per
+            // ciascuno, proprio nei frame in cui un chunk nuovo li piazza tutti insieme.
+            if (verboseSpawnDiagnostics && (sizeStr == "huge" || sizeStr == "big"))
             {
                 Vector3 nativeBounds = runtimeMesh != null ? runtimeMesh.bounds.size : Vector3.zero;
                 Debug.Log($"<color=cyan>[ScaleDiag]</color> '{name}' (size={sizeStr}) mesh nativa={nativeBounds} scaleFactor={scaleFactor} → world size finale≈{nativeBounds * scaleFactor} (fonte mesh: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
@@ -1132,7 +1311,21 @@ public class WorldManager : MonoBehaviour
             }
             if (colliderMesh == null) return;
 
-            obj.AddComponent<MeshCollider>().sharedMesh = colliderMesh;
+            // Cuocere un MeshCollider è un'operazione fisica non banale (Unity ricalcola la hull di
+            // collisione dalla mesh) — se un chunk nuovo piazza più alberi/edifici grandi insieme,
+            // farlo per tutti nello stesso frame del meshing del terreno è un altro contributo allo
+            // stutter quando si carica un chunk. Vicino al giocatore serve subito (potrebbe
+            // interagirci nell'istante stesso), oltre immediateColliderBakeDistance lo mettiamo in
+            // coda e lo spalmiamo su più frame — vedi DrainPendingColliderBakes.
+            float distSqr = (obj.transform.position - player.position).sqrMagnitude;
+            if (distSqr <= immediateColliderBakeDistance * immediateColliderBakeDistance)
+            {
+                obj.AddComponent<MeshCollider>().sharedMesh = colliderMesh;
+            }
+            else
+            {
+                _pendingColliderBakes.Enqueue((obj, colliderMesh));
+            }
             return;
         }
 
@@ -1241,7 +1434,8 @@ public class WorldManager : MonoBehaviour
 
         if (!_placeholders.TryGetValue(objectName, out var list))
         {
-            Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto, ma nessun chunk lo stava aspettando (nessun placeholder registrato).");
+            if (verboseSpawnDiagnostics)
+                Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto, ma nessun chunk lo stava aspettando (nessun placeholder registrato).");
             return;
         }
 
@@ -1256,9 +1450,12 @@ public class WorldManager : MonoBehaviour
         }
         _placeholders.Remove(objectName);
 
-        int lostCount = list.Count - toSpawn.Count;
-        Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto: sostituiti {toSpawn.Count} placeholder ancora vivi." +
-            (lostCount > 0 ? $" {lostCount} erano già stati distrutti insieme al loro chunk prima che la generazione finisse — persi." : ""));
+        if (verboseSpawnDiagnostics)
+        {
+            int lostCount = list.Count - toSpawn.Count;
+            Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto: sostituiti {toSpawn.Count} placeholder ancora vivi." +
+                (lostCount > 0 ? $" {lostCount} erano già stati distrutti insieme al loro chunk prima che la generazione finisse — persi." : ""));
+        }
 
         EnsureMeshCached(objectName);
 
@@ -1299,7 +1496,7 @@ public class WorldManager : MonoBehaviour
             // questo è il path di piazzamento più comune per huge/big (edifici, alberi), dato che
             // arrivano quasi sempre da un placeholder risolto in modo asincrono dopo la generazione
             // IA, non da InstantiateAssetPrimitive diretto.
-            if (sizeStr == "huge" || sizeStr == "big")
+            if (verboseSpawnDiagnostics && (sizeStr == "huge" || sizeStr == "big"))
             {
                 Vector3 nativeBounds = runtimeMesh != null ? runtimeMesh.bounds.size : Vector3.zero;
                 Debug.Log($"<color=cyan>[ScaleDiag]</color> '{objectName}' (size={sizeStr}) mesh nativa={nativeBounds} scaleFactor={scaleFactor} → world size finale≈{nativeBounds * scaleFactor} (fonte mesh: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
@@ -1312,8 +1509,11 @@ public class WorldManager : MonoBehaviour
             ApplySizeCollider(obj, sizeStr, objectName);
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, objectName, lodHighPercent, lodMediumPercent, useSuperHighForClosest: sizeStr == "huge" || sizeStr == "big");
 
-            var placedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
-            Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' piazzato (placeholder risolto).");
+            if (verboseSpawnDiagnostics)
+            {
+                var placedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
+                Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' piazzato (placeholder risolto).");
+            }
         }
     }
 

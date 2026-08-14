@@ -167,10 +167,20 @@ public class ObjectDistanceCuller : MonoBehaviour
     void OnEnable()
     {
         RegisterToLODManager();
-        if (player != null)
-        {
-            UpdateVisibilityAndLOD(player.position);
-        }
+
+        // NOTA: niente più UpdateVisibilityAndLOD() sincrono qui. Quando un chunk si riattiva
+        // (rientra nel cono visivo — vedi WorldManager.UpdateChunks) OnEnable scatta su OGNI
+        // decorazione figlia contemporaneamente: forzare qui un ricalcolo immediato per ciascuna
+        // significava fare in un solo frame tutto il lavoro (distanza + eventuale cambio mesh LOD +
+        // toggle renderer) che il sliced update di LODManager è pensato apposta per spalmare su più
+        // frame. È sicuro saltarlo: renderer.enabled e la mesh LOD restano quelli dell'ultimo
+        // UpdateVisibilityAndLOD eseguito prima della disattivazione (SetActive(false) sul chunk non
+        // li tocca), quindi lo stato mostrato resta corretto o al più stale di pochi frame finché
+        // LODManager.Update() non ripassa da questo oggetto — impercettibile, dato che il player
+        // difficilmente si sposta abbastanza in 1-4 frame da rendere quello stato visibilmente
+        // sbagliato. La primissima inizializzazione (spawn dell'oggetto) resta invariata: qui
+        // player è ancora null in quel momento (Initialize() non è ancora stata chiamata), e
+        // Initialize() chiama comunque UpdateVisibilityAndLOD() esplicitamente alla fine.
     }
 
     void OnDisable()
