@@ -1,4 +1,5 @@
 using UnityEngine;
+using UnityEngine.Rendering;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -1072,9 +1073,26 @@ public class WorldManager : MonoBehaviour
             float calculatedMinY = GetObjectMinY(obj, groundY);
             obj.transform.position += Vector3.up * (groundY - calculatedMinY + currentOffset);
 
+            ApplyShadowCastingMode(obj, sizeStr);
             ApplySizeCollider(obj, sizeStr, name);
             obj.AddComponent<ObjectDistanceCuller>().Initialize(player, maxDist, name, lodHighPercent, lodMediumPercent, useSuperHighForClosest: sizeStr == "huge" || sizeStr == "big");
         }
+    }
+
+    // Gli oggetti "tiny"/"small" (fiori, funghi, sassolini, clutter minuto) vengono piazzati in
+    // grandissima quantità (vedi cellVeryCommon/cellCommon — una ogni 3-5 unità) e il loro
+    // contributo visivo all'ombra proiettata è trascurabile alla distanza a cui restano visibili
+    // (renderDistTiny/renderDistSmall). Ogni MeshRenderer appena creato però nasce con
+    // shadowCastingMode = On di default: farli comunque partecipare al render pass ombre moltiplica
+    // inutilmente i draw call delle cascate della shadow map (una submission per oggetto per
+    // cascata) senza nessun beneficio visivo apprezzabile — è il costo principale osservato dopo
+    // l'aumento della shadow strength della luce (vedi commit "Lighting update"). normal/big/huge
+    // restano shadow caster normali: hanno un impatto visivo reale sull'ombreggiatura della scena.
+    static void ApplyShadowCastingMode(GameObject obj, string sizeStr)
+    {
+        var mode = (sizeStr == "tiny" || sizeStr == "small") ? ShadowCastingMode.Off : ShadowCastingMode.On;
+        foreach (var rend in obj.GetComponentsInChildren<Renderer>())
+            rend.shadowCastingMode = mode;
     }
 
     // Assegna il collider giusto in base alla size, indipendentemente dal path di spawn

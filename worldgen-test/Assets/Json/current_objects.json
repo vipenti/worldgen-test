@@ -1,12 +1,15 @@
 {
-  "tall oak tree": { "id": 0, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "pine tree": { "id": 1, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
-  "colorful flower patch": { "id": 2, "size": "small", "frequency": "common", "type": "vegetation", "priority": 4 },
-  "low bush": { "id": 3, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "timber-framed house": { "id": 13, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "stone barn": { "id": 14, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
+  "bakery": { "id": 15, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
+  "blacksmith forge": { "id": 16, "size": "big", "frequency": "unique", "type": "structure", "priority": 1 },
+  "wooden fence": { "id": 17, "size": "small", "frequency": "common", "type": "prop", "priority": 2 },
+  "wooden barrel": { "id": 18, "size": "small", "frequency": "rare", "type": "prop", "priority": 2 },
+  "hay bale": { "id": 19, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "well pump": { "id": 20, "size": "normal", "frequency": "unique", "type": "prop", "priority": 2 },
   "wild rabbit": { "id": 4, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "fox": { "id": 12, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
   "small rock": { "id": 5, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "fallen log": { "id": 6, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
-  "acorn": { "id": 7, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "pinecone": { "id": 8, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
-  "mossy stone": { "id": 9, "size": "small", "frequency": "common", "type": "clutter", "priority": 4 }
+  "acorn": { "id": 7, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "pinecone": { "id": 8, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 }
 }

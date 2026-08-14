@@ -10,9 +10,9 @@ using UnityEngine.UI;
 
 /// <summary>
 /// Pannello Opzioni apribile a runtime (pulsante UI o tasto fisico) con tre sezioni:
-/// 1) Generali — device audio input e indirizzo/porte del server LLM/immagini/3D (scrive su
-///    <see cref="GameSettings"/>, che è l'unica sorgente di verità letta da tutti gli script
-///    di rete — vedi GameSettings.cs).
+/// 1) Generali — device audio input, indirizzo/porte del server LLM/immagini/3D e qualità ombre
+///    (scrive su <see cref="GameSettings"/>, che è l'unica sorgente di verità letta da tutti gli
+///    script di rete e da ShadowQualityController — vedi GameSettings.cs).
 /// 2) Parametri mondo — densità oggetti, render distance, ampiezza transizione bioma, on/off
 ///    del percorso centrale, scala oggetti per categoria di size (huge/big/normal/small/tiny) e
 ///    dimensioni del percorso (larghezza/sfumatura ai bordi), applicati live tramite
@@ -48,6 +48,8 @@ public class OptionsPanel : MonoBehaviour
     public TMP_InputField imagePortField;
     public TMP_InputField gen3dPortField;
     public Button applyGeneraliButton;
+    [Tooltip("Opzioni attese in ordine: Off, Low, Medium, High (indice 0-3, vedi GameSettingsData.shadowQuality / ShadowQualityController). Applicata subito al cambio, senza bisogno del pulsante Apply.")]
+    public TMP_Dropdown shadowQualityDropdown;
 
     [Header("Sezione Parametri mondo")]
     [Tooltip("0.5x - 2x, scala le dimensioni cella di piazzamento (WorldManager.cellVeryCommon/Common/...).")]
@@ -110,6 +112,7 @@ public class OptionsPanel : MonoBehaviour
         if (tabInfoButton != null) tabInfoButton.onClick.AddListener(OnTabInfo);
         if (applyGeneraliButton != null) applyGeneraliButton.onClick.AddListener(ApplyGenerali);
         if (micCycleButton != null) micCycleButton.onClick.AddListener(CycleMicDevice);
+        if (shadowQualityDropdown != null) shadowQualityDropdown.onValueChanged.AddListener(OnShadowQualityChanged);
         if (applyMondoButton != null) applyMondoButton.onClick.AddListener(ApplyMondo);
         if (refreshInfoButton != null) refreshInfoButton.onClick.AddListener(RefreshInfo);
         if (densitySlider != null) densitySlider.onValueChanged.AddListener(OnDensityChanged);
@@ -133,6 +136,7 @@ public class OptionsPanel : MonoBehaviour
         if (tabInfoButton != null) tabInfoButton.onClick.RemoveListener(OnTabInfo);
         if (applyGeneraliButton != null) applyGeneraliButton.onClick.RemoveListener(ApplyGenerali);
         if (micCycleButton != null) micCycleButton.onClick.RemoveListener(CycleMicDevice);
+        if (shadowQualityDropdown != null) shadowQualityDropdown.onValueChanged.RemoveListener(OnShadowQualityChanged);
         if (applyMondoButton != null) applyMondoButton.onClick.RemoveListener(ApplyMondo);
         if (refreshInfoButton != null) refreshInfoButton.onClick.RemoveListener(RefreshInfo);
         if (densitySlider != null) densitySlider.onValueChanged.RemoveListener(OnDensityChanged);
@@ -236,6 +240,7 @@ public class OptionsPanel : MonoBehaviour
         if (llmPortField != null) llmPortField.text = data.llmPort.ToString();
         if (imagePortField != null) imagePortField.text = data.imagePort.ToString();
         if (gen3dPortField != null) gen3dPortField.text = data.gen3dPort.ToString();
+        if (shadowQualityDropdown != null) shadowQualityDropdown.SetValueWithoutNotify(data.shadowQuality);
 
         if (densitySlider != null) densitySlider.SetValueWithoutNotify(data.objectDensityMultiplier);
         if (renderDistSlider != null) renderDistSlider.SetValueWithoutNotify(data.renderDistanceMultiplier);
@@ -287,6 +292,19 @@ public class OptionsPanel : MonoBehaviour
 
     static int ParseIntOr(TMP_InputField field, int fallback) =>
         field != null && int.TryParse(field.text, out int v) ? v : fallback;
+
+    // Applicata subito al cambio (a differenza degli altri campi di "Generali", che aspettano il
+    // pulsante Apply): è un'impostazione puramente grafica/performance, ha senso vederne l'effetto
+    // in tempo reale mentre si regola, specialmente in VR.
+    void OnShadowQualityChanged(int level)
+    {
+        if (GameSettings.Instance == null)
+        {
+            Debug.LogWarning("[OptionsPanel] GameSettings non presente in scena, impossibile applicare.");
+            return;
+        }
+        GameSettings.Instance.ApplyShadowQuality(level);
+    }
 
     // ── Sezione Parametri mondo ─────────────────────────────────────────
 

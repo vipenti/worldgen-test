@@ -52,6 +52,13 @@ public class GameSettingsData
     // percorso/strada centrale del bioma e ampiezza della sua sfumatura ai bordi).
     public float pathWidthMultiplier = 1f;
     public float pathBlendWidthMultiplier = 1f;
+
+    // ── Grafica ─────────────────────────────────────────────────────────
+    // Qualità ombre runtime: 0=Off, 1=Low, 2=Medium, 3=High. Default 3 (High) per non cambiare il
+    // comportamento visivo esistente finché l'utente non lo tocca dal pannello Opzioni — vedi
+    // ShadowQualityController, che applica questo valore alla luce direzionale e al
+    // UniversalRenderPipelineAsset attivo ad ogni caricamento scena e ad ogni modifica live.
+    public int shadowQuality = 3;
 }
 
 /// <summary>
@@ -75,6 +82,8 @@ public class GameSettings : MonoBehaviour
     public event Action OnAudioSettingsChanged;
     /// <summary>Parametri mondo (densità/render distance/blend/path) cambiati.</summary>
     public event Action OnWorldParamsChanged;
+    /// <summary>Qualità ombre cambiata.</summary>
+    public event Action OnShadowQualityChanged;
 
     static string SettingsPath => Path.Combine(PathSettings.GetJsonFolder(), "settings.json");
 
@@ -142,6 +151,13 @@ public class GameSettings : MonoBehaviour
         Data.pathBlendWidthMultiplier = Mathf.Max(0.1f, blendWidthMultiplier);
         Save();
         OnWorldParamsChanged?.Invoke();
+    }
+
+    public void ApplyShadowQuality(int level)
+    {
+        Data.shadowQuality = Mathf.Clamp(level, 0, 3);
+        Save();
+        OnShadowQualityChanged?.Invoke();
     }
 
     void Load()

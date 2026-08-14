@@ -6,7 +6,7 @@
   "gen3dPort2": 7961,
   "micDeviceName": "",
   "objectDensityMultiplier": 1.3,
-  "renderDistanceMultiplier": 2,
+  "renderDistanceMultiplier": 2.0,
   "transitionLengthInChunks": 24,
   "enablePath": true,
   "scaleHugeMultiplier": 1.0,
@@ -15,5 +15,6 @@
   "scaleSmallMultiplier": 1.0,
   "scaleTinyMultiplier": 1.0,
   "pathWidthMultiplier": 1.0,
-  "pathBlendWidthMultiplier": 1.0
+  "pathBlendWidthMultiplier": 1.0,
+  "shadowQuality": 1
 }
