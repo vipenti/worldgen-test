@@ -1161,7 +1161,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &128743480
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -1174,14 +1174,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 657bc82e9279ee647b9a0f619f3f0b78, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AutoPromptSequencer
-  llmWorldDirector: {fileID: 0}
+  llmWorldDirector: {fileID: 1447165636}
   prompts:
-  - A green forest with tall trees, flowers and some deers and bushes
-  - A structured medieval city on gentle hills, with houses, some trees, benches,
-    light lamp, and merchants, some tall buldings, at least three types of houses,
-    MUST BE A STRUCTURED BIOME
-  - The desert golden hills with tall palms, an oasis and some dried bushes
-  - A rocky vulcanic landscape with giant dragon (they are rare)
+  - 'A medieval city with a fortress, many houses and medieval decors '
+  - The desert golden sand hills, an some rare oasis and some dried bushes, and some
+    super rare tall palms
+  - A structured snowy cozy winter village in the snow, with many pines and decors,
+    benches, and buildings
+  - A green forest with tall trees, different bushers and flowers, rarely some animals
   delayBetweenPrompts: 1
   loopSequence: 0
   perPromptTimeout: 300
@@ -5333,6 +5333,8 @@ MonoBehaviour:
   panelColor: {r: 0.05, g: 0.05, b: 0.08, a: 0.5}
   tickColor: {r: 0.85, g: 0.85, b: 0.9, a: 0.85}
   accentColor: {r: 1, g: 0.78, b: 0.35, a: 1}
+  poiColor: {r: 1, g: 0.85, b: 0.2, a: 1}
+  poiMaxDistance: 400
 --- !u!1 &607336454
 GameObject:
   m_ObjectHideFlags: 0
@@ -10935,6 +10937,13 @@ MonoBehaviour:
   transitionSpeedMultiplier: 1
   transitionLengthInChunks: 32
   frustumPadding: 20
+  frustumExitMargin: 40
+  rotationUpdateInterval: 0.1
+  maxChunksCreatedPerFrame: 2
+  immediateColliderBakeDistance: 40
+  maxCollidersBakedPerFrame: 2
+  verboseUrbanDecorLogging: 0
+  verboseSpawnDiagnostics: 0
   renderDistHuge: 1000
   renderDistBig: 900
   renderDistNormal: 600
@@ -10969,6 +10978,7 @@ MonoBehaviour:
   mapVisualizer: {fileID: 1508923896}
   skipInitialPlayerSpawn: 0
   logPanel: {fileID: 278922867}
+  disableChunkRemovalForBake: 0
 --- !u!114 &1447165636
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -10994,6 +11004,7 @@ MonoBehaviour:
   thinkingDirective: "<|think|> Think briefly and efficiently. Focus only on the
     key decisions that affect the output \u2014 skip restating the instructions or
     listing every rule you're checking."
+  gptOssReasoningEffort: 1
   generateTexture: {fileID: 1573031125}
   generateAsset: {fileID: 1772015175}
   worldManager: {fileID: 0}
@@ -11878,6 +11889,7 @@ MonoBehaviour:
   negativePrompt: blurry, seams, low quality, distorted, watermark
   normalStrength: 5
   steps: 4
+  seed: 46
 --- !u!114 &1573031126
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -13241,6 +13253,7 @@ MonoBehaviour:
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   serverAddress: http://25.18.55.60:5000
+  imageSeed: 46
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 1772015173}
   autoGenerate: 0

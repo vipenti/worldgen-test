@@ -1,5 +1,6 @@
 using UnityEngine;
 using UnityEngine.Rendering;
+using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.IO;
@@ -149,12 +150,23 @@ public class WorldManager : MonoBehaviour
     private Dictionary<string, int> _objectPriorities = new Dictionary<string, int>();
     private Dictionary<string, string> _objectSizes = new Dictionary<string, string>(); 
     private HashSet<string> _uniqueSpawned = new HashSet<string>();
-    private Quaternion lastCameraRotation; 
+    private Quaternion lastCameraRotation;
+
+    /// <summary>Un oggetto "unique" del bioma è stato piazzato — nome e posizione mondo, usato da
+    /// CompassUI per mostrare un punto di interesse sulla bussola. Invocato solo la prima volta che
+    /// un dato nome unique viene piazzato (stesso momento in cui entra in _uniqueSpawned).</summary>
+    public static event Action<string, Vector3> OnUniqueObjectSpawned;
+    /// <summary>Il registro degli oggetti unique è stato azzerato (nuovo bioma applicato, o
+    /// rigenerazione forzata di tutti i chunk) — CompassUI deve dimenticare i punti di interesse
+    /// del bioma precedente.</summary>
+    public static event Action OnUniqueObjectsCleared;
 
     [Header("Debug & Map Visualization")]
     public MapVisualizer mapVisualizer;
     public bool skipInitialPlayerSpawn = false;
     public LogPanelUI logPanel;
+    [Tooltip("Se true, RemoveFarChunks non distrugge mai nessun chunk oltre la view distance — usato dai tool di bake (es. WorldCorridorBaker) per far accumulare in scena tutti i chunk di un intero tragitto invece di farli sparire uno alla volta man mano che ci si allontana. NON lasciarlo acceso durante il gioco normale: la memoria cresce senza limite.")]
+    public bool disableChunkRemovalForBake = false;
 
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
@@ -636,6 +648,8 @@ public class WorldManager : MonoBehaviour
 
     void RemoveFarChunks(Vector2Int playerChunkPos)
     {
+        if (disableChunkRemovalForBake) return;
+
         List<Vector2Int> coordsToRemove = _coordsToRemoveBuffer;
         coordsToRemove.Clear();
         foreach (var chunk in activeChunks)
@@ -825,7 +839,11 @@ public class WorldManager : MonoBehaviour
                             float rotZ = (propSeed >> 16 & 0xFF) / 255f * 360f;
                             InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                             excluded[plx, plz] = true;
-                            if (isUnique) _uniqueSpawned.Add(name);
+                            if (isUnique)
+                            {
+                                _uniqueSpawned.Add(name);
+                                OnUniqueObjectSpawned?.Invoke(name, new Vector3(propWorldPos.x, pGroundY, propWorldPos.z));
+                            }
                         }
                     }
                     continue;
@@ -894,7 +912,11 @@ public class WorldManager : MonoBehaviour
                         if ((uint)nx < (uint)w && (uint)nz < (uint)w) excluded[nx, nz] = true;
                     }
 
-                    if (isUnique) _uniqueSpawned.Add(name);
+                    if (isUnique)
+                    {
+                        _uniqueSpawned.Add(name);
+                        OnUniqueObjectSpawned?.Invoke(name, new Vector3(wx, groundY, wz));
+                    }
                     if (currentPriority == 1)
                     {
                         placedStructures.Add(new StructureAnchor {
@@ -1060,7 +1082,11 @@ public class WorldManager : MonoBehaviour
                     Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' piazzato presso '{structure.assetName}'.");
                 InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                 excluded[plx, plz] = true;
-                if (isUnique) _uniqueSpawned.Add(name);
+                if (isUnique)
+                {
+                    _uniqueSpawned.Add(name);
+                    OnUniqueObjectSpawned?.Invoke(name, new Vector3(propWorldPos.x, pGroundY, propWorldPos.z));
+                }
             }
         }
 
@@ -1134,7 +1160,11 @@ public class WorldManager : MonoBehaviour
                     if ((uint)nx < (uint)w && (uint)nz < (uint)w) excluded[nx, nz] = true;
                 }
 
-                if (isUnique) _uniqueSpawned.Add(name);
+                if (isUnique)
+                {
+                    _uniqueSpawned.Add(name);
+                    OnUniqueObjectSpawned?.Invoke(name, new Vector3(wx, groundY, wz));
+                }
             }
         }
     }
@@ -1670,6 +1700,7 @@ public class WorldManager : MonoBehaviour
         _readyPrefabs.Clear(); _pendingObjectNames.Clear(); _objectScaleFactors.Clear();
         _objectFreqChances.Clear(); _objectTypes.Clear(); _objectPriorities.Clear();
         _objectSizes.Clear(); _uniqueSpawned.Clear();
+        OnUniqueObjectsCleared?.Invoke();
         // NON puliamo _placeholders qui. Questo metodo viene richiamato da ApplyNewConfig() ad ogni
         // cambio bioma, ormai solo quando TUTTI gli asset del nuovo bioma sono pronti — ma se
         // l'utente chiede un ALTRO cambio bioma mentre quella generazione successiva è ancora in
@@ -1735,6 +1766,7 @@ public class WorldManager : MonoBehaviour
         foreach (var kvp in activeChunks) if (kvp.Value != null) Destroy(kvp.Value.gameObject);
         activeChunks.Clear();
         _uniqueSpawned.Clear();
+        OnUniqueObjectsCleared?.Invoke();
         UpdateChunks();
     }
 

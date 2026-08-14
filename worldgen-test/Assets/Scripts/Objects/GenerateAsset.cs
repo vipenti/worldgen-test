@@ -247,12 +247,13 @@ public class GenerateAsset : MonoBehaviour
             ? GameSettings.Instance.ImageServerBase
             : (llmObjectGeneration != null ? llmObjectGeneration.serverAddress : "http://25.18.55.60:5000");
         string negativePrompt = llmObjectGeneration != null ? llmObjectGeneration.negativePrompt : "";
+        int imageSeed = llmObjectGeneration != null ? llmObjectGeneration.imageSeed : 46;
 
         while (pendingPrompts.Count > 0)
         {
             string name = pendingPrompts.Dequeue();
             string prompt = LLMObjectGeneration.BuildStylePrompt(name);
-            string json = $"{{\"prompt\": \"{EscapeJsonForBatch(prompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJsonForBatch(negativePrompt)}\"}}";
+            string json = $"{{\"prompt\": \"{EscapeJsonForBatch(prompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJsonForBatch(negativePrompt)}\", \"seed\": {imageSeed}}}";
 
             using var req = new UnityWebRequest($"{server}/create_image", "POST");
             req.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));

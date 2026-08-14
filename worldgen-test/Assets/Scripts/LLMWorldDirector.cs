@@ -55,6 +55,23 @@ public class LLMWorldDirector : MonoBehaviour
     [TextArea(2, 4)]
     public string thinkingDirective =
         "<|think|> Think briefly and efficiently. Focus only on the key decisions that affect the output — skip restating the instructions or listing every rule you're checking.";
+    public enum ReasoningEffort { Low, Medium, High }
+
+    [Header("gpt-oss reasoning effort")]
+    [Tooltip("Effort del reasoning nativo di LM Studio (\"reasoning\":{\"effort\":...} nel body della richiesta) — si applica SOLO quando modelId è un modello della famiglia gpt-oss (contiene \"gpt-oss\", case-insensitive), l'unica famiglia per cui LM Studio espone questo parametro dedicato via /v1/chat/completions. Per qualunque altro modello (Gemma, Qwen...) questo campo viene ignorato e resta in uso il meccanismo esistente a token testuali (thinkingDirective/\"/no_think\").")]
+    public ReasoningEffort gptOssReasoningEffort = ReasoningEffort.Medium;
+
+    // Rilevamento robusto a varianti ("openai/gpt-oss-20b", "gpt-oss-120b", maiuscole/minuscole...)
+    // invece di un confronto esatto sul modelId.
+    bool IsGptOssModel => !string.IsNullOrEmpty(modelId) && modelId.ToLowerInvariant().Contains("gpt-oss");
+
+    static string EffortToLmStudioValue(ReasoningEffort e) => e switch
+    {
+        ReasoningEffort.Low => "low",
+        ReasoningEffort.High => "high",
+        _ => "medium"
+    };
+
     public GenerateTexture generateTexture;
     public GenerateAsset generateAsset;
     public WorldManager worldManager;
@@ -256,24 +273,41 @@ public class LLMWorldDirector : MonoBehaviour
 
     IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false, int? maxTokensOverride = null, string callLabel = null)
     {
-        if (disableThinking)
+        bool isGptOss = IsGptOssModel;
+
+        // gpt-oss non usa il meccanismo a token testuali (<|think|>/"/no_think") — quello è
+        // specifico di Gemma/Qwen e su gpt-oss sarebbe solo testo inerte anteposto al prompt.
+        // L'effort del reasoning per gpt-oss si comunica invece con un campo dedicato del body
+        // (vedi sotto, "reasoning":{"effort":...}), quindi qui sotto saltiamo del tutto la logica
+        // esistente quando il modello attivo è un gpt-oss.
+        if (!isGptOss)
         {
-            // Sintassi Qwen — su Gemma è testo inerte (il thinking lì è già OFF di default),
-            // ma non fa danni se in futuro si torna a un modello Qwen.
-            systemPrompt = "/no_think\n" + systemPrompt;
-        }
-        else if (!string.IsNullOrEmpty(thinkingDirective))
-        {
-            // Gemma 4 ha il thinking OFF di default: senza il token <|think|> qui dentro non
-            // ragiona affatto, a prescindere dal budget di maxTokensThinking assegnato alla
-            // chiamata. thinkingDirective porta sia l'attivazione sia l'istruzione di "quanto"
-            // ragionare (vedi tooltip in Inspector).
-            systemPrompt = thinkingDirective + "\n" + systemPrompt;
+            if (disableThinking)
+            {
+                // Sintassi Qwen — su Gemma è testo inerte (il thinking lì è già OFF di default),
+                // ma non fa danni se in futuro si torna a un modello Qwen.
+                systemPrompt = "/no_think\n" + systemPrompt;
+            }
+            else if (!string.IsNullOrEmpty(thinkingDirective))
+            {
+                // Gemma 4 ha il thinking OFF di default: senza il token <|think|> qui dentro non
+                // ragiona affatto, a prescindere dal budget di maxTokensThinking assegnato alla
+                // chiamata. thinkingDirective porta sia l'attivazione sia l'istruzione di "quanto"
+                // ragionare (vedi tooltip in Inspector).
+                systemPrompt = thinkingDirective + "\n" + systemPrompt;
+            }
         }
 
         string escapedSystem = EscapeStringForJson(systemPrompt);
         string escapedUser = EscapeStringForJson(userText);
         int tokenBudget = maxTokensOverride ?? maxTokens;
+
+        // Campo dedicato supportato da LM Studio SOLO per la famiglia gpt-oss (vedi
+        // gptOssReasoningEffort in Inspector) — per ogni altro modello resta stringa vuota, il
+        // payload non cambia rispetto a prima di questo campo.
+        string reasoningField = isGptOss
+            ? ",\"reasoning\":{\"effort\":\"" + EffortToLmStudioValue(gptOssReasoningEffort) + "\"}"
+            : "";
 
         string chatPayload = "{" +
             "\"model\": \"" + modelId + "\"," +
@@ -284,6 +318,7 @@ public class LLMWorldDirector : MonoBehaviour
             "\"temperature\": 0.3," +
             "\"max_tokens\": " + tokenBudget + "," +
             "\"stream\": false" +
+            reasoningField +
         "}";
 
         using (UnityWebRequest request = new UnityWebRequest(EffectiveLmStudioEndpoint, "POST"))

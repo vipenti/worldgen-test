@@ -31,6 +31,8 @@ public class GenerateTexture : MonoBehaviour
     // fanno parte dello schema richiesta attuale e sono stati rimossi.
     [Header("Qualità")]
     public int steps = 4;
+    [Tooltip("Seed fisso per /create_image — stessa immagine a parità di prompt invece di una nuova ad ogni generazione.")]
+    public int seed = 46;
 
     public static event Action<Texture2D, string> OnTextureGenerated;
     public static event Action<Texture2D>         OnNormalGenerated;
@@ -60,7 +62,7 @@ public class GenerateTexture : MonoBehaviour
         // Step 1: genera immagine — "quality":"high" è un requisito fisso del server (vedi
         // GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md), non un'opzione: va sempre mandato così.
         Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
-        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"quality\":\"high\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"steps\":{steps}}}";
+        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"quality\":\"high\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"steps\":{steps},\"seed\":{seed}}}";
         UnityWebRequest req1 = MakePost($"{EffectiveServerUrl}/create_image", body1);
         yield return req1.SendWebRequest();
 

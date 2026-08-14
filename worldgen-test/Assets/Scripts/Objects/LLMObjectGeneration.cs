@@ -19,6 +19,8 @@ public class LLMObjectGeneration : MonoBehaviour
 
     [Header("Generation")]
     public string serverAddress = "http://25.18.55.60:5000";
+    [Tooltip("Seed fisso per /create_image (immagini oggetto) — letto anche da GenerateAsset.ImageProducer, che riusa questo campo invece di duplicarlo.")]
+    public int imageSeed = 46;
 
     [Header("Output")]
     [Tooltip("Cartella dove salvare le immagini generate. Lascia vuoto (o \"Assets/...\") per usare " +
@@ -91,7 +93,7 @@ public class LLMObjectGeneration : MonoBehaviour
         // niente più campo "transparent" (non fa parte dello schema richiesta attuale).
         string effectiveServer = EffectiveServerAddress;
         Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {effectiveServer}/create_image | oggetto: {object_name} | prompt finale: {finalPrompt}");
-        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\"}}";
+        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"seed\": {imageSeed}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
         using var req = new UnityWebRequest(effectiveServer + "/create_image", "POST");
         req.uploadHandler   = new UploadHandlerRaw(bodyRaw);
