@@ -120,6 +120,10 @@ STRICT ARCHITECTURAL & MODULARITY RULES:
 7. NO MULTIPLE OBJECTS OR AGGREGATIONS: Do NOT include any objects that cannot be placed on the ground. Only include individual, standalone items.
 8. NO TERRAIN ELEMENTS: Dunes, piles, cliffs are not allowed. Only include individual, standalone items that can be placed on the ground.
 9. NO WATER BODIES: Never list a pool, pond, water pond, puddle, lake, or any other body of standing water as an asset. Water placement is a structural terrain feature handled separately by the terrain generator (liquid layer, water level), not a standalone 3D model — FORBIDDEN examples: 'water pond', 'small pool', 'pond', 'puddle', 'lake'.
+10. NO BRIDGES OR CROSSINGS: Never list a bridge as an asset, in any form. Bridges, ramps, and crossings are structural terrain/path features handled separately by the layout generator, not standalone 3D models — FORBIDDEN examples: 'bridge', 'stone bridge', 'wooden bridge', 'rope bridge', 'footbridge', 'plank crossing', 'pier'.
+11. NO GENERIC BLOCKS OR CUBES: Never list a generic block, cube, or bare geometric-shape prop as an asset — these read as placeholder or ground-texture geometry, not real objects. FORBIDDEN examples: 'stone block', 'concrete block', 'wooden block', 'cube', 'brick block', 'ice block'. If you need a similar prop, name the real object instead (e.g. 'wooden crate', 'stone well', 'brick').
+
+REMINDER — NEVER, UNDER ANY CIRCUMSTANCE, INCLUDE THE FOLLOWING IN THE OUTPUT LIST, REGARDLESS OF BIOME OR THEME: giant rocks / boulders (rule 5), water ponds or any water body (rule 9), bridges or crossings (rule 10), generic blocks or cubes (rule 11). These four categories are permanently banned from this game and must never appear in the JSON array under any name or synonym.
 
 OUTPUT FORMAT PROTOCOL:
 You must strictly follow this two-part output format. No conversational text outside these blocks.
@@ -129,7 +133,7 @@ First, write a multi-line <analysis> block where you categorize the required ass
 - Vegetation: individual standalone trees, single bushes, single flowers.
 - Environmental Props: vehicles, benches, fountains, single market stalls, lights, rocks, single animals.
 - Micro Details/Clutter: single small props, single decorations, single debris items, single bottles, single boxes.
-Second, output the raw JSON string array containing exactly 10 to 15 highly cohesive individual assets. Avoid objects that cannot be placed on the ground (like planes, bridges, or roads).
+Second, output the raw JSON string array containing exactly 10 to 15 highly cohesive individual assets, respecting every FORBIDDEN rule above (no planes, bridges, roads, giant rocks/boulders, water bodies, or generic blocks/cubes).
 
 ### FEW-SHOT EXAMPLES
 

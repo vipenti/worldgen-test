@@ -1482,19 +1482,23 @@ public class WorldManager : MonoBehaviour
                 _objectPriorities[name] = entry.Value["priority"]?.Value<int>() ?? 3;
                 _objectSizes[name] = sizeStr;
 
-                string prefabPath = $"Assets/GeneratedAsset/{name}.prefab";
-                string prefabDiskPath = Path.Combine(Application.dataPath, "GeneratedAsset", name + ".prefab");
-#if UNITY_EDITOR
-                if (File.Exists(prefabDiskPath))
-                {
-                    var prefab = AssetDatabase.LoadAssetAtPath<GameObject>(prefabPath);
-                    if (prefab != null) _readyPrefabs[name] = prefab;
-                    else _pendingObjectNames.Add(name);
-                }
-                else _pendingObjectNames.Add(name);
-#else
+                // Volutamente identico in Editor e in build (niente più #if UNITY_EDITOR qui):
+                // prima leggevamo subito un eventuale Assets/GeneratedAsset/{name}.prefab già
+                // presente su disco e lo mettevamo in _readyPrefabs come "pronto", saltando del
+                // tutto EnsureMeshCached/RuntimeMeshCache. Quel .prefab però è uno snapshot cotto
+                // in una sessione Editor passata, con qualunque logica di normalizzazione/scala/
+                // pedana-cut fosse in vigore ALLORA — non viene mai invalidato quando la logica di
+                // BuildOptimizedMesh cambia. Risultato: a seconda che un dato oggetto avesse o
+                // meno un .prefab residuo sul disco, in Editor comparivano oggetti con dimensioni
+                // sbagliate/affondati nel terreno in modo apparentemente casuale, mentre il build
+                // (che non ha mai avuto questo ramo: vedi InstantiateAssetPrimitive) era sempre
+                // coerente perché ricostruisce sempre la mesh da zero dal .voxjson grezzo con il
+                // codice attuale. Marcando tutto come pending, ogni oggetto passa sempre da
+                // EnsureMeshCached/GetBestAvailableMesh anche in Editor — se il .voxjson esiste
+                // già su disco la mesh viene ricalcolata sincrona nello stesso frame (nessuna
+                // regressione di velocità), altrimenti passa dal placeholder in attesa, esattamente
+                // come in build.
                 _pendingObjectNames.Add(name);
-#endif
             }
         }
         catch (System.Exception e) { Debug.LogError($"Parsing current_objects failed: {e.Message}"); }

@@ -1,8 +1,5 @@
 {
-  "deep_green_turf": { "id": 0, "footstepType": "grass" },
-  "rich_brown_earth": { "id": 1, "footstepType": "soft" },
-  "basalt_cliff": { "id": 2, "footstepType": "hard" },
-  "muddy_river_water": { "id": 3, "footstepType": "fluid" },
-  "golden_sand": { "id": 4, "footstepType": "soft" },
-  "coarse_sand": { "id": 5, "footstepType": "soft" }
+  "mossy_jungle_grass": { "id": 0, "footstepType": "grass" },
+  "rich_dark_soil": { "id": 1, "footstepType": "soft" },
+  "jungle_stone": { "id": 2, "footstepType": "hard" }
 }
