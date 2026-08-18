@@ -34,6 +34,12 @@ public class GenerateAsset : MonoBehaviour
     // mentre il giocatore ci camminava dentro. Ora c'è un'unica lista e questo evento scatta solo
     // quando è TUTTA generata, quindi il bioma appare completo fin dal primo istante.
     public static event Action         OnBiomeAssetsReady;
+    // Usato dal benchmark (vedi Assets/Scripts/Benchmark/BenchmarkRunner.cs) per contare quanti
+    // asset del bioma corrente sono stati riusati da cache/disco vs generati ex-novo via IA —
+    // sparato una volta per nome, subito dopo la Passata 1 di GenerateList (cache-check locale,
+    // nessuna chiamata di rete), quindi riflette la classificazione "serve generazione sì/no"
+    // indipendentemente da quando la generazione vera e propria (se serve) finisce davvero.
+    public static event Action<string, bool> OnAssetClassified; // (name, fromCache)
 
     public void GenerateNew(List<string> names)
     {
@@ -66,6 +72,7 @@ public class GenerateAsset : MonoBehaviour
         {
             bool satisfied = false;
             yield return StartCoroutine(TryLoadFromCache(name, ok => satisfied = ok));
+            OnAssetClassified?.Invoke(name, satisfied);
             if (satisfied) OnAssetProgress?.Invoke(++done, total);
             else needsGeneration.Add(name);
         }

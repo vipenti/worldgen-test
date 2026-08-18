@@ -1,0 +1,16 @@
+{
+  "glass skyscraper": { "id": 11, "size": "huge", "frequency": "common", "type": "structure", "priority": 1 },
+  "concrete tower": { "id": 12, "size": "huge", "frequency": "common", "type": "structure", "priority": 1 },
+  "observation dome": { "id": 13, "size": "normal", "frequency": "super_rare", "type": "prop", "priority": 2 },
+  "residential high-rise": { "id": 14, "size": "big", "frequency": "common", "type": "structure", "priority": 1 },
+  "commercial plaza": { "id": 15, "size": "big", "frequency": "rare", "type": "structure", "priority": 1 },
+  "parking garage": { "id": 16, "size": "big", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "traffic light pole": { "id": 17, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "metal trash bin": { "id": 18, "size": "small", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "parked sedan": { "id": 19, "size": "normal", "frequency": "common", "type": "prop", "priority": 2 },
+  "street lamp": { "id": 20, "size": "normal", "frequency": "very_common", "type": "prop", "priority": 2 },
+  "delivery truck": { "id": 21, "size": "normal", "frequency": "rare", "type": "prop", "priority": 2 },
+  "discarded soda can": { "id": 22, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "plastic bottle": { "id": 23, "size": "tiny", "frequency": "very_common", "type": "clutter", "priority": 4 },
+  "cardboard box": { "id": 24, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 }
+}
