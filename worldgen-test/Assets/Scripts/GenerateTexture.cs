@@ -15,15 +15,24 @@ public class GenerateTexture : MonoBehaviour
     [Header("Server")]
     public string serverUrl = "http://25.18.55.60:5000";
 
+    // Se GameSettings è presente (pannello Opzioni), il suo indirizzo server sovrascrive sempre
+    // il campo Inspector qui sopra — stesso server delle immagini oggetto (LLMObjectGeneration).
+    string EffectiveServerUrl =>
+        GameSettings.Instance != null ? GameSettings.Instance.ImageServerBase : serverUrl;
+
     [Header("Parametri")]
     public string materialName = "wood";
     [TextArea] public string negativePrompt = "";
-    public bool tileable = false;
     public float normalStrength = 5.0f;
 
-    [Header("Qualità (SD Turbo: steps 1-4, guidanceScale 0)")]
+    // Backend attuale è FLUX.1-schnell dietro /create_image (non più SD Turbo): niente
+    // guidance_scale, la qualità si controlla col campo fisso "quality":"high" richiesto dal
+    // server (vedi GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md) — "tileable"/"guidance_scale" non
+    // fanno parte dello schema richiesta attuale e sono stati rimossi.
+    [Header("Qualità")]
     public int steps = 4;
-    public float guidanceScale = 0.0f;
+    [Tooltip("Seed fisso per /create_image — stessa immagine a parità di prompt invece di una nuova ad ogni generazione.")]
+    public int seed = 46;
 
     public static event Action<Texture2D, string> OnTextureGenerated;
     public static event Action<Texture2D>         OnNormalGenerated;
@@ -50,16 +59,18 @@ public class GenerateTexture : MonoBehaviour
         string palettePrompt = string.IsNullOrEmpty(paletteColorDescription) ? "" : $" The colors is {paletteColorDescription}.";
         //string prompt = $"Seamless flat tileable texture of a {materialName} to be applied on cube faces of a cozy game. Simple, clean characteristic of the material. Top-down orthographic 90-degree view.{palettePrompt}";
         string prompt = $"Top-down aerial view of a texture tile of pure {materialName} material. very low details, cartoonish style, {palettePrompt}. Flat colors, soft shading, minimal highlights. Absolutely NO other elements or materials. Only the isolated surface pattern of {materialName}, filling the entire frame completely.";
-        // Step 1: genera immagine
-        Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /create_image...");
-        string gsStr = guidanceScale.ToString("F1", CultureInfo.InvariantCulture);
-        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"tileable\":{tileable.ToString().ToLower()},\"steps\":{steps},\"guidance_scale\":{gsStr}}}";
-        UnityWebRequest req1 = MakePost($"{serverUrl}/create_image", body1);
+        // Step 1: genera immagine — "quality":"high" è un requisito fisso del server (vedi
+        // GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md), non un'opzione: va sempre mandato così.
+        Debug.Log("<color=cyan>GenerateTexture:</color> Calling /create_image...");
+        string body1 = $"{{\"prompt\":\"{EscapeJson(prompt)}\",\"quality\":\"high\",\"negative_prompt\":\"{EscapeJson(negativePrompt)}\",\"steps\":{steps},\"seed\":{seed}}}";
+        UnityWebRequest req1 = MakePost($"{EffectiveServerUrl}/create_image", body1);
+        float call1Start = Time.realtimeSinceStartup;
         yield return req1.SendWebRequest();
+        LlmCallMetrics.Report("texture_create_image", Time.realtimeSinceStartup - call1Start, req1.result == UnityWebRequest.Result.Success);
 
         if (req1.result != UnityWebRequest.Result.Success)
         {
-            Debug.LogError($"[GenerateTexture] /create_image fallita: {req1.error}");
+            Debug.LogError($"[GenerateTexture] /create_image failed: {req1.error}");
             req1.Dispose();
             OnGenerationComplete?.Invoke(safeName);
             yield break;
@@ -70,7 +81,7 @@ public class GenerateTexture : MonoBehaviour
 
         if (imageBytes == null || imageBytes.Length == 0)
         {
-            Debug.LogError("[GenerateTexture] risposta vuota da /create_image");
+            Debug.LogError("[GenerateTexture] empty response from /create_image");
             OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
@@ -78,22 +89,24 @@ public class GenerateTexture : MonoBehaviour
         string imageBase64 = Convert.ToBase64String(imageBytes);
         string albedoPath = Path.Combine(outputDir, $"{safeName}.png");
         File.WriteAllBytes(albedoPath, imageBytes);
-        Debug.Log($"<color=cyan>GenerateTexture:</color> Albedo salvata → {albedoPath}");
+        Debug.Log($"<color=cyan>GenerateTexture:</color> Albedo saved → {albedoPath}");
 
         Texture2D generated = new Texture2D(2, 2);
         generated.LoadImage(imageBytes);
         OnTextureGenerated?.Invoke(generated, safeName);
 
         // Step 2: estrai normal map
-        Debug.Log("<color=cyan>GenerateTexture:</color> Chiamata /extract_normal_map...");
+        Debug.Log("<color=cyan>GenerateTexture:</color> Calling /extract_normal_map...");
         string strengthStr = normalStrength.ToString("F1", CultureInfo.InvariantCulture);
         string body2 = $"{{\"image_base64\":\"{imageBase64}\",\"strength\":{strengthStr}}}";
-        UnityWebRequest req2 = MakePost($"{serverUrl}/extract_normal_map", body2);
+        UnityWebRequest req2 = MakePost($"{EffectiveServerUrl}/extract_normal_map", body2);
+        float call2Start = Time.realtimeSinceStartup;
         yield return req2.SendWebRequest();
+        LlmCallMetrics.Report("texture_normal_map", Time.realtimeSinceStartup - call2Start, req2.result == UnityWebRequest.Result.Success);
 
         if (req2.result != UnityWebRequest.Result.Success)
         {
-            Debug.LogError($"[GenerateTexture] /extract_normal_map fallita: {req2.error}");
+            Debug.LogError($"[GenerateTexture] /extract_normal_map failed: {req2.error}");
             req2.Dispose();
             OnGenerationComplete?.Invoke(safeName);
             yield break;
@@ -104,14 +117,14 @@ public class GenerateTexture : MonoBehaviour
 
         if (normalBytes == null || normalBytes.Length == 0)
         {
-            Debug.LogError("[GenerateTexture] risposta vuota da /extract_normal_map");
+            Debug.LogError("[GenerateTexture] empty response from /extract_normal_map");
             OnGenerationComplete?.Invoke(safeName);
             yield break;
         }
 
         string normalPath = Path.Combine(outputDir, $"{safeName}_normal.png");
         File.WriteAllBytes(normalPath, normalBytes);
-        Debug.Log($"<color=cyan>GenerateTexture:</color> Normal map salvata → {normalPath}");
+        Debug.Log($"<color=cyan>GenerateTexture:</color> Normal map saved → {normalPath}");
 
         Texture2D generatedNormal = new Texture2D(2, 2);
         generatedNormal.LoadImage(normalBytes);

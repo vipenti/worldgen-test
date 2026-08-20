@@ -110,7 +110,7 @@ public class MapVisualizer : MonoBehaviour
 #if UNITY_EDITOR
         AssetDatabase.Refresh();
 #endif
-        Debug.Log($"<color=lime>[MapVisualizer]</color> 5 mappe salvate in {outputFolder}  (maxH={maxH:F1})");
+        Debug.Log($"<color=lime>[MapVisualizer]</color> 5 maps saved to {outputFolder}  (maxH={maxH:F1})");
     }
 
     // ── helpers ──────────────────────────────────────────────────────────────

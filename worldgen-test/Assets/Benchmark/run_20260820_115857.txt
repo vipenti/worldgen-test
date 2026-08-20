@@ -1,0 +1,118 @@
+=== Benchmark WorldGen — run report ===
+Date/time: 2026-08-20 11:58:57
+Prompt selection seed: 0
+Prompts run: 10/10
+
+[1] "quiet fishing harbor town" (structured) — OK
+    Generation time: 125,3s
+    New assets: 13  |  Cached assets: 0  |  Reuse: 0,0%
+    Avg FPS: 48,8  |  Min FPS: 0,2  |  1% low: 0,2  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 8,55s  |  min 3,32s  |  max 13,58s
+      texture_create_image: 7 calls  |  avg 8,56s  |  min 6,01s  |  max 12,24s
+      texture_normal_map: 7 calls  |  avg 2,87s  |  min 1,73s  |  max 4,20s
+      asset_create_image: 13 calls  |  avg 6,76s  |  min 4,65s  |  max 10,46s
+      asset_3d_gen: 13 calls  |  avg 7,07s  |  min 5,44s  |  max 9,71s
+
+[2] "japanese-style temple village" (structured) — OK
+    Generation time: 67,0s
+    New assets: 5  |  Cached assets: 9  |  Reuse: 64,3%
+    Avg FPS: 37,2  |  Min FPS: 0,1  |  1% low: 0,1  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 6,96s  |  min 2,52s  |  max 13,23s
+      texture_create_image: 3 calls  |  avg 7,65s  |  min 5,18s  |  max 10,48s
+      texture_normal_map: 3 calls  |  avg 1,15s  |  min 1,10s  |  max 1,20s
+      asset_create_image: 5 calls  |  avg 6,25s  |  min 4,64s  |  max 12,16s
+      asset_3d_gen: 5 calls  |  avg 6,02s  |  min 4,80s  |  max 7,19s
+
+[3] "walled fortress town" (structured) — OK
+    Generation time: 70,8s
+    New assets: 3  |  Cached assets: 7  |  Reuse: 70,0%
+    Avg FPS: 20,9  |  Min FPS: 0,4  |  1% low: 0,4  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 6,85s  |  min 2,36s  |  max 15,24s
+      texture_create_image: 3 calls  |  avg 8,05s  |  min 4,70s  |  max 14,54s
+      texture_normal_map: 3 calls  |  avg 2,04s  |  min 1,62s  |  max 2,43s
+      asset_create_image: 3 calls  |  avg 9,88s  |  min 4,92s  |  max 17,22s
+      asset_3d_gen: 3 calls  |  avg 9,23s  |  min 8,62s  |  max 9,62s
+
+[4] "cherry blossom valley" (natural) — OK
+    Generation time: 57,1s
+    New assets: 4  |  Cached assets: 6  |  Reuse: 60,0%
+    Avg FPS: 23,9  |  Min FPS: 0,2  |  1% low: 0,4  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 6,82s  |  min 2,17s  |  max 15,33s
+      texture_create_image: 2 calls  |  avg 9,61s  |  min 4,83s  |  max 14,40s
+      texture_normal_map: 2 calls  |  avg 1,60s  |  min 1,16s  |  max 2,04s
+      asset_create_image: 4 calls  |  avg 5,60s  |  min 4,59s  |  max 8,32s
+      asset_3d_gen: 4 calls  |  avg 5,40s  |  min 4,75s  |  max 6,00s
+
+[5] "arctic ice shelf" (natural) — OK
+    Generation time: 93,2s
+    New assets: 2  |  Cached assets: 8  |  Reuse: 80,0%
+    Avg FPS: 28,8  |  Min FPS: 0,1  |  1% low: 0,1  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 10,93s  |  min 2,64s  |  max 25,74s
+      texture_create_image: 6 calls  |  avg 6,26s  |  min 4,84s  |  max 9,34s
+      texture_normal_map: 6 calls  |  avg 2,50s  |  min 0,77s  |  max 5,50s
+      asset_create_image: 2 calls  |  avg 8,74s  |  min 5,29s  |  max 12,20s
+      asset_3d_gen: 2 calls  |  avg 9,59s  |  min 6,37s  |  max 12,81s
+
+[6] "small farming hamlet" (structured) — OK
+    Generation time: 62,7s
+    New assets: 5  |  Cached assets: 5  |  Reuse: 50,0%
+    Avg FPS: 20,8  |  Min FPS: 0,1  |  1% low: 0,1  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 5,36s  |  min 2,36s  |  max 9,43s
+      asset_create_image: 5 calls  |  avg 5,18s  |  min 4,75s  |  max 6,78s
+      asset_3d_gen: 5 calls  |  avg 9,26s  |  min 6,59s  |  max 14,84s
+
+[7] "rolling autumn hills" (natural) — OK
+    Generation time: 61,2s
+    New assets: 5  |  Cached assets: 7  |  Reuse: 58,3%
+    Avg FPS: 20,1  |  Min FPS: 0,3  |  1% low: 0,4  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 4,87s  |  min 2,25s  |  max 7,05s
+      asset_create_image: 5 calls  |  avg 5,73s  |  min 4,66s  |  max 9,57s
+      asset_3d_gen: 5 calls  |  avg 8,92s  |  min 6,31s  |  max 12,39s
+
+[8] "snowy mountain trading post" (structured) — OK
+    Generation time: 71,1s
+    New assets: 3  |  Cached assets: 8  |  Reuse: 72,7%
+    Avg FPS: 46,6  |  Min FPS: 0,1  |  1% low: 0,1  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 10,01s  |  min 2,40s  |  max 27,21s
+      asset_create_image: 3 calls  |  avg 4,77s  |  min 4,73s  |  max 4,82s
+      asset_3d_gen: 3 calls  |  avg 7,42s  |  min 5,40s  |  max 10,86s
+
+[9] "bioluminescent underground cave" (natural) — OK
+    Generation time: 107,3s
+    New assets: 5  |  Cached assets: 9  |  Reuse: 64,3%
+    Avg FPS: 43,5  |  Min FPS: 0,2  |  1% low: 0,3  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 15,49s  |  min 2,62s  |  max 43,50s
+      asset_create_image: 5 calls  |  avg 5,39s  |  min 4,69s  |  max 7,51s
+      asset_3d_gen: 5 calls  |  avg 10,48s  |  min 5,66s  |  max 19,49s
+
+[10] "dense tropical rainforest" (natural) — OK
+    Generation time: 90,6s
+    New assets: 5  |  Cached assets: 10  |  Reuse: 66,7%
+    Avg FPS: 0,6  |  Min FPS: 0,1  |  1% low: 0,1  |  Avg RAM: 0,0%  |  Peak RAM: 0,0%
+    LLM call latency:
+      chat_completion: 4 calls  |  avg 8,22s  |  min 2,17s  |  max 17,92s
+      asset_create_image: 5 calls  |  avg 5,10s  |  min 4,64s  |  max 5,95s
+      asset_3d_gen: 5 calls  |  avg 10,68s  |  min 5,94s  |  max 25,28s
+
+--- Summary ---
+Successful prompts: 10/10
+Average generation time: 80,6s
+Total new assets: 50  |  Total cached assets: 69
+Average per-biome reuse: 58,6%  |  Cumulative reuse: 58,0%
+Overall average FPS: 29,1  |  Overall average RAM: 0,0%
+
+--- LLM call latency (aggregated across the whole run) ---
+chat_completion: 40 total calls  |  avg 8,41s  |  min 2,17s  |  max 43,50s
+texture_create_image: 21 total calls  |  avg 7,80s  |  min 4,70s  |  max 14,54s
+texture_normal_map: 21 total calls  |  avg 2,28s  |  min 0,77s  |  max 5,50s
+asset_create_image: 50 total calls  |  avg 6,20s  |  min 4,59s  |  max 17,22s
+asset_3d_gen: 50 total calls  |  avg 8,19s  |  min 4,75s  |  max 25,28s

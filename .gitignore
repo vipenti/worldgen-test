@@ -76,3 +76,6 @@ crashlytics-build.properties
 
 /[Aa]ssets/GeneratedAsset/*
 /[Aa]ssets/GeneratedImages/*
+/worldgen-test/Assets/Json/objects
+/worldgen-test/Assets/Resources/Baseline
+/worldgen-test/Assets/StreamingAssets/Whisper

@@ -55,6 +55,15 @@ public class FirstGeneration : MonoBehaviour
         StartCoroutine(RunGeneration(prompt));
     }
 
+    // Punto di ingresso per l'input vocale (VoiceBiomeInput.OnConfirmedText): stesso percorso
+    // di OnGenerateClicked, ma con il testo già trascritto e confermato dall'utente invece di
+    // leggerlo dal campo di testo.
+    public void GenerateFromText(string prompt)
+    {
+        if (_isGenerating || string.IsNullOrWhiteSpace(prompt)) return;
+        StartCoroutine(RunGeneration(prompt.Trim()));
+    }
+
     IEnumerator RunGeneration(string prompt)
     {
         _isGenerating = true;

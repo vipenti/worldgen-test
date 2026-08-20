@@ -54,6 +54,12 @@ public class BiomeConfig
     public float baseTerrainHeight = 15f;  // Y floor before noise layers [5-25]
     public float scaleLayout       = 30f;  // spawn-zone size [10-60]
     public float slopeMaxLimit     = 1.2f; // max slope for object placement [0.5-3]
+    // 6. Layout archetype
+    // True for human-made settlements (city, town, village, urban district) that need a
+    // structured, grid/street-based layout instead of the organic noise-scatter placement
+    // used for natural biomes. Placement logic doesn't branch on this yet — it's the first
+    // step toward a dedicated urban layout system.
+    public bool isStructuredBiome = false;
     public string palette_color_description;
 }
 
@@ -75,6 +81,14 @@ public class Chunk : MonoBehaviour
     public float[,] LayoutMap { get; private set; }
     public int[,]   HeightMap { get; private set; }
 
+    // Fascia [min,max] di Y realmente riempita per ogni colonna (x,z), calcolata già in
+    // GenerateMapDataInterpolated (Pass 2) — GenerateMesh la riusa per scandire solo quella fascia
+    // invece dell'intera colonna 0..chunkHeight, che con chunkHeight fino a 150 (vedi
+    // Prompts.ParametricSystem) significava iterare aria vuota per la stragrande maggioranza dei
+    // livelli Y di ogni colonna.
+    private int[,] _columnMinY;
+    private int[,] _columnMaxY;
+
     // Saved properties for dynamic interpolation updating
     private Vector2Int chunkPos;
     private BiomeConfig oldConfig;
@@ -82,25 +96,54 @@ public class Chunk : MonoBehaviour
     private float pathHalfWidth;
     private float pathBlendWidth;
     private int pathLevel;
+    // Urban street grid (isStructuredBiome), mirrored from WorldManager so terrain flattening
+    // and texturing agree with where WorldManager.SpawnStructuredLayoutObjects puts the lots.
+    private UrbanGrid.Params urbanGrid;
 
     private bool isTransitioning = false;
-    private Vector2 transitionStartPos2D;
-    private Vector2 transitionDir2D;
-    private float totalDist;
+    // Blend radiale: centro (mondo, XZ) della transizione + raggio interno (già coperto dalla vista,
+    // nessun blend) + larghezza della fascia oltre cui il blend arriva a 1. Sostituisce il vecchio
+    // modello direzionale (start pos + direzione + lunghezza corridoio), che dipendeva dal player
+    // che continuasse a camminare dritto nella direzione catturata al momento del trigger.
+    private Vector2 transitionCenter2D;
+    private float innerRadius;
+    private float blendWidth;
     private bool hasGeneratedOnce = false;
     private bool hasColliderBuilt = false;
 
+    // Coordinata chunk, esposta per il logging diagnostico in WorldManager (piazzamento/
+    // reperimento decorazioni).
+    public Vector2Int ChunkCoord => chunkPos;
+
+    // Numero di decorazioni ancora in attesa che la loro generazione IA finisca (billboard
+    // placeholder invisibili piazzati da WorldManager.InstantiateAssetPrimitive). Finché > 0,
+    // WorldManager.RemoveFarChunks evita di distruggere questo chunk: il placeholder in attesa
+    // è figlio del chunk, quindi morirebbe con lui prima che l'asset sia pronto, perdendo per
+    // sempre quella decorazione anche se la generazione poi va a buon fine (vedi
+    // ReplacePlaceholders — non c'è più nessun placeholder a cui agganciare la mesh risolta).
+    public int PendingDecorCount { get; private set; }
+    public void NotePendingDecorAdded() => PendingDecorCount++;
+    public void NotePendingDecorResolved() => PendingDecorCount = Mathf.Max(0, PendingDecorCount - 1);
+
     // Adesso Initialize accetta direttamente l'oggetto BiomeConfig passato dal WorldManager
-    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary, 
-                           bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist,
-                           float pathHalfWidth, float pathBlendWidth, int pathLevel, bool updateCollider)
+    public void Initialize(Vector2Int pos, BiomeConfig oldBinary, BiomeConfig targetBinary,
+                           bool isTransitioning, Vector2 transitionCenter2D, float innerRadius, float blendWidth,
+                           float pathHalfWidth, float pathBlendWidth, int pathLevel,
+                           UrbanGrid.Params urbanGrid, bool updateCollider)
     {
         chunkWidth  = targetBinary.chunkWidth;
         chunkHeight = Mathf.Max(oldBinary.chunkHeight, targetBinary.chunkHeight);
 
-        map       = new byte[chunkWidth, 256, chunkWidth];
+        // Dimensionato sulla vera chunkHeight del bioma (prima era fisso a 256 indipendentemente dal
+        // valore configurato, es. 55-64 nei biomi tipici) — meno memoria e un Array.Clear più corto
+        // ad ogni rigenerazione (vedi GenerateMapDataInterpolated). Un'istanza di Chunk non viene mai
+        // riutilizzata per un'altra coordinata con chunkHeight diverso (WorldManager ne crea sempre
+        // una nuova via Instantiate), quindi non serve gestire un ridimensionamento successivo.
+        map       = new byte[chunkWidth, chunkHeight, chunkWidth];
         HeightMap = new int[chunkWidth, chunkWidth];
         LayoutMap = new float[chunkWidth, chunkWidth];
+        _columnMinY = new int[chunkWidth, chunkWidth];
+        _columnMaxY = new int[chunkWidth, chunkWidth];
         
         if (mesh == null)
         {
@@ -115,11 +158,12 @@ public class Chunk : MonoBehaviour
         this.pathHalfWidth = pathHalfWidth;
         this.pathBlendWidth = pathBlendWidth;
         this.pathLevel = pathLevel;
+        this.urbanGrid = urbanGrid;
 
         this.isTransitioning = isTransitioning;
-        this.transitionStartPos2D = transitionStartPos2D;
-        this.transitionDir2D = transitionDir2D;
-        this.totalDist = totalDist;
+        this.transitionCenter2D = transitionCenter2D;
+        this.innerRadius = innerRadius;
+        this.blendWidth = blendWidth;
         hasGeneratedOnce = true;
 
         GenerateMapDataInterpolated(pos, oldBinary, targetBinary, pathHalfWidth, pathBlendWidth, pathLevel);
@@ -127,22 +171,22 @@ public class Chunk : MonoBehaviour
         GenerateMesh(updateCollider);
     }
 
-    public void UpdateInterpolation(bool isTransitioning, Vector2 transitionStartPos2D, Vector2 transitionDir2D, float totalDist, bool updateCollider)
+    public void UpdateInterpolation(bool isTransitioning, Vector2 transitionCenter2D, float innerRadius, float blendWidth, bool updateCollider)
     {
-        if (hasGeneratedOnce && 
-            this.isTransitioning == isTransitioning && 
-            this.transitionStartPos2D == transitionStartPos2D && 
-            this.transitionDir2D == transitionDir2D && 
-            Mathf.Abs(this.totalDist - totalDist) < 0.01f)
+        if (hasGeneratedOnce &&
+            this.isTransitioning == isTransitioning &&
+            this.transitionCenter2D == transitionCenter2D &&
+            Mathf.Abs(this.innerRadius - innerRadius) < 0.01f &&
+            Mathf.Abs(this.blendWidth - blendWidth) < 0.01f)
         {
             EnsureColliderState(updateCollider);
             return;
         }
 
         this.isTransitioning = isTransitioning;
-        this.transitionStartPos2D = transitionStartPos2D;
-        this.transitionDir2D = transitionDir2D;
-        this.totalDist = totalDist;
+        this.transitionCenter2D = transitionCenter2D;
+        this.innerRadius = innerRadius;
+        this.blendWidth = blendWidth;
         hasGeneratedOnce = true;
 
         GenerateMapDataInterpolated(chunkPos, oldConfig, targetConfig, pathHalfWidth, pathBlendWidth, pathLevel);
@@ -338,30 +382,43 @@ public class Chunk : MonoBehaviour
                 float voxelT = 1f;
                 if (isTransitioning)
                 {
-                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
-                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
+                    // Blend radiale: quanto questo voxel è "dentro" il nuovo bioma dipende dalla
+                    // sua distanza dal centro della transizione, non da una direzione catturata al
+                    // momento del trigger.
+                    float dx = worldX - transitionCenter2D.x;
+                    float dz = worldZ - transitionCenter2D.y;
+                    float distFromCenter = Mathf.Sqrt(dx * dx + dz * dz);
+                    voxelT = Mathf.Clamp01((distFromCenter - innerRadius) / blendWidth);
                 }
 
-                float rawOld, rawTarget;
+                // rawTarget serve sempre; rawOld serve SOLO quando isTransitioning è true — fuori
+                // transizione voxelT resta 1f per l'intera colonna (vedi sopra), quindi
+                // Mathf.Lerp(rawOld, rawTarget, 1f) restituisce esattamente rawTarget a prescindere
+                // da rawOld. Calcolare comunque rawOld (2°-3° chiamata a ComputeHeightNew/SampleNoise
+                // per colonna, ciascuna con più campionamenti Perlin) era quindi lavoro sprecato per
+                // la stragrande maggioranza dei chunk, che non sono mai in transizione.
+                float rawTarget;
                 if (target.scaleMacro > 0f)
                 {
                     rawTarget = ComputeHeightNew(worldX, worldZ, target);
-                    rawOld    = old.scaleMacro > 0f
-                        ? ComputeHeightNew(worldX, worldZ, old)
-                        : SampleNoise(worldX, worldZ, old) * old.chunkHeight;
                 }
                 else
                 {
-                    float noiseOld    = SampleNoise(worldX, worldZ, old);
-                    float noiseTarget = SampleNoise(worldX, worldZ, target);
-                    rawOld    = noiseOld    * old.chunkHeight;
-                    rawTarget = noiseTarget * target.chunkHeight;
+                    rawTarget = SampleNoise(worldX, worldZ, target) * target.chunkHeight;
                     if (target.ridgeLayerAmplitude > 0f)
                         rawTarget += SampleRidgedNoise(worldX, worldZ, target.ridgeLayerScale, target.octaves)
                                      * target.ridgeLayerAmplitude * target.chunkHeight;
                     if (target.billowLayerAmplitude > 0f)
                         rawTarget += SampleBillowNoise(worldX, worldZ, target.billowLayerScale, target.octaves)
                                      * target.billowLayerAmplitude * target.chunkHeight;
+                }
+
+                float rawOld = 0f;
+                if (isTransitioning)
+                {
+                    rawOld = target.scaleMacro > 0f
+                        ? (old.scaleMacro > 0f ? ComputeHeightNew(worldX, worldZ, old) : SampleNoise(worldX, worldZ, old) * old.chunkHeight)
+                        : SampleNoise(worldX, worldZ, old) * old.chunkHeight;
                 }
 
                 int finalHeight = Mathf.FloorToInt(Mathf.Lerp(rawOld, rawTarget, voxelT));
@@ -374,6 +431,17 @@ public class Chunk : MonoBehaviour
                     float pathInfluence = 1f - Mathf.SmoothStep(0f, 1f, blendT);
                     finalHeight = Mathf.RoundToInt(Mathf.Lerp(finalHeight, pathLevel, pathInfluence));
                 }
+
+                // NOTA: qui prima c'era un appiattimento fisico dell'altezza sotto la griglia
+                // stradale urbana (isStructuredBiome) — tirava finalHeight verso un livello piatto
+                // (target.baseTerrainHeight) in una banda attorno a ogni strada. Il blend tra
+                // terreno naturale (rumoroso) e banda piatta creava dislivelli/buche visibili
+                // proprio al bordo strada-lotto, specie su terreno collinare. La griglia (UrbanGrid)
+                // resta usata da WorldManager per piazzare lotti/edifici e qui sotto per la
+                // texturizzazione della strada (vedi "Rivestimento delle strade urbane" in
+                // Pass 2) — è diventata puramente concettuale per l'altezza: le strade seguono il
+                // terreno naturale, si riconoscono solo dalla texture uniforme, non da un piano
+                // scavato nel terreno.
 
                 HeightMap[x, z] = finalHeight;
             }
@@ -390,14 +458,31 @@ public class Chunk : MonoBehaviour
                 float voxelT = 1f;
                 if (isTransitioning)
                 {
-                    float projectedDist = (worldX - transitionStartPos2D.x) * transitionDir2D.x + (worldZ - transitionStartPos2D.y) * transitionDir2D.y;
-                    voxelT = Mathf.Clamp01(projectedDist / totalDist);
+                    // Blend radiale: quanto questo voxel è "dentro" il nuovo bioma dipende dalla
+                    // sua distanza dal centro della transizione, non da una direzione catturata al
+                    // momento del trigger.
+                    float dx = worldX - transitionCenter2D.x;
+                    float dz = worldZ - transitionCenter2D.y;
+                    float distFromCenter = Mathf.Sqrt(dx * dx + dz * dz);
+                    voxelT = Mathf.Clamp01((distFromCenter - innerRadius) / blendWidth);
                 }
 
                 int finalHeight = HeightMap[x, z];
 
-                float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
-                bool useNew  = dither < voxelT;
+                // Fuori transizione voxelT è sempre 1f (vedi sopra), e Mathf.PerlinNoise restituisce
+                // sempre un valore < 1 — quindi "dither < voxelT" sarebbe comunque sempre vero: il
+                // sample Perlin è superfluo e lo saltiamo, evitando ~una chiamata per colonna per la
+                // stragrande maggioranza dei chunk (non in transizione).
+                bool useNew;
+                if (isTransitioning)
+                {
+                    float dither = Mathf.PerlinNoise(worldX * 0.25f + 7777f, worldZ * 0.25f + 7777f);
+                    useNew = dither < voxelT;
+                }
+                else
+                {
+                    useNew = true;
+                }
 
                 byte surface = useNew ? target.surfaceTileID : old.surfaceTileID;
                 byte middle  = useNew ? target.middleTileID  : old.middleTileID;
@@ -448,8 +533,29 @@ public class Chunk : MonoBehaviour
                     }
                 }
 
+                // Rivestimento delle strade urbane (isStructuredBiome): forza il tile "rock"
+                // (pietra/pavimentazione — con fallback a deepTileID, stesso pattern usato sopra
+                // per la variabile "rock"), non "surface". "surface" era la stessa identica tile
+                // già usata di default per TUTTO il terreno non patchato (vedi "byte surfaceTile =
+                // surface;" sopra) — quindi la strada risultava visivamente indistinguibile dal
+                // resto del terreno, si toglievano solo le patch fiori/cespugli senza introdurre
+                // un materiale davvero diverso. "middle" resta scartato: è il materiale di
+                // sotto-superficie del bioma (spesso terra/erba), non pensato per essere visto in
+                // superficie.
+                // Gating su voxelT >= 0.5: stessa soglia usata da WorldManager per decidere se un
+                // chunk è "abbastanza nuovo" da ricevere decorazioni del bioma nuovo — sotto quella
+                // soglia il punto è ancora considerato vecchio bioma, niente pavimentazione.
+                if (target.isStructuredBiome && voxelT >= 0.5f)
+                {
+                    bool onStreet = UrbanGrid.SampleAxis(worldX, urbanGrid).isStreet
+                                 || UrbanGrid.SampleAxis(worldZ, urbanGrid).isStreet;
+                    if (onStreet) surfaceTile = rock;
+                }
+
                 int minHeight = Mathf.Max(0, finalHeight - 3);
                 int maxHeight = Mathf.Max(finalHeight, waterLevel);
+                _columnMinY[x, z] = minHeight;
+                _columnMaxY[x, z] = maxHeight;
                 for (int y = minHeight; y <= maxHeight; y++)
                 {
                     if (y > finalHeight)
@@ -535,11 +641,19 @@ public class Chunk : MonoBehaviour
     {
         vertices.Clear(); triangles.Clear(); uvs.Clear();
 
+        // Scandisce solo la fascia [_columnMinY, _columnMaxY] già nota per ogni colonna (calcolata
+        // in GenerateMapDataInterpolated, Pass 2) invece di 0..chunkHeight per intero — con
+        // chunkHeight fino a 150 e una fascia riempita tipicamente di 4-10 blocchi, questo taglia le
+        // iterazioni della stragrande maggioranza dell'aria vuota sopra/sotto il terreno. L'ordine
+        // x,z,y (invece di x,y,z) non cambia nulla: CreateFace non dipende dall'ordine di visita.
         for (int x = 0; x < chunkWidth; x++)
         {
-            for (int y = 0; y < chunkHeight; y++)
+            for (int z = 0; z < chunkWidth; z++)
             {
-                for (int z = 0; z < chunkWidth; z++)
+                int yMin = Mathf.Max(0, _columnMinY[x, z]);
+                int yMax = Mathf.Min(_columnMaxY[x, z], chunkHeight - 1);
+
+                for (int y = yMin; y <= yMax; y++)
                 {
                     if (map[x, y, z] == 0) continue;
 
@@ -563,6 +677,18 @@ public class Chunk : MonoBehaviour
         if (y < 0 || y >= chunkHeight) return true;
         if (x < 0 || x >= chunkWidth || z < 0 || z >= chunkWidth) return true;
         return map[x, y, z] == 0;
+    }
+
+    // Usato dal sistema di passi (FootstepAudio): restituisce il tile ID del blocco calpestabile
+    // (la superficie, non l'aria sopra) sotto una qualunque posizione mondo che ricada dentro
+    // questo chunk. HeightMap[x,z] è già la colonna dell'altezza di superficie generata in
+    // GenerateMapDataInterpolated, quindi non serve un raycast fisico.
+    public byte GetSurfaceTileIdAtWorld(float worldX, float worldZ)
+    {
+        int lx = Mathf.Clamp(Mathf.FloorToInt(worldX - transform.position.x), 0, chunkWidth - 1);
+        int lz = Mathf.Clamp(Mathf.FloorToInt(worldZ - transform.position.z), 0, chunkWidth - 1);
+        int y  = Mathf.Clamp(HeightMap[lx, lz], 0, chunkHeight - 1);
+        return map[lx, y, lz];
     }
 
     void CreateFace(Vector3 pos, Vector3 direction, byte blockID)

@@ -6,9 +6,13 @@ using Newtonsoft.Json.Linq;
 
 public enum ModelResolution
 {
-    Low,     // Bassa risoluzione (es. max 32 voxel sul lato più lungo)
-    Medium,  // Media risoluzione (es. max 64 voxel sul lato più lungo)
-    High     // Alta risoluzione (es. max 128 voxel sul lato più lungo)
+    Low,       // Bassa risoluzione (es. max 32 voxel sul lato più lungo)
+    Medium,    // Media risoluzione (es. max 64 voxel sul lato più lungo)
+    High,      // Alta risoluzione (es. max 128 voxel sul lato più lungo)
+    SuperHigh  // Tier più dettagliata, solo per oggetti "big"/"huge" (vedi VoxelRenderer) —
+               // un downsampling comunque, non la mesh originale non decimata: quest'ultima
+               // può arrivare a milioni di voxel su edifici molto grandi ed era troppo pesante
+               // da usare come LOD più vicino.
 }
 
 [Serializable]
@@ -36,7 +40,15 @@ public class GenerateResolutions : MonoBehaviour
     // Risoluzioni di griglia configurabili
     public static int LowGridSize = 8;
     public static int MediumGridSize = 16;
-    public static int HighGridSize = 32;
+    // Alzato da 32 a 40 (+25% lineare, circa 2x i voxel nel caso di forma piena) — a 32 la tier
+    // "_high" restava troppo grezza su oggetti dettagliati come animali/creature, specie ora che
+    // "small" (che include "single animals", vedi ClassificationSystem) arriva a questa tier
+    // invece di essere limitato a Medium.
+    public static int HighGridSize = 40;
+    // Griglia della tier "_superhigh" (solo oggetti "big"/"huge", vedi VoxelRenderer) — un salto
+    // di dettaglio notevole restando ben al di sotto del costo della mesh originale non decimata,
+    // che su un edificio grande può arrivare a milioni di voxel/poligoni.
+    public static int SuperHighGridSize = 64;
 
     /// <summary>
     /// Uniforma il voxjson fornito in base al parametro di risoluzione specificato.
@@ -175,7 +187,7 @@ public class GenerateResolutions : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[GenerateResolutions] Errore nell'uniformare il voxjson: {ex.Message}");
+            Debug.LogError($"[GenerateResolutions] Error uniforming the voxjson: {ex.Message}");
             return json;
         }
     }
@@ -189,7 +201,7 @@ public class GenerateResolutions : MonoBehaviour
         {
             if (!File.Exists(inputFilePath))
             {
-                Debug.LogError($"[GenerateResolutions] File di input non trovato: {inputFilePath}");
+                Debug.LogError($"[GenerateResolutions] Input file not found: {inputFilePath}");
                 return;
             }
 
@@ -203,11 +215,11 @@ public class GenerateResolutions : MonoBehaviour
             }
 
             File.WriteAllText(outputFilePath, outputJsonContent);
-            Debug.Log($"[GenerateResolutions] File uniformato a {resolution} salvato in: {outputFilePath}");
+            Debug.Log($"[GenerateResolutions] File uniformed to {resolution} saved to: {outputFilePath}");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[GenerateResolutions] Errore nell'uniformare il file: {ex.Message}");
+            Debug.LogError($"[GenerateResolutions] Error uniforming the file: {ex.Message}");
         }
     }
 
@@ -221,6 +233,8 @@ public class GenerateResolutions : MonoBehaviour
                 return MediumGridSize;
             case ModelResolution.High:
                 return HighGridSize;
+            case ModelResolution.SuperHigh:
+                return SuperHighGridSize;
             default:
                 return MediumGridSize;
         }
@@ -272,11 +286,11 @@ public class GenerateResolutions : MonoBehaviour
     {
         if (string.IsNullOrEmpty(inputJson))
         {
-            Debug.LogWarning("[GenerateResolutions] Il campo inputJson è vuoto!");
+            Debug.LogWarning("[GenerateResolutions] The inputJson field is empty!");
             return;
         }
         outputJson = UniformVoxJson(inputJson, testResolution);
-        Debug.Log("[GenerateResolutions] Downsampling completato per il testo dell'ispettore!");
+        Debug.Log("[GenerateResolutions] Downsampling completed for the inspector text!");
     }
 
     [ContextMenu("Test Downsample (Files on Disk)")]

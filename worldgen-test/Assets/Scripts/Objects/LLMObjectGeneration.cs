@@ -8,8 +8,6 @@ using System.Collections;
 
 public class LLMObjectGeneration : MonoBehaviour
 {
-    public enum Quality { low, high, super_high }
-
     [Header("Object")]
     public string object_name = "house";
 
@@ -20,12 +18,29 @@ public class LLMObjectGeneration : MonoBehaviour
     public string negativePrompt = "shadow, background, ground, floor, base, text, watermark, multiple elements";
 
     [Header("Generation")]
-    public Quality quality = Quality.low;
-    public bool transparent = false;
     public string serverAddress = "http://25.18.55.60:5000";
+    [Tooltip("Seed fisso per /create_image (immagini oggetto) — letto anche da GenerateAsset.ImageProducer, che riusa questo campo invece di duplicarlo.")]
+    public int imageSeed = 46;
 
     [Header("Output")]
+    [Tooltip("Cartella dove salvare le immagini generate. Lascia vuoto (o \"Assets/...\") per usare " +
+             "PathSettings.GetImagesFolder() — necessario perché in build \"Assets/...\" non esiste/non " +
+             "è scrivibile: la scrittura falliva silenziosamente e bloccava per sempre tutta la coda di " +
+             "generazione (la coroutine si fermava su un'eccezione non gestita, senza mai passare all'oggetto successivo).")]
     public string outputFolder = "Assets/GeneratedImages";
+
+    // Percorso realmente usato: se il campo è vuoto o punta ancora al vecchio default valido solo in
+    // Editor ("Assets/..."), lo ridirigiamo automaticamente a PathSettings.GetImagesFolder() — così
+    // funziona anche su scene già salvate con il vecchio valore, senza dover ritoccare l'Inspector.
+    string EffectiveOutputFolder =>
+        string.IsNullOrEmpty(outputFolder) || outputFolder.StartsWith("Assets")
+            ? PathSettings.GetImagesFolder()
+            : outputFolder;
+
+    // Se GameSettings è presente (impostato dal pannello Opzioni), il suo indirizzo server
+    // sovrascrive sempre il campo Inspector — altrimenti si usa il valore locale come fallback.
+    string EffectiveServerAddress =>
+        GameSettings.Instance != null ? GameSettings.Instance.ImageServerBase : serverAddress;
 
     [Header("3D Generation")]
     public LLM3DGeneration llm3DGeneration;
@@ -43,7 +58,7 @@ public class LLMObjectGeneration : MonoBehaviour
     {
         if (IsGenerating)
         {
-            Debug.LogWarning($"LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            Debug.LogWarning($"LLMObjectGeneration: was still generating — forced reset.");
             StopAllCoroutines();
             IsGenerating = false;
         }
@@ -55,33 +70,43 @@ public class LLMObjectGeneration : MonoBehaviour
 
     void OnValidate()
     {
-        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background on a super thin white plane. Low cube resolution, frontal view, studio lighting.";
-        stylePrompt = $"A beautiful, high-quality 3D render of a single stylized {object_name}. Clean, minimal design, soft lighting, pastel color palette. The object has smooth, defined shapes and is perfectly centered against a clean, plain, neutral background (like pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.";
-        //stylePrompt = $"A {object_name} made only of cubes in Minecraft style on a neutral background. Low cube resolution, isometric view, studio lighting.";
+        stylePrompt = BuildStylePrompt(object_name);
     }
+
+    // Estratto da OnValidate così che GenerateAsset possa costruire lo stesso identico prompt per
+    // la pipeline batch (produttore Flux/SDXL + doppio consumer Trellis) senza duplicare il
+    // template altrove — un'unica fonte di verità per come viene descritto un oggetto.
+    public static string BuildStylePrompt(string objectName) =>
+        $"A beautiful, high-quality 3D render of a single realistic {objectName}. High definition, soft lighting, vibrant color palette. The object is perfectly centered against a clean, plain, neutral background (like pastel blue or cream). Studio lighting, sharp details, a touch of cozy game aesthetic.";
 
     IEnumerator PostRequest()
     {
-        string paletteColorDescription = LoadPaletteColorDescription();
+        //string paletteColorDescription = LoadPaletteColorDescription();
         string finalPrompt = stylePrompt;
-        if (!string.IsNullOrEmpty(paletteColorDescription))
+        /*if (!string.IsNullOrEmpty(paletteColorDescription))
         {
             finalPrompt += $" Coherent with this color palette: {paletteColorDescription}.";
-        }
+        }*/
 
-        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {serverAddress}/generate_edit | oggetto: {object_name} | prompt finale: {finalPrompt}");
-        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"quality\": \"{quality}\", \"transparent\": {(transparent ? "true" : "false")}}}";
+        // Endpoint e schema allineati a GUIDA_UNITY_INTEGRAZIONE_PIPELINE.md: /create_image (non
+        // più /generate_edit), "quality":"high" fisso — requisito del server, non un'opzione — e
+        // niente più campo "transparent" (non fa parte dello schema richiesta attuale).
+        string effectiveServer = EffectiveServerAddress;
+        Debug.Log($"LLMObjectGeneration: sending image request → {effectiveServer}/create_image | object: {object_name} | final prompt: {finalPrompt}");
+        string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"seed\": {imageSeed}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
-        using var req = new UnityWebRequest(serverAddress + "/generate_edit", "POST");
+        using var req = new UnityWebRequest(effectiveServer + "/create_image", "POST");
         req.uploadHandler   = new UploadHandlerRaw(bodyRaw);
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
 
+        float callStart = Time.realtimeSinceStartup;
         yield return req.SendWebRequest();
+        LlmCallMetrics.Report("object_create_image", Time.realtimeSinceStartup - callStart, req.result == UnityWebRequest.Result.Success);
 
         if (req.result != UnityWebRequest.Result.Success)
         {
-            Debug.LogError($"LLMObjectGeneration: request failed — {req.error}");
+            Debug.LogError($"LLMObjectGeneration: request failed — {req.responseCode} {req.error}\n{req.downloadHandler.text}");
             IsGenerating = false;
             yield break;
         }
@@ -94,11 +119,25 @@ public class LLMObjectGeneration : MonoBehaviour
             yield break;
         }
 
-        if (!Directory.Exists(outputFolder))
-            Directory.CreateDirectory(outputFolder);
-        string outputPath = Path.Combine(outputFolder, $"{object_name}.png");
-        File.WriteAllBytes(outputPath, imageData);
-        Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
+        // Il PNG salvato qui è solo un debug/cache artifact (non serve al resto della pipeline: la
+        // mesh 3D parte comunque da imageData già in memoria pochi righe sotto). Se la scrittura
+        // fallisse per qualunque motivo (permessi, disco pieno, cartella non valida) non deve
+        // bloccare tutta la generazione — prima di questo try/catch un'eccezione qui lasciava
+        // IsGenerating bloccato a true per sempre, e con esso l'intera coda che segue in
+        // GenerateAsset.GenerateList (sequenziale: un item bloccato blocca tutti i successivi).
+        try
+        {
+            string folder = EffectiveOutputFolder;
+            if (!Directory.Exists(folder))
+                Directory.CreateDirectory(folder);
+            string outputPath = Path.Combine(folder, $"{object_name}.png");
+            File.WriteAllBytes(outputPath, imageData);
+            Debug.Log($"LLMObjectGeneration: saved to {outputPath}");
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"LLMObjectGeneration: could not save the debug PNG for '{object_name}' ({ex.Message}), continuing with 3D generation anyway.");
+        }
 
         OnImageReady?.Invoke(object_name, imageData);
         llm3DGeneration?.GenerateFromBytes(imageData, object_name);
@@ -115,7 +154,7 @@ public class LLMObjectGeneration : MonoBehaviour
     {
         if (IsGenerating)
         {
-            Debug.LogWarning("LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            Debug.LogWarning("LLMObjectGeneration: was still generating — forced reset.");
             StopAllCoroutines();
             IsGenerating = false;
         }
@@ -126,9 +165,19 @@ public class LLMObjectGeneration : MonoBehaviour
 
     IEnumerator Run3DOnly(byte[] imageBytes)
     {
-        if (!Directory.Exists(outputFolder))
-            Directory.CreateDirectory(outputFolder);
-        File.WriteAllBytes(Path.Combine(outputFolder, $"{object_name}.png"), imageBytes);
+        // Vedi commento in PostRequest: PNG di debug non essenziale, un fallimento qui non deve
+        // bloccare per sempre IsGenerating (e con esso il resto della coda).
+        try
+        {
+            string folder = EffectiveOutputFolder;
+            if (!Directory.Exists(folder))
+                Directory.CreateDirectory(folder);
+            File.WriteAllBytes(Path.Combine(folder, $"{object_name}.png"), imageBytes);
+        }
+        catch (Exception ex)
+        {
+            Debug.LogWarning($"LLMObjectGeneration: could not save the debug PNG for '{object_name}' ({ex.Message}), continuing with 3D generation anyway.");
+        }
 
         llm3DGeneration?.GenerateFromBytes(imageBytes, object_name);
         if (llm3DGeneration != null)
@@ -150,7 +199,7 @@ public class LLMObjectGeneration : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[LLMObjectGeneration] Non è stato possibile caricare la palette dal file JSON: {ex.Message}");
+            Debug.LogWarning($"[LLMObjectGeneration] Could not load the palette from the JSON file: {ex.Message}");
         }
         return null;
     }

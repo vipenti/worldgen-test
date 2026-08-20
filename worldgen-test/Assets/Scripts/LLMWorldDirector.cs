@@ -18,23 +18,73 @@ public class LLMWorldDirector : MonoBehaviour
 {
     public TMP_InputField inputField;
     public string lmStudioEndpoint = "http://25.18.55.60:1234/v1/chat/completions";
-    public string modelId = "qwen/qwen3.5-9b";
-    public int maxTokens = 1024;
-    [Tooltip("Enable Qwen3 native thinking for Step 2. Keep OFF — prompts use explicit <analysis> tags instead, native thinking wastes context budget.")]
-    public bool thinkingForParams = false;
+
+    // Se GameSettings è presente (pannello Opzioni), il suo indirizzo server sovrascrive sempre
+    // il campo Inspector qui sopra.
+    string EffectiveLmStudioEndpoint =>
+        GameSettings.Instance != null ? GameSettings.Instance.LlmEndpoint : lmStudioEndpoint;
+
+    public string modelId = "google/gemma-4-26b-a4b-qat";
+
+    // Budget token per le chiamate SENZA thinking (step 3 - asset list, e il pass di
+    // classificazione fuso size/frequency/type/priority): sono risposte JSON brevi, ma con la
+    // finestra di contesto ora a 124k teniamo comunque margine ampio per non rischiare troncamenti
+    // quando la lista oggetti è lunga.
+    public int maxTokens = 4096;
+
+    // Budget token per le chiamate CON thinking (step 1 - world description, step 2 - parametri):
+    // deve coprire sia il ragionamento nascosto del modello sia la risposta finale. Con 124k di
+    // contesto disponibili sul server, 12288 è ancora una frazione minima — meglio abbondare che
+    // rischiare che il thinking consumi tutto il budget e lasci la risposta vuota (vedi il fallback
+    // in ExtractAssistantContent, pensato apposta per quel caso).
+    public int maxTokensThinking = 12288;
+
+    [Tooltip("Enable native thinking per Step 1 (world description): è il primo step, da cui dipendono tutti gli altri — beneficia del ragionamento per una descrizione più coerente. ON di default (comportamento storico: prima non era nemmeno selezionabile, era sempre acceso incondizionatamente).")]
+    public bool thinkingForDescription = true;
+    [Tooltip("Enable native thinking for Step 2 (parametri/noise). Ora ON di default: con 124k di contesto sul server il thinking non è più un problema di budget, e migliora la coerenza dei parametri generati.")]
+    public bool thinkingForParams = true;
+    [Tooltip("Enable native thinking per Step 3 (asset list): è uno step generativo/creativo (decide quali oggetti popolano il bioma), non una classificazione a regole fisse come il pass Size/Frequency/Type/Priority — beneficia del ragionamento allo stesso modo di Step 1/2. ON di default.")]
+    public bool thinkingForAssetList = true;
+    [Tooltip("Logga in console il 'reasoning_content' restituito dal modello (il pensiero nascosto prima della risposta vera), quando la risposta lo contiene. Solo debug/verifica — utile ora per capire se e quanto il modello in uso sta effettivamente ragionando su ciascuno step. Nessun impatto sulla pipeline.")]
+    public bool logThinkingToConsole = true;
+
+    [Tooltip("Esegue Step 2 (parametri/noise) e Step 3 (asset list) in parallelo invece che in sequenza. Sono indipendenti tra loro (dipendono solo dallo Step 1) ma girano sullo STESSO server LLM: se il server ha un solo slot di inferenza le richieste si accodano comunque (nessun danno, guadagno minimo); se ha più slot ma budget di contesto insufficiente per tenere due prompt di queste dimensioni in KV cache insieme, rischi risposte troncate/degradate invece di un errore esplicito. Prova ON, controlla i tempi e che size/frequency/type/priority e i parametri del bioma restino coerenti — se noti problemi, torna a OFF.")]
+    public bool parallelizeStep2And3 = false;
+
+    [Tooltip("Testo anteposto al system prompt per gli step con thinking ON (1/2/3). Gemma 4 ha il thinking OFF di default e va attivato esplicitamente col token <|think|> — qui, subito dopo il token, puoi anche istruire il modello su QUANTO ragionare: Gemma non ha un parametro numerico tipo 'reasoning_effort' (quello esiste solo per modelli openai/gpt-oss via LM Studio), la profondità si regola solo così, in linguaggio naturale. Riduci/allunga il testo per tarare l'effort. Lascia vuoto per non forzare nulla (utile se torni a un modello Qwen, che gestisce il thinking in altro modo tramite /no_think).")]
+    [TextArea(2, 4)]
+    public string thinkingDirective =
+        "<|think|> Think briefly and efficiently. Focus only on the key decisions that affect the output — skip restating the instructions or listing every rule you're checking.";
+    public enum ReasoningEffort { Low, Medium, High }
+
+    [Header("gpt-oss reasoning effort")]
+    [Tooltip("Effort del reasoning nativo di LM Studio (\"reasoning\":{\"effort\":...} nel body della richiesta) — si applica SOLO quando modelId è un modello della famiglia gpt-oss (contiene \"gpt-oss\", case-insensitive), l'unica famiglia per cui LM Studio espone questo parametro dedicato via /v1/chat/completions. Per qualunque altro modello (Gemma, Qwen...) questo campo viene ignorato e resta in uso il meccanismo esistente a token testuali (thinkingDirective/\"/no_think\").")]
+    public ReasoningEffort gptOssReasoningEffort = ReasoningEffort.Medium;
+
+    // Rilevamento robusto a varianti ("openai/gpt-oss-20b", "gpt-oss-120b", maiuscole/minuscole...)
+    // invece di un confronto esatto sul modelId.
+    bool IsGptOssModel => !string.IsNullOrEmpty(modelId) && modelId.ToLowerInvariant().Contains("gpt-oss");
+
+    static string EffortToLmStudioValue(ReasoningEffort e) => e switch
+    {
+        ReasoningEffort.Low => "low",
+        ReasoningEffort.High => "high",
+        _ => "medium"
+    };
+
     public GenerateTexture generateTexture;
     public GenerateAsset generateAsset;
     public WorldManager worldManager;
 
-    static readonly (string llm, string config)[] TileFields =
+    static readonly (string llm, string config, string footstepField)[] TileFields =
     {
-        ("surface", "surfaceTileID"),
-        ("middle",  "middleTileID"),
-        ("deep",    "deepTileID"),
-        ("liquid",  "liquidTileID"),
-        ("flower",  "flowerTileID"),
-        ("bush",    "bushTileID"),
-        ("rock",    "rockTileID"),
+        ("surface", "surfaceTileID", "surface_footstep"),
+        ("middle",  "middleTileID",  "middle_footstep"),
+        ("deep",    "deepTileID",    "deep_footstep"),
+        ("liquid",  "liquidTileID",  "liquid_footstep"),
+        ("flower",  "flowerTileID",  "flower_footstep"),
+        ("bush",    "bushTileID",    "bush_footstep"),
+        ("rock",    "rockTileID",    "rock_footstep"),
     };
 
     public static event Action<string, float> OnGenerationProgress;
@@ -54,8 +104,15 @@ public class LLMWorldDirector : MonoBehaviour
 
     void OnEnable()
     {
-        // Ci agganciamo all'evento di sblocco della Coda A degli asset critici
-        GenerateAsset.OnCriticalAssetsReady += TriggerTerrainTransition;
+        // Ci agganciamo all'evento di sblocco: scatta solo quando TUTTI gli asset del nuovo bioma
+        // sono pronti (niente più Coda A/B — vedi GenerateAsset.OnBiomeAssetsReady).
+        GenerateAsset.OnBiomeAssetsReady += TriggerTerrainTransition;
+
+        // inputField è null nella scena di prima generazione (lì il testo arriva già via
+        // SendRequestToLLM chiamato direttamente da FirstGeneration, senza passare da un campo di
+        // testo in scena) — senza questo controllo andava in NullReferenceException ad ogni
+        // OnEnable/Update/OnDisable per tutta la durata della prima generazione (build e Editor).
+        if (inputField == null) return;
 
         inputField.onSelect.AddListener(OnInputSelected);
         inputField.onDeselect.AddListener(OnInputDeselected);
@@ -64,7 +121,9 @@ public class LLMWorldDirector : MonoBehaviour
 
     void OnDisable()
     {
-        GenerateAsset.OnCriticalAssetsReady -= TriggerTerrainTransition;
+        GenerateAsset.OnBiomeAssetsReady -= TriggerTerrainTransition;
+
+        if (inputField == null) return;
 
         inputField.onSelect.RemoveListener(OnInputSelected);
         inputField.onDeselect.RemoveListener(OnInputDeselected);
@@ -93,6 +152,7 @@ public class LLMWorldDirector : MonoBehaviour
 
     void Update()
     {
+        if (inputField == null) return;
         if (Keyboard.current.tKey.wasPressedThisFrame && !inputField.isFocused)
         {
             inputField.ActivateInputField();
@@ -109,6 +169,10 @@ public class LLMWorldDirector : MonoBehaviour
     {
         OnGenerationProgress?.Invoke("Designing your world...", 0.05f);
         var step1 = new string[] { "" };
+        // Controllato da thinkingForDescription (vedi campo Inspector) — è lo step più a monte da
+        // cui dipendono tutti gli altri, e con 124k di contesto sul server possiamo permetterci un
+        // budget ampio (maxTokensThinking) invece di rischiare che il ragionamento nascosto
+        // consumi tutto lo spazio disponibile prima di arrivare alla risposta vera.
         yield return StartCoroutine(CallLLM(
             Prompts.DescriptionSystem(),
             userText,
@@ -118,7 +182,10 @@ public class LLMWorldDirector : MonoBehaviour
                 content = StripMarkdownCodeFence(content).Trim();
                 content = StripThinkingTags(content);
                 step1[0] = content;
-            }));
+            },
+            disableThinking: !thinkingForDescription,
+            maxTokensOverride: thinkingForDescription ? maxTokensThinking : maxTokens,
+            callLabel: "Step 1 — World Description"));
 
         string worldDescription = step1[0];
         if (string.IsNullOrEmpty(worldDescription))
@@ -128,54 +195,119 @@ public class LLMWorldDirector : MonoBehaviour
         }
 
         OnGenerationProgress?.Invoke("Planning biome and assets...", 0.15f);
-        bool step2Done = false, step3Done = false;
         var r2 = new string[] { "" };
         var r3 = new string[] { "" };
 
-        StartCoroutine(CallLLM(BuildSystemPrompt(), worldDescription,
-            raw => { r2[0] = raw; step2Done = true; }, disableThinking: !thinkingForParams));
-
         var existingRegistry = LoadObjectRegistry();
-        string existingList = existingRegistry.Count > 0
-            ? string.Join(", ", new List<string>(existingRegistry.Keys).ConvertAll(k => $"\"{k}\""))
-            : "(none yet)";
+        string existingList = BuildExistingObjectsList(existingRegistry);
 
-        StartCoroutine(CallLLM(Prompts.AssetListSystem(existingList), worldDescription,
-            raw => { r3[0] = raw; step3Done = true; }, disableThinking: true));
+        var step2Call = CallLLM(BuildSystemPrompt(), worldDescription,
+            raw => { r2[0] = raw; },
+            disableThinking: !thinkingForParams,
+            maxTokensOverride: thinkingForParams ? maxTokensThinking : maxTokens,
+            callLabel: "Step 2 — Parametric/Noise");
 
-        yield return new WaitUntil(() => step2Done && step3Done);
+        var step3Call = CallLLM(Prompts.AssetListSystem(existingList), worldDescription,
+            raw => { r3[0] = raw; },
+            disableThinking: !thinkingForAssetList,
+            maxTokensOverride: thinkingForAssetList ? maxTokensThinking : maxTokens,
+            callLabel: "Step 3 — Asset List");
+
+        if (parallelizeStep2And3)
+        {
+            // Indipendenti tra loro (dipendono solo dallo Step 1) ma sullo STESSO server LLM —
+            // vedi tooltip su parallelizeStep2And3. Se il server ha un solo slot di inferenza le
+            // richieste si accodano comunque lì (nessun danno, solo niente guadagno); il rischio
+            // vero è con più slot configurati ma budget di contesto insufficiente per tenerne due
+            // di queste dimensioni in KV cache insieme (risposte troncate/degradate anziché un
+            // errore esplicito — motivo per cui questo resta opt-in e non il default).
+            Coroutine c2 = StartCoroutine(step2Call);
+            Coroutine c3 = StartCoroutine(step3Call);
+            yield return c2;
+            yield return c3;
+        }
+        else
+        {
+            yield return StartCoroutine(step2Call);
+            yield return StartCoroutine(step3Call);
+        }
 
         OnGenerationProgress?.Invoke("Generating terrain textures...", 0.25f);
-
-        if (!string.IsNullOrEmpty(r2[0]))
-            yield return StartCoroutine(ProcessResponseCoroutine(r2[0]));
 
         List<string>            newObjects     = null;
         Dictionary<string, int> currentObjects = null;
         if (!string.IsNullOrEmpty(r3[0]))
             ProcessAssetList(r3[0], out newObjects, out currentObjects);
 
+        // Texture materiali (server immagini, porta diversa da quello chat) e classificazione
+        // size/frequency/type/priority (server chat LLM) sono indipendenti e non condividono slot
+        // d'inferenza — a differenza di Step2/Step3 qui non c'è motivo di aspettare l'una prima di
+        // iniziare l'altra, quindi partono sempre insieme (non serve un toggle).
+        // NOTA: SizeFrequencyCoroutine, una volta ricevuta la risposta, lancia in background anche
+        // generateAsset.GenerateNew (generazione immagini/mesh dei singoli oggetti) SENZA aspettarlo
+        // — quello sì torna a toccare il server immagini, quindi se ProcessResponseCoroutine non ha
+        // ancora finito le texture dei materiali in quel momento, per un breve tratto le due code
+        // di generazione immagini possono sovrapporsi sullo stesso server. Stesso ragionamento del
+        // caso Step2/Step3: se il server processa una richiesta alla volta si accoda senza danni.
         OnGenerationProgress?.Invoke("Analyzing object properties...", 0.50f);
+        Coroutine textureCoroutine = !string.IsNullOrEmpty(r2[0])
+            ? StartCoroutine(ProcessResponseCoroutine(r2[0]))
+            : null;
 
+        Coroutine classificationCoroutine = null;
         if (currentObjects != null && currentObjects.Count > 0)
         {
             OnGenerationProgress?.Invoke("Finalizing world layout...", 0.55f);
-            yield return StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
+            classificationCoroutine = StartCoroutine(SizeFrequencyCoroutine(worldDescription, currentObjects, newObjects));
         }
+
+        if (textureCoroutine != null)
+            yield return textureCoroutine;
+
+        if (classificationCoroutine != null)
+            yield return classificationCoroutine;
         else
-        {
             TriggerTerrainTransition();
-        }
         OnTerrainPipelineDone?.Invoke();
     }
 
-    IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false)
+    IEnumerator CallLLM(string systemPrompt, string userText, Action<string> onSuccess, bool disableThinking = false, int? maxTokensOverride = null, string callLabel = null)
     {
-        if (disableThinking)
-            systemPrompt = "/no_think\n" + systemPrompt;
+        bool isGptOss = IsGptOssModel;
+
+        // gpt-oss non usa il meccanismo a token testuali (<|think|>/"/no_think") — quello è
+        // specifico di Gemma/Qwen e su gpt-oss sarebbe solo testo inerte anteposto al prompt.
+        // L'effort del reasoning per gpt-oss si comunica invece con un campo dedicato del body
+        // (vedi sotto, "reasoning":{"effort":...}), quindi qui sotto saltiamo del tutto la logica
+        // esistente quando il modello attivo è un gpt-oss.
+        if (!isGptOss)
+        {
+            if (disableThinking)
+            {
+                // Sintassi Qwen — su Gemma è testo inerte (il thinking lì è già OFF di default),
+                // ma non fa danni se in futuro si torna a un modello Qwen.
+                systemPrompt = "/no_think\n" + systemPrompt;
+            }
+            else if (!string.IsNullOrEmpty(thinkingDirective))
+            {
+                // Gemma 4 ha il thinking OFF di default: senza il token <|think|> qui dentro non
+                // ragiona affatto, a prescindere dal budget di maxTokensThinking assegnato alla
+                // chiamata. thinkingDirective porta sia l'attivazione sia l'istruzione di "quanto"
+                // ragionare (vedi tooltip in Inspector).
+                systemPrompt = thinkingDirective + "\n" + systemPrompt;
+            }
+        }
 
         string escapedSystem = EscapeStringForJson(systemPrompt);
         string escapedUser = EscapeStringForJson(userText);
+        int tokenBudget = maxTokensOverride ?? maxTokens;
+
+        // Campo dedicato supportato da LM Studio SOLO per la famiglia gpt-oss (vedi
+        // gptOssReasoningEffort in Inspector) — per ogni altro modello resta stringa vuota, il
+        // payload non cambia rispetto a prima di questo campo.
+        string reasoningField = isGptOss
+            ? ",\"reasoning\":{\"effort\":\"" + EffortToLmStudioValue(gptOssReasoningEffort) + "\"}"
+            : "";
 
         string chatPayload = "{" +
             "\"model\": \"" + modelId + "\"," +
@@ -183,21 +315,59 @@ public class LLMWorldDirector : MonoBehaviour
                 "{\"role\": \"system\", \"content\": \"" + escapedSystem + "\"}," +
                 "{\"role\": \"user\", \"content\": \"" + escapedUser + "\"}" +
             "]," +
-            "\"temperature\": 0.3," + 
-            "\"max_tokens\": " + maxTokens + "," +
+            "\"temperature\": 0.3," +
+            "\"max_tokens\": " + tokenBudget + "," +
             "\"stream\": false" +
+            reasoningField +
         "}";
 
-        using (UnityWebRequest request = new UnityWebRequest(lmStudioEndpoint, "POST"))
+        using (UnityWebRequest request = new UnityWebRequest(EffectiveLmStudioEndpoint, "POST"))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(chatPayload));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
 
+            float callStart = Time.realtimeSinceStartup;
             yield return request.SendWebRequest();
+            LlmCallMetrics.Report("chat_completion", Time.realtimeSinceStartup - callStart, request.result == UnityWebRequest.Result.Success);
 
             if (request.result == UnityWebRequest.Result.Success)
-                onSuccess(request.downloadHandler.text);
+            {
+                string raw = request.downloadHandler.text;
+
+                // Il reasoning_content (quando il modello fa native thinking) arriva sempre nella
+                // risposta accanto a "content", nello stesso oggetto message — prima veniva letto
+                // solo come fallback silenzioso quando "content" risultava vuoto (vedi
+                // ExtractAssistantContent). Qui lo logghiamo sempre, così è visibile in console per
+                // ogni chiamata anche quando la risposta vera arriva regolarmente.
+                if (logThinkingToConsole)
+                {
+                    string reasoning = ExtractReasoningContent(raw);
+                    if (!string.IsNullOrEmpty(reasoning))
+                    {
+                        string label = string.IsNullOrEmpty(callLabel) ? "" : $" — {callLabel}";
+                        Debug.Log($"<color=yellow>[LLM thinking{label}]</color>\n{reasoning}");
+                    }
+                }
+
+                onSuccess(raw);
+            }
+            else
+            {
+                // Prima un fallimento qui (server LM Studio non raggiungibile, crashato, "Channel
+                // Error", timeout di rete...) veniva ignorato del tutto in silenzio: onSuccess non
+                // veniva mai invocato, la coroutine finiva comunque, e ogni chiamante a valle
+                // controlla solo "if (!string.IsNullOrEmpty(risposta))" — quindi quel passo della
+                // pipeline si fermava senza che nulla in game lo segnalasse, indistinguibile da
+                // "sta ancora generando". Ora almeno l'errore HTTP finisce in console con i
+                // dettagli, e diventa visibile anche nel LogPanel in game via OnGenerationFailed
+                // (che WorldManager.HandleGenerationFailed già ascolta).
+                string label = string.IsNullOrEmpty(callLabel) ? "" : $" ({callLabel})";
+                Debug.LogError($"[LLMWorldDirector] LLM call failed{label}: {request.result} — " +
+                    $"{request.error} (HTTP {request.responseCode})\n{request.downloadHandler?.text}");
+                OnGenerationFailed?.Invoke($"Chiamata al modello fallita{label}: {request.error}. " +
+                    "Controlla che LM Studio sia in esecuzione e riprova.");
+            }
         }
     }
 
@@ -232,14 +402,29 @@ public class LLMWorldDirector : MonoBehaviour
             assistantText = StripThinkingTags(assistantText);
             cleanJson = ExtractFirstJsonObject(assistantText);
         }
-        catch (Exception) { yield break; }
+        catch (Exception ex)
+        {
+            // Prima veniva inghiottita in silenzio: llm_generated.json restava quello vecchio
+            // senza nessuna indicazione del perché, indistinguibile da un bug diverso. Ora almeno
+            // si vede in console cosa ha risposto il modello e perché il parsing è fallito.
+            Debug.LogError($"[LLMWorldDirector] Could not parse the LLM response for terrain parameters: {ex.Message}\nRaw response:\n{rawResponse}");
+            OnGenerationFailed?.Invoke("Risposta del modello non valida per i parametri del terreno. Riprova.");
+            yield break;
+        }
+
+        if (string.IsNullOrEmpty(cleanJson))
+        {
+            Debug.LogError($"[LLMWorldDirector] No JSON object found in the LLM response for terrain parameters. Raw response:\n{rawResponse}");
+            OnGenerationFailed?.Invoke("Il modello non ha restituito i parametri del terreno. Riprova.");
+            yield break;
+        }
 
         var materials = LoadMaterials();
         var resolved  = new Dictionary<string, int>();
 
         string paletteColorDescription = ExtractStringField(cleanJson, "palette_color_description") ?? "";
 
-        foreach (var (llmField, _) in TileFields)
+        foreach (var (llmField, _, footstepField) in TileFields)
         {
             string matName = ExtractStringField(cleanJson, llmField);
             if (string.IsNullOrEmpty(matName)) continue;
@@ -248,15 +433,52 @@ public class LLMWorldDirector : MonoBehaviour
             if (!materials.ContainsKey(matName))
             {
                 if (generateTexture == null) continue;
+
+                // La stessa risposta LLM porta anche il tipo di suono passi per questo materiale
+                // (grass/hard/soft/fluid/snow). Se manca o non è uno dei valori validi, lasciamo
+                // che TextureAtlasManager classifichi dal nome come fallback (vedi AppendAlbedo).
+                string footstepType = ExtractStringField(cleanJson, footstepField)?.Trim().ToLowerInvariant();
+                if (!string.IsNullOrEmpty(footstepType) && worldManager != null && worldManager.atlasManager != null)
+                    worldManager.atlasManager.SetPendingFootstepType(matName, footstepType);
+
                 yield return StartCoroutine(GenerateAndWait(matName, paletteColorDescription));
                 materials = LoadMaterials();
             }
 
             if (materials.TryGetValue(matName, out int id))
-                resolved[llmField] = id + 1; 
+                resolved[llmField] = id + 1;
         }
 
         string finalJson = BuildFinalJson(cleanJson, resolved);
+
+        // GUARDIA CRITICA: se l'LLM non ha prodotto chunkHeight/chunkWidth (capita quando il
+        // modello locale non rispetta per intero lo schema JSON richiesto — non genera
+        // un'eccezione, semplicemente omette quei due campi dalla risposta), BuildFinalJson li
+        // ometterebbe in silenzio anche dal JSON finale. BiomeConfig.chunkWidth/chunkHeight non
+        // hanno un field initializer, quindi JsonUtility li leggerebbe come 0 al prossimo
+        // caricamento (vedi WorldManager.LoadLatestConfig) — 0 propaga in divisioni
+        // (player.position.x / chunkWidth) che diventano Infinity/NaN, e WorldManager lo rileva e
+        // sostituisce l'INTERO bioma con FallbackConfig() invece di andare in crash. Il problema
+        // vero però nasceva PRIMA di questo controllo: si sovrascriveva comunque
+        // llm_generated.json con un JSON incompleto, buttando via un bioma precedente
+        // perfettamente valido per sostituirlo con uno rotto — motivo per cui un cambio di bioma
+        // poteva sembrare "fallire" senza nessun errore visibile in game (il gating riguarda solo
+        // la presenza degli asset 3D, non la validità del BiomeConfig). Ora validiamo PRIMA di
+        // scrivere: se manca chunkHeight o chunkWidth non tocchiamo il file — il bioma precedente
+        // (valido) resta attivo — logghiamo il JSON incompleto per capire cosa ha davvero
+        // risposto il modello, e propaghiamo l'errore su OnGenerationFailed così diventa visibile
+        // anche nel LogPanel in game (WorldManager.HandleGenerationFailed è già in ascolto).
+        bool hasChunkHeight = ExtractRawField(cleanJson, "chunkHeight") != null;
+        bool hasChunkWidth  = ExtractRawField(cleanJson, "chunkWidth") != null;
+        if (!hasChunkHeight || !hasChunkWidth)
+        {
+            string missing = (!hasChunkHeight ? "chunkHeight " : "") + (!hasChunkWidth ? "chunkWidth" : "");
+            Debug.LogError($"[LLMWorldDirector] Incomplete LLM response: missing '{missing.Trim()}' — " +
+                $"llm_generated.json NOT updated (previous biome kept). JSON received from the model:\n{cleanJson}");
+            OnGenerationFailed?.Invoke("Il modello non ha generato tutti i parametri del terreno richiesti. Riprova.");
+            yield break;
+        }
+
         string path = Path.Combine(PathSettings.GetJsonFolder(), "llm_generated.json");
         File.WriteAllText(path, finalJson);
     }
@@ -296,29 +518,34 @@ public class LLMWorldDirector : MonoBehaviour
     IEnumerator SizeFrequencyCoroutine(string worldDesc, Dictionary<string, int> currentObjects, List<string> newObjects)
     {
         string nameList = string.Join(", ", new List<string>(currentObjects.Keys).ConvertAll(k => $"\"{k}\""));
-        
-        var resSize = new string[] { "" };
-        yield return StartCoroutine(CallLLM(Prompts.SizeSystem(nameList), worldDesc, raw => { resSize[0] = raw; }, disableThinking: true));
 
-        var resFreq = new string[] { "" };
-        yield return StartCoroutine(CallLLM(Prompts.FrequencySystem(nameList), worldDesc, raw => { resFreq[0] = raw; }, disableThinking: true));
+        // Un'unica chiamata al posto delle 4 sequenziali (Size/Frequency/Type/Priority erano lo
+        // stesso identico input, 4 assi indipendenti dello stesso oggetto — vedi
+        // Prompts.ClassificationSystem). ExtractTagValues sa già leggere il formato annidato
+        // { "oggetto": { "size": ..., "frequency": ..., "type": ..., "priority": ... } }, quindi
+        // riusiamo la stessa risposta grezza 4 volte, una per campo, senza cambiare
+        // ParseAndSaveFourPassMetadata.
+        var resClassification = new string[] { "" };
+        yield return StartCoroutine(CallLLM(Prompts.ClassificationSystem(nameList), worldDesc,
+            raw => { resClassification[0] = raw; },
+            disableThinking: true,
+            maxTokensOverride: maxTokens,
+            callLabel: "Step 4 — Classification"));
 
-        var resType = new string[] { "" };
-        yield return StartCoroutine(CallLLM(Prompts.TypeSystem(nameList), worldDesc, raw => { resType[0] = raw; }, disableThinking: true));
+        string resSize = resClassification[0];
+        string resFreq = resClassification[0];
+        string resType = resClassification[0];
+        string resPriority = resClassification[0];
 
-        var resPriority = new string[] { "" };
-        yield return StartCoroutine(CallLLM(Prompts.PrioritySystem(nameList), worldDesc, raw => { resPriority[0] = raw; }, disableThinking: true));
-
-        // Salva i dati dei metadati su disco
-        ParseAndSaveFourPassMetadata(resSize[0], resFreq[0], resType[0], resPriority[0], currentObjects);
-
-        // MODIFICA PRO-SYNCHRONIZATION: Congeliamo immediatamente gli aggiornamenti dei chunk ed allineiamo la memoria dei prefabbricati
-        if (worldManager != null)
-        {
-            worldManager.holdChunkUpdates = true; 
-            worldManager.BackupOldBiome(); // Salva lo stato dei vecchi prefabbricati prima di ricaricare i nuovi
-            worldManager.ReloadBiomePrefabs(); // Forza WorldManager ad imparare subito le scale corrette dei nuovi oggetti!
-        }
+        // Salva i dati dei metadati su disco (current_objects.json diventa il registro del NUOVO
+        // bioma). Da qui in poi la pipeline asset lavora su questo registro in background, ma il
+        // mondo attivo (WorldManager._readyPrefabs/_pendingObjectNames/ecc.) resta quello VECCHIO,
+        // invariato, finché GenerateAsset non segnala che gli asset critici sono pronti — vedi
+        // TriggerTerrainTransition, che fa lo swap atomico in un colpo solo. Nessun ricaricamento
+        // anticipato qui: era questo a causare mondo vuoto/oggetti sparenti vicino al giocatore
+        // durante la generazione (lo stato "vivo" passava al nuovo registro molto prima che i
+        // relativi asset esistessero davvero).
+        ParseAndSaveFourPassMetadata(resSize, resFreq, resType, resPriority, currentObjects);
 
         OnGenerationProgress?.Invoke("Pre-allocating biome guardian meshes...", 0.65f);
         if (currentObjects != null && currentObjects.Count > 0)
@@ -327,18 +554,17 @@ public class LLMWorldDirector : MonoBehaviour
 
     /// <summary>
     /// Attiva la ricostruzione e l'interpolazione progressiva dei chunk a livello visivo.
-    /// Invocato unicamente quando la Coda A di GenerateAsset ha dato l'ok.
+    /// Invocato unicamente quando TUTTI gli asset del nuovo bioma sono pronti (GenerateAsset.OnBiomeAssetsReady).
     /// </summary>
     void TriggerTerrainTransition()
     {
-        Debug.Log("<color=green>[LLMWorldDirector]</color> Gating superato con successo. Iniezione dati e avvio interpolazione.");
+        Debug.Log("<color=green>[LLMWorldDirector]</color> Gating passed successfully. Injecting data and starting interpolation.");
         OnGenerationProgress?.Invoke("Building terrain maps...", 0.75f);
 
-        if (worldManager != null) worldManager.ApplyNewConfig();
-        worldManager?.ReloadBiomePrefabs();
-
-        // Sblocco aggiornamenti chunk: senza questo il mondo rimane congelato dopo la transizione
-        if (worldManager != null) worldManager.holdChunkUpdates = false;
+        // Unico punto di swap: ApplyNewConfig congela il bioma vecchio (ancora quello attivo fino
+        // a questo momento) e carica quello nuovo in un colpo solo, poi avvia l'interpolazione
+        // visiva. Vedi il commento su ApplyNewConfig in WorldManager.
+        worldManager?.ApplyNewConfig();
     }
 
     void ParseAndSaveFourPassMetadata(string rawSize, string rawFreq, string rawType, string rawPriority, Dictionary<string, int> currentObjects)
@@ -417,6 +643,14 @@ public class LLMWorldDirector : MonoBehaviour
         return list;
     }
 
+    string BuildExistingObjectsList(Dictionary<string, int> existingRegistry)
+    {
+        if (existingRegistry.Count == 0) return "(none yet)";
+
+        var keys = new List<string>(existingRegistry.Keys);
+        return string.Join(", ", keys.ConvertAll(k => $"\"{k}\""));
+    }
+
     Dictionary<string, int> LoadObjectRegistry()
     {
         var    dict = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
@@ -474,17 +708,19 @@ public class LLMWorldDirector : MonoBehaviour
         string path = Path.Combine(PathSettings.GetJsonFolder(), "materials.json");
         if (!File.Exists(path)) return dict;
 
-        string json = File.ReadAllText(path).Trim().Trim('{', '}');
-        foreach (string line in json.Split(','))
+        // materials.json ora salva { "name": { "id": N, "footstepType": "..." } } (vedi
+        // TextureAtlasManager), ma resta compatibile col vecchio formato flat { "name": N }
+        // per file non ancora migrati.
+        JObject root;
+        try { root = JObject.Parse(File.ReadAllText(path)); }
+        catch (Exception) { return dict; }
+
+        foreach (var prop in root.Properties())
         {
-            string trimmed = line.Trim();
-            if (string.IsNullOrEmpty(trimmed)) continue;
-            int colon = trimmed.IndexOf(':');
-            if (colon < 0) continue;
-            string key = trimmed.Substring(0, colon).Trim().Trim('"');
-            string val = trimmed.Substring(colon + 1).Trim();
-            if (int.TryParse(val, out int id))
-                dict[key] = id;
+            int id = prop.Value.Type == JTokenType.Object
+                ? (prop.Value.Value<int?>("id") ?? -1)
+                : prop.Value.Value<int>();
+            if (id >= 0) dict[prop.Name] = id;
         }
         return dict;
     }
@@ -520,21 +756,25 @@ public class LLMWorldDirector : MonoBehaviour
     string BuildFinalJson(string llmJson, Dictionary<string, int> resolved)
     {
         var entries = new List<string>();
-        string[] numericFields = {
+        // Fields copied verbatim (as raw JSON literals) from the LLM's response — covers
+        // both numbers and the isStructuredBiome boolean, since ExtractRawField just grabs
+        // whatever literal follows the key.
+        string[] rawLiteralFields = {
             "scaleMacro", "macroInfluence",
             "scaleBillow", "ampBillow", "billowExponent",
             "scaleRidged", "ampRidged", "ridgedExponent",
             "warpStrength", "warpScale",
             "baseTerrainHeight", "waterLevel",
             "chunkHeight", "chunkWidth",
-            "scaleLayout", "objectDensityThreshold", "slopeMaxLimit"
+            "scaleLayout", "objectDensityThreshold", "slopeMaxLimit",
+            "isStructuredBiome"
         };
-        foreach (string field in numericFields)
+        foreach (string field in rawLiteralFields)
         {
             string val = ExtractRawField(llmJson, field);
             if (val != null) entries.Add($"  \"{field}\": {val}");
         }
-        foreach (var (llmField, configField) in TileFields)
+        foreach (var (llmField, configField, _) in TileFields)
         {
             if (resolved.TryGetValue(llmField, out int id))
                 entries.Add($"  \"{configField}\": {id}");
@@ -550,33 +790,34 @@ public class LLMWorldDirector : MonoBehaviour
 
     string ExtractAssistantContent(string raw)
     {
-        int choicesIndex = raw.IndexOf("\"choices\"", StringComparison.Ordinal);
-        if (choicesIndex < 0) return string.Empty;
-        int messageIndex = raw.IndexOf("\"message\"", choicesIndex, StringComparison.Ordinal);
-        if (messageIndex < 0) return string.Empty;
-        int contentKeyIndex = raw.IndexOf("\"content\"", messageIndex, StringComparison.Ordinal);
-        if (contentKeyIndex < 0) return string.Empty;
-        int colonIndex = raw.IndexOf(':', contentKeyIndex);
-        if (colonIndex < 0) return string.Empty;
-        int startQuote = raw.IndexOf('"', colonIndex + 1);
-        if (startQuote < 0) return string.Empty;
-        TryReadJsonString(raw, startQuote, out string content);
+        string content = ExtractMessageField(raw, "content");
+        if (!string.IsNullOrEmpty(content)) return content;
 
-        if (string.IsNullOrEmpty(content))
-        {
-            int rcIdx = raw.IndexOf("\"reasoning_content\"", messageIndex, StringComparison.Ordinal);
-            if (rcIdx >= 0)
-            {
-                int rcColon = raw.IndexOf(':', rcIdx);
-                if (rcColon >= 0)
-                {
-                    int rcQuote = raw.IndexOf('"', rcColon + 1);
-                    if (rcQuote >= 0 && TryReadJsonString(raw, rcQuote, out string rc) && !string.IsNullOrEmpty(rc))
-                        return "<think>" + rc + "</think>";
-                }
-            }
-        }
-        return content;
+        // Se "content" è vuoto (es. il modello ha speso tutto il budget di max_tokens nel
+        // reasoning senza arrivare alla risposta finale), recuperiamo almeno il reasoning così la
+        // pipeline non riceve una stringa vuota — vedi anche il log esplicito in CallLLM, che
+        // mostra il reasoning_content ad ogni chiamata (non solo in questo caso limite).
+        string reasoning = ExtractReasoningContent(raw);
+        return string.IsNullOrEmpty(reasoning) ? string.Empty : "<think>" + reasoning + "</think>";
+    }
+
+    string ExtractReasoningContent(string raw) => ExtractMessageField(raw, "reasoning_content");
+
+    // Legge un campo stringa dentro choices[0].message.* (es. "content" o "reasoning_content" —
+    // i modelli con native thinking li restituiscono entrambi nello stesso oggetto message).
+    string ExtractMessageField(string raw, string fieldName)
+    {
+        int choicesIndex = raw.IndexOf("\"choices\"", StringComparison.Ordinal);
+        if (choicesIndex < 0) return null;
+        int messageIndex = raw.IndexOf("\"message\"", choicesIndex, StringComparison.Ordinal);
+        if (messageIndex < 0) return null;
+        int keyIndex = raw.IndexOf("\"" + fieldName + "\"", messageIndex, StringComparison.Ordinal);
+        if (keyIndex < 0) return null;
+        int colonIndex = raw.IndexOf(':', keyIndex);
+        if (colonIndex < 0) return null;
+        int startQuote = raw.IndexOf('"', colonIndex + 1);
+        if (startQuote < 0) return null;
+        return TryReadJsonString(raw, startQuote, out string value) ? value : null;
     }
 
     bool TryReadJsonString(string source, int startQuoteIndex, out string value)
