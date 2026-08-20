@@ -165,8 +165,6 @@ public class WorldManager : MonoBehaviour
     public MapVisualizer mapVisualizer;
     public bool skipInitialPlayerSpawn = false;
     public LogPanelUI logPanel;
-    [Tooltip("Se true, RemoveFarChunks non distrugge mai nessun chunk oltre la view distance — usato dai tool di bake (es. WorldCorridorBaker) per far accumulare in scena tutti i chunk di un intero tragitto invece di farli sparire uno alla volta man mano che ci si allontana. NON lasciarlo acceso durante il gioco normale: la memoria cresce senza limite.")]
-    public bool disableChunkRemovalForBake = false;
 
     private Dictionary<Vector2Int, Chunk> activeChunks = new Dictionary<Vector2Int, Chunk>();
     private Vector2Int lastPlayerChunk;
@@ -290,7 +288,7 @@ public class WorldManager : MonoBehaviour
         // Player.log, uno da Editor Play e uno dalla build — se editor e build stanno davvero
         // leggendo la stessa configurazione (stessa scena, stessi campi WorldManager) oppure no,
         // invece di doverlo dedurre a occhio dal file .unity. Da rimuovere una volta chiuso il caso.
-        Debug.Log($"<color=cyan>[ScaleDiag]</color> isEditor={Application.isEditor} platform={Application.platform} scena='{gameObject.scene.name}' | " +
+        Debug.Log($"<color=cyan>[ScaleDiag]</color> isEditor={Application.isEditor} platform={Application.platform} scene='{gameObject.scene.name}' | " +
             $"scaleHuge={scaleHuge} scaleBig={scaleBig} scaleNormal={scaleNormal} scaleSmall={scaleSmall} scaleTiny={scaleTiny} scaleDefault={scaleDefault} | " +
             $"viewDistance={viewDistance} objectGroundOffset={objectGroundOffset} urbanBlockSize={urbanBlockSize} urbanStreetWidth={urbanStreetWidth}");
 
@@ -459,12 +457,12 @@ public class WorldManager : MonoBehaviour
         if (!verboseSpawnDiagnostics) return; // l'intero metodo esiste solo per loggare
         if (!activeChunks.TryGetValue(coord, out Chunk chunk) || chunk == null)
         {
-            Debug.Log($"<color=magenta>[Decor]</color> Player entrato nel chunk {coord}: non ancora creato/attivo.");
+            Debug.Log($"<color=magenta>[Decor]</color> Player entered chunk {coord}: not yet created/active.");
             return;
         }
         float t = GetChunkTransitionT(coord);
-        Debug.Log($"<color=magenta>[Decor]</color> Player entrato nel chunk {coord}: {chunk.transform.childCount} figli (decorazioni reali+placeholder), " +
-            $"pending={chunk.PendingDecorCount}, isTransitioning={isTransitioning}, t={t:F2} ({(t < 0.5f ? "vecchio bioma" : "nuovo bioma")}), attivo={chunk.gameObject.activeSelf}.");
+        Debug.Log($"<color=magenta>[Decor]</color> Player entered chunk {coord}: {chunk.transform.childCount} children (real decorations+placeholders), " +
+            $"pending={chunk.PendingDecorCount}, isTransitioning={isTransitioning}, t={t:F2} ({(t < 0.5f ? "old biome" : "new biome")}), active={chunk.gameObject.activeSelf}.");
     }
 
     BiomeConfig FallbackConfig() => new BiomeConfig {
@@ -491,9 +489,18 @@ public class WorldManager : MonoBehaviour
             // Meglio degradare a un bioma valido ma "sbagliato" piuttosto che un crash a runtime.
             if (cfg == null || cfg.chunkWidth <= 0 || cfg.chunkHeight <= 0)
             {
-                Debug.LogWarning($"[WorldManager] llm_generated.json ha chunkWidth/chunkHeight non validi (chunkWidth={cfg?.chunkWidth}, chunkHeight={cfg?.chunkHeight}) — uso la configurazione di fallback per evitare un crash.");
+                Debug.LogWarning($"[WorldManager] llm_generated.json has invalid chunkWidth/chunkHeight (chunkWidth={cfg?.chunkWidth}, chunkHeight={cfg?.chunkHeight}) — using the fallback configuration to avoid a crash.");
                 return FallbackConfig();
             }
+
+            // Diagnostica: slopeMaxLimit e objectDensityThreshold sono proposti dall'LLM per ogni
+            // bioma, senza clamp — se l'LLM propone un slopeMaxLimit insolitamente basso (fuori dal
+            // range atteso [0.5-3]) quasi ogni cella di Chunk.ComputeLayoutMap() risulta "troppo
+            // ripida" e LayoutMap crolla a ~0 ovunque, per cui NESSUN oggetto (di nessuna priorità)
+            // viene piazzato — terreno presente, bioma visivamente vuoto, pur con asset generati
+            // regolarmente (il conteggio new/cached in BenchmarkRunner non dipende da questo). Questo
+            // log serve solo a confermare la causa se/quando ricapita — nessun clamp applicato qui.
+            Debug.Log($"<color=cyan>[PlacementDiag]</color> Biome loaded: slopeMaxLimit={cfg.slopeMaxLimit}, objectDensityThreshold={cfg.objectDensityThreshold}, waterLevel={cfg.waterLevel}, isStructuredBiome={cfg.isStructuredBiome}");
 
             return cfg;
         }
@@ -648,8 +655,6 @@ public class WorldManager : MonoBehaviour
 
     void RemoveFarChunks(Vector2Int playerChunkPos)
     {
-        if (disableChunkRemovalForBake) return;
-
         List<Vector2Int> coordsToRemove = _coordsToRemoveBuffer;
         coordsToRemove.Clear();
         foreach (var chunk in activeChunks)
@@ -668,11 +673,11 @@ public class WorldManager : MonoBehaviour
                 if (chunk.Value != null && chunk.Value.PendingDecorCount > 0)
                 {
                     if (_loggedKeepAliveChunks.Add(chunk.Key) && verboseSpawnDiagnostics)
-                        Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} tenuto in vita oltre il viewDistance: {chunk.Value.PendingDecorCount} decorazioni ancora in attesa di generazione.");
+                        Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} kept alive beyond viewDistance: {chunk.Value.PendingDecorCount} decorations still waiting to be generated.");
                     continue;
                 }
                 if (_loggedKeepAliveChunks.Remove(chunk.Key) && verboseSpawnDiagnostics)
-                    Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} liberato, tutte le decorazioni in attesa sono state risolte (o perse) — rimosso normalmente.");
+                    Debug.Log($"<color=yellow>[Decor]</color> Chunk {chunk.Key} freed, all pending decorations were resolved (or lost) — removed normally.");
                 coordsToRemove.Add(chunk.Key);
             }
         }
@@ -987,7 +992,7 @@ public class WorldManager : MonoBehaviour
         // (OFF di default): con molti chunk urbani creati insieme, queste log a interpolazione di
         // stringa erano una sorgente non trascurabile di garbage GC proprio nei frame già più pesanti.
         if (verboseUrbanDecorLogging)
-            Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: pool edifici ({buildingNames.Count}) = [{string.Join(", ", buildingNames)}], prop strada ({streetPropNames.Count}) = [{string.Join(", ", streetPropNames)}].");
+            Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: building pool ({buildingNames.Count}) = [{string.Join(", ", buildingNames)}], street props ({streetPropNames.Count}) = [{string.Join(", ", streetPropNames)}].");
 
         foreach (var (gcx, lotCenterX) in UrbanGrid.LotsInRange(bx, w, gridParams))
         foreach (var (gcz, lotCenterZ) in UrbanGrid.LotsInRange(bz, w, gridParams))
@@ -1010,7 +1015,7 @@ public class WorldManager : MonoBehaviour
             float bRotZ = (Mathf.Abs(lotHash) % 4) * 90f; // Cardinal facing, not an arbitrary angle.
 
             if (verboseUrbanDecorLogging)
-                Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}, lotto ({gcx},{gcz}): scelto edificio '{bName}' (indice {Mathf.Abs(lotHash) % buildingNames.Count}/{buildingNames.Count}).");
+                Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}, lot ({gcx},{gcz}): chose building '{bName}' (index {Mathf.Abs(lotHash) % buildingNames.Count}/{buildingNames.Count}).");
             InstantiateAssetPrimitive(bName, lotCenterX, bGroundY, lotCenterZ, bScale, chunk.transform, data, bRotZ);
             placedStructures.Add(new StructureAnchor {
                 position = new Vector3(lotCenterX, bGroundY, lotCenterZ), assetName = bName, scale = bScale
@@ -1044,13 +1049,13 @@ public class WorldManager : MonoBehaviour
                 if (!isUnique && spawnRoll > fc)
                 {
                     if (verboseUrbanDecorLogging)
-                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — roll fallito ({spawnRoll:F2} > {fc:F2}, freq chance).");
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' discarded near '{structure.assetName}' — roll failed ({spawnRoll:F2} > {fc:F2}, freq chance).");
                     continue;
                 }
                 if (isUnique && _uniqueSpawned.Contains(name))
                 {
                     if (verboseUrbanDecorLogging)
-                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — già piazzato altrove (unique).");
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' discarded near '{structure.assetName}' — already placed elsewhere (unique).");
                     continue;
                 }
 
@@ -1064,13 +1069,13 @@ public class WorldManager : MonoBehaviour
                 if (plx < 0 || plx >= w || plz < 0 || plz >= w)
                 {
                     if (verboseUrbanDecorLogging)
-                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — offset ({plx},{plz}) fuori dal chunk.");
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' discarded near '{structure.assetName}' — offset ({plx},{plz}) outside the chunk.");
                     continue;
                 }
                 if (excluded[plx, plz] || chunk.HeightMap[plx, plz] <= cfg.waterLevel)
                 {
                     if (verboseUrbanDecorLogging)
-                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' scartato presso '{structure.assetName}' — cella ({plx},{plz}) {(excluded[plx, plz] ? "già occupata/esclusa" : "sott'acqua")}.");
+                        Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' discarded near '{structure.assetName}' — cell ({plx},{plz}) {(excluded[plx, plz] ? "already occupied/excluded" : "underwater")}.");
                     continue;
                 }
 
@@ -1079,7 +1084,7 @@ public class WorldManager : MonoBehaviour
                 float rotZ = ((propSeed >> 16) & 0xFF) / 255f * 360f;
 
                 if (verboseUrbanDecorLogging)
-                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' piazzato presso '{structure.assetName}'.");
+                    Debug.Log($"<color=magenta>[UrbanDecor]</color> Chunk {chunk.ChunkCoord}: '{name}' placed near '{structure.assetName}'.");
                 InstantiateAssetPrimitive(name, propWorldPos.x, pGroundY, propWorldPos.z, pScale, chunk.transform, data, rotZ);
                 excluded[plx, plz] = true;
                 if (isUnique)
@@ -1253,7 +1258,7 @@ public class WorldManager : MonoBehaviour
             if (verboseSpawnDiagnostics)
             {
                 string coordLabel = ownerChunk != null ? ownerChunk.ChunkCoord.ToString() : "?";
-                Debug.Log($"<color=yellow>[Decor]</color> Chunk {coordLabel}: '{name}' non ancora pronto, creato placeholder in attesa (pending nel chunk: {ownerChunk?.PendingDecorCount ?? -1}).");
+                Debug.Log($"<color=yellow>[Decor]</color> Chunk {coordLabel}: '{name}' not ready yet, created a waiting placeholder (pending in chunk: {ownerChunk?.PendingDecorCount ?? -1}).");
             }
             SpawnBillboard(name, new Vector3(wx, groundY + scaleFactor * 0.5f, wz), parent, scaleFactor, visible: false);
             return;
@@ -1275,7 +1280,7 @@ public class WorldManager : MonoBehaviour
             if (verboseSpawnDiagnostics && (sizeStr == "huge" || sizeStr == "big"))
             {
                 Vector3 nativeBounds = runtimeMesh != null ? runtimeMesh.bounds.size : Vector3.zero;
-                Debug.Log($"<color=cyan>[ScaleDiag]</color> '{name}' (size={sizeStr}) mesh nativa={nativeBounds} scaleFactor={scaleFactor} → world size finale≈{nativeBounds * scaleFactor} (fonte mesh: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
+                Debug.Log($"<color=cyan>[ScaleDiag]</color> '{name}' (size={sizeStr}) native mesh={nativeBounds} scaleFactor={scaleFactor} → final world size≈{nativeBounds * scaleFactor} (mesh source: {(runtimeMesh != null ? "RuntimeMeshCache" : "prefab")})");
             }
 
             float currentOffset = (sizeStr == "huge" || sizeStr == "big") ? objectGroundOffset : 0f;
@@ -1465,7 +1470,7 @@ public class WorldManager : MonoBehaviour
         if (!_placeholders.TryGetValue(objectName, out var list))
         {
             if (verboseSpawnDiagnostics)
-                Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto, ma nessun chunk lo stava aspettando (nessun placeholder registrato).");
+                Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' ready, but no chunk was waiting for it (no placeholder registered).");
             return;
         }
 
@@ -1483,8 +1488,8 @@ public class WorldManager : MonoBehaviour
         if (verboseSpawnDiagnostics)
         {
             int lostCount = list.Count - toSpawn.Count;
-            Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' pronto: sostituiti {toSpawn.Count} placeholder ancora vivi." +
-                (lostCount > 0 ? $" {lostCount} erano già stati distrutti insieme al loro chunk prima che la generazione finisse — persi." : ""));
+            Debug.Log($"<color=cyan>[Decor]</color> '{objectName}' ready: replaced {toSpawn.Count} still-alive placeholders." +
+                (lostCount > 0 ? $" {lostCount} had already been destroyed along with their chunk before generation finished — lost." : ""));
         }
 
         EnsureMeshCached(objectName);
@@ -1516,7 +1521,7 @@ public class WorldManager : MonoBehaviour
             else
             {
                 var missedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
-                Debug.LogWarning($"<color=orange>[Decor]</color> Chunk {(missedChunk != null ? missedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' segnalato pronto ma nessuna mesh/prefab trovato — decorazione saltata.");
+                Debug.LogWarning($"<color=orange>[Decor]</color> Chunk {(missedChunk != null ? missedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' reported ready but no mesh/prefab found — decoration skipped.");
                 continue;
             }
 
@@ -1542,7 +1547,7 @@ public class WorldManager : MonoBehaviour
             if (verboseSpawnDiagnostics)
             {
                 var placedChunk = parent != null ? parent.GetComponent<Chunk>() : null;
-                Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' piazzato (placeholder risolto).");
+                Debug.Log($"<color=cyan>[Decor]</color> Chunk {(placedChunk != null ? placedChunk.ChunkCoord.ToString() : "?")}: '{objectName}' placed (placeholder resolved).");
             }
         }
     }
@@ -1559,7 +1564,7 @@ public class WorldManager : MonoBehaviour
         _oldObjectPriorities = new Dictionary<string, int>(_objectPriorities);
         _oldObjectSizes = new Dictionary<string, string>(_objectSizes);
         oldConfig = targetConfig;
-        Debug.Log("<color=orange>[WorldManager]</color> Backup del vecchio bioma eseguito con successo.");
+        Debug.Log("<color=orange>[WorldManager]</color> Backup of the old biome completed successfully.");
     }
 
     // Swap atomico tra bioma attivo e bioma appena generato, eseguito UNA SOLA VOLTA quando TUTTI gli
@@ -1595,7 +1600,7 @@ public class WorldManager : MonoBehaviour
 
         chunkIsNewBiome.Clear(); // Pulisce i tracciamenti dei biomi dei chunk per la nuova transizione
 
-        Debug.Log("<color=orange>[WorldManager]</color> Interpolazione globale spaziale avviata correttamente.");
+        Debug.Log("<color=orange>[WorldManager]</color> Global spatial interpolation started correctly.");
         mapVisualizer?.GenerateMaps(targetConfig);
 
         float startOffset = viewDistance * targetConfig.chunkWidth;
@@ -1876,11 +1881,11 @@ public class WorldManager : MonoBehaviour
         if (textAsset != null)
         {
             File.WriteAllText(targetDiskPath, textAsset.text);
-            Debug.Log($"[WorldManager] Inizializzato file JSON persistente: {targetDiskPath}");
+            Debug.Log($"[WorldManager] Initialized persistent JSON file: {targetDiskPath}");
         }
         else
         {
-            Debug.LogWarning($"[WorldManager] File di risorsa baseline non trovato: {resourcePath}");
+            Debug.LogWarning($"[WorldManager] Baseline resource file not found: {resourcePath}");
         }
     }
 
@@ -1892,11 +1897,11 @@ public class WorldManager : MonoBehaviour
         if (binaryAsset != null && binaryAsset.bytes != null)
         {
             File.WriteAllBytes(targetDiskPath, binaryAsset.bytes);
-            Debug.Log($"[WorldManager] Inizializzato file binario persistente: {targetDiskPath}");
+            Debug.Log($"[WorldManager] Initialized persistent binary file: {targetDiskPath}");
         }
         else
         {
-            Debug.LogWarning($"[WorldManager] Risorsa binaria baseline non trovata: {resourcePath}");
+            Debug.LogWarning($"[WorldManager] Baseline binary resource not found: {resourcePath}");
         }
     }
 
@@ -1927,7 +1932,7 @@ public class WorldManager : MonoBehaviour
             string baseJson = LoadVoxJsonString(assetName);
             if (!string.IsNullOrEmpty(baseJson))
             {
-                Debug.Log($"[WorldManager] Caricamento dinamico a runtime delle mesh per '{assetName}'...");
+                Debug.Log($"[WorldManager] Dynamically loading meshes at runtime for '{assetName}'...");
                 renderer.LoadFromJson(baseJson, assetName);
             }
         }

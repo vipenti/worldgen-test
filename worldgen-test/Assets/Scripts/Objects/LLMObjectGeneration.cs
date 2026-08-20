@@ -58,7 +58,7 @@ public class LLMObjectGeneration : MonoBehaviour
     {
         if (IsGenerating)
         {
-            Debug.LogWarning($"LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            Debug.LogWarning($"LLMObjectGeneration: was still generating — forced reset.");
             StopAllCoroutines();
             IsGenerating = false;
         }
@@ -92,7 +92,7 @@ public class LLMObjectGeneration : MonoBehaviour
         // più /generate_edit), "quality":"high" fisso — requisito del server, non un'opzione — e
         // niente più campo "transparent" (non fa parte dello schema richiesta attuale).
         string effectiveServer = EffectiveServerAddress;
-        Debug.Log($"LLMObjectGeneration: invio richiesta immagine → {effectiveServer}/create_image | oggetto: {object_name} | prompt finale: {finalPrompt}");
+        Debug.Log($"LLMObjectGeneration: sending image request → {effectiveServer}/create_image | object: {object_name} | final prompt: {finalPrompt}");
         string json = $"{{\"prompt\": \"{EscapeJson(finalPrompt)}\", \"quality\": \"high\", \"negative_prompt\": \"{EscapeJson(negativePrompt)}\", \"seed\": {imageSeed}}}";
         byte[] bodyRaw = Encoding.UTF8.GetBytes(json);
         using var req = new UnityWebRequest(effectiveServer + "/create_image", "POST");
@@ -100,7 +100,9 @@ public class LLMObjectGeneration : MonoBehaviour
         req.downloadHandler = new DownloadHandlerBuffer();
         req.SetRequestHeader("Content-Type", "application/json");
 
+        float callStart = Time.realtimeSinceStartup;
         yield return req.SendWebRequest();
+        LlmCallMetrics.Report("object_create_image", Time.realtimeSinceStartup - callStart, req.result == UnityWebRequest.Result.Success);
 
         if (req.result != UnityWebRequest.Result.Success)
         {
@@ -134,7 +136,7 @@ public class LLMObjectGeneration : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"LLMObjectGeneration: impossibile salvare il PNG di debug per '{object_name}' ({ex.Message}), proseguo comunque con la generazione 3D.");
+            Debug.LogWarning($"LLMObjectGeneration: could not save the debug PNG for '{object_name}' ({ex.Message}), continuing with 3D generation anyway.");
         }
 
         OnImageReady?.Invoke(object_name, imageData);
@@ -152,7 +154,7 @@ public class LLMObjectGeneration : MonoBehaviour
     {
         if (IsGenerating)
         {
-            Debug.LogWarning("LLMObjectGeneration: era ancora in generazione — forzato reset.");
+            Debug.LogWarning("LLMObjectGeneration: was still generating — forced reset.");
             StopAllCoroutines();
             IsGenerating = false;
         }
@@ -174,7 +176,7 @@ public class LLMObjectGeneration : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"LLMObjectGeneration: impossibile salvare il PNG di debug per '{object_name}' ({ex.Message}), proseguo comunque con la generazione 3D.");
+            Debug.LogWarning($"LLMObjectGeneration: could not save the debug PNG for '{object_name}' ({ex.Message}), continuing with 3D generation anyway.");
         }
 
         llm3DGeneration?.GenerateFromBytes(imageBytes, object_name);
@@ -197,7 +199,7 @@ public class LLMObjectGeneration : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[LLMObjectGeneration] Non è stato possibile caricare la palette dal file JSON: {ex.Message}");
+            Debug.LogWarning($"[LLMObjectGeneration] Could not load the palette from the JSON file: {ex.Message}");
         }
         return null;
     }

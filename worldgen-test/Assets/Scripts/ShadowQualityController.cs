@@ -129,6 +129,6 @@ public class ShadowQualityController : MonoBehaviour
         }
 
         if (_sun == null)
-            Debug.LogWarning("[ShadowQualityController] Nessuna luce direzionale trovata in scena — impossibile applicare la qualità ombre.");
+            Debug.LogWarning("[ShadowQualityController] No directional light found in scene — cannot apply shadow quality.");
     }
 }

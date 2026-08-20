@@ -2520,12 +2520,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 917e786b0f494424bb2ead58930297de, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::AutoWalkerJumper
-  walkSpeed: 2.5
+  walkDirection: {x: 0, y: 0, z: 1}
+  walkSpeed: 8
   gravity: -19.62
-  jumpingEnabled: 1
-  jumpHeight: 2.5
-  minSecondsBetweenJumps: 4
-  maxSecondsBetweenJumps: 10
+  stuckFrameThreshold: 15
+  stuckPositionEpsilon: 0.02
+  stepJumpHeight: 0.6
+  colliderScanInterval: 1
 --- !u!1 &257481989
 GameObject:
   m_ObjectHideFlags: 0
@@ -9774,6 +9775,8 @@ MonoBehaviour:
   metricsLogger: {fileID: 1034020759}
   playerMovement: {fileID: 249223928}
   biomePoolJson: {fileID: 4900000, guid: 27ea8cdbd25e72541937a8eef39a75f9, type: 3}
+  spawnOnFlatWorldZero: 1
+  worldZeroConfigJson: {fileID: 4900000, guid: 8eb282b3e877481f8a3a2e6f5648d37b, type: 3}
   promptsPerRun: 10
   randomSeed: 0
   delayBetweenPrompts: 1
@@ -11980,12 +11983,12 @@ MonoBehaviour:
   renderDistTiny: 200
   lodHighPercent: 0.5
   lodMediumPercent: 0.753
-  pathWidth: 0
-  pathBlendWidth: 0
-  pathLevel: 0
+  pathWidth: 20
+  pathBlendWidth: 16
+  pathLevel: 24
   defaultObjectPrefab: {fileID: 0}
   objectSpawnChance: 0.001
-  objectGroundOffset: -3
+  objectGroundOffset: -0.1
   scaleHuge: 60
   scaleBig: 40
   scaleNormal: 10
@@ -12007,7 +12010,6 @@ MonoBehaviour:
   mapVisualizer: {fileID: 1508923896}
   skipInitialPlayerSpawn: 0
   logPanel: {fileID: 278922867}
-  disableChunkRemovalForBake: 0
 --- !u!114 &1447165636
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -14111,7 +14113,7 @@ MonoBehaviour:
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   serverAddress: http://25.18.55.60:5000
-  imageSeed: 46
+  imageSeed: 26
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 1772015173}
   autoGenerate: 0

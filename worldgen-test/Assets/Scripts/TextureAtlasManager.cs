@@ -84,7 +84,7 @@ public class TextureAtlasManager : MonoBehaviour
         {
             atlasAlbedo = new Texture2D(2, 2);
             atlasAlbedo.LoadImage(File.ReadAllBytes(albedoPath));
-            Debug.Log("[TextureAtlasManager] Atlas albedo caricata dal disco.");
+            Debug.Log("[TextureAtlasManager] Albedo atlas loaded from disk.");
         }
 
         string normalPath = Path.Combine(dir, "TextureAtlas_Normal.png");
@@ -92,7 +92,7 @@ public class TextureAtlasManager : MonoBehaviour
         {
             atlasNormal = new Texture2D(2, 2);
             atlasNormal.LoadImage(File.ReadAllBytes(normalPath));
-            Debug.Log("[TextureAtlasManager] Atlas normal caricata dal disco.");
+            Debug.Log("[TextureAtlasManager] Normal atlas loaded from disk.");
         }
     }
 
@@ -131,7 +131,7 @@ public class TextureAtlasManager : MonoBehaviour
 
         if (slot >= maxTextures)
         {
-            Debug.LogWarning($"[TextureAtlasManager] Atlas piena, texture ignorata ({fileName}).");
+            Debug.LogWarning($"[TextureAtlasManager] Atlas full, texture ignored ({fileName}).");
             return -1;
         }
 
@@ -183,7 +183,7 @@ public class TextureAtlasManager : MonoBehaviour
         try { root = JObject.Parse(File.ReadAllText(MaterialsPath)); }
         catch (Exception e)
         {
-            Debug.LogError($"[TextureAtlasManager] materials.json malformato, registry vuota: {e.Message}");
+            Debug.LogError($"[TextureAtlasManager] materials.json malformed, empty registry: {e.Message}");
             return;
         }
 
@@ -209,11 +209,11 @@ public class TextureAtlasManager : MonoBehaviour
         }
 
         count = registry.Count;
-        Debug.Log($"[TextureAtlasManager] Registry caricata: {count} materiali.");
+        Debug.Log($"[TextureAtlasManager] Registry loaded: {count} materials.");
 
         if (migratedFromOldFormat)
         {
-            Debug.Log("[TextureAtlasManager] materials.json in formato legacy: migrazione al nuovo formato con footstepType.");
+            Debug.Log("[TextureAtlasManager] materials.json in legacy format: migrating to the new format with footstepType.");
             SaveRegistry();
         }
     }
@@ -236,7 +236,7 @@ public class TextureAtlasManager : MonoBehaviour
 #if UNITY_EDITOR
         AssetDatabase.ImportAsset("Assets/Json/materials.json");
 #endif
-        Debug.Log($"[TextureAtlasManager] materials.json aggiornato ({registry.Count} materiali).");
+        Debug.Log($"[TextureAtlasManager] materials.json updated ({registry.Count} materials).");
     }
 
     public bool HasMaterials => registry.Count > 0;
@@ -297,11 +297,11 @@ public class TextureAtlasManager : MonoBehaviour
             newNormal.Apply(); atlasNormal = newNormal;
             SaveAtlas(atlasAlbedo, "TextureAtlas.png");
             SaveAtlas(atlasNormal, "TextureAtlas_Normal.png");
-            Debug.Log($"[TextureAtlasManager] Atlas ricostruita da {sorted.Count} file locali.");
+            Debug.Log($"[TextureAtlasManager] Atlas rebuilt from {sorted.Count} local files.");
         }
         else
         {
-            Debug.LogWarning("[TextureAtlasManager] Nessun file PNG trovato in GeneratedTexture/.");
+            Debug.LogWarning("[TextureAtlasManager] No PNG files found in GeneratedTexture/.");
         }
     }
 
@@ -310,7 +310,7 @@ public class TextureAtlasManager : MonoBehaviour
     {
         if (!Application.isPlaying)
         {
-            Debug.LogWarning("[TextureAtlasManager] Avvia il gioco prima di rigenerare.");
+            Debug.LogWarning("[TextureAtlasManager] Start the game before regenerating.");
             return;
         }
         StartCoroutine(RegenerateAtlasRoutine());
@@ -321,7 +321,7 @@ public class TextureAtlasManager : MonoBehaviour
         var gt = FindObjectOfType<GenerateTexture>();
         if (gt == null)
         {
-            Debug.LogError("[TextureAtlasManager] GenerateTexture non trovato in scena.");
+            Debug.LogError("[TextureAtlasManager] GenerateTexture not found in scene.");
             yield break;
         }
 
@@ -334,7 +334,7 @@ public class TextureAtlasManager : MonoBehaviour
         atlasAlbedo = null;
         atlasNormal = null;
 
-        Debug.Log($"[TextureAtlasManager] Inizio rigenerazione di {sorted.Count} materiali...");
+        Debug.Log($"[TextureAtlasManager] Starting regeneration of {sorted.Count} materials...");
 
         foreach (var kvp in sorted)
         {
@@ -353,7 +353,7 @@ public class TextureAtlasManager : MonoBehaviour
             yield return new WaitUntil(() => done);
         }
 
-        Debug.Log("<color=cyan>[TextureAtlasManager]</color> Rigenerazione atlas completata.");
+        Debug.Log("<color=cyan>[TextureAtlasManager]</color> Atlas regeneration completed.");
     }
 
     Texture2D Resize(Texture2D src)

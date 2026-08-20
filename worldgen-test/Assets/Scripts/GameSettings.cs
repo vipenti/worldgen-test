@@ -172,7 +172,7 @@ public class GameSettings : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[GameSettings] Impossibile caricare settings.json, uso i default: {ex.Message}");
+            Debug.LogWarning($"[GameSettings] Could not load settings.json, using defaults: {ex.Message}");
         }
     }
 
@@ -186,7 +186,7 @@ public class GameSettings : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[GameSettings] Impossibile salvare settings.json: {ex.Message}");
+            Debug.LogWarning($"[GameSettings] Could not save settings.json: {ex.Message}");
         }
     }
 }

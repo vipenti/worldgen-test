@@ -45,7 +45,7 @@ public class WorldSpawner : MonoBehaviour
     {
         if (!Application.isPlaying)
         {
-            Debug.LogWarning("Per usare le Coroutine ed evitare il freeze, avvia il gioco (Play Mode)!");
+            Debug.LogWarning("To use Coroutines and avoid freezing, start the game (Play Mode)!");
             return;
         }
         
@@ -63,7 +63,7 @@ public class WorldSpawner : MonoBehaviour
             deletedCount++;
             Destroy(child.gameObject);
         }
-        Debug.Log($"Pulizia completata: rimossi {deletedCount} blocchi.");
+        Debug.Log($"Cleanup completed: removed {deletedCount} blocks.");
         yield return null; // Aspetta un frame per permettere la distruzione
 
         // 2. Caricamento JSON via streaming (evita la creazione di milioni di liste annidate)
@@ -78,7 +78,7 @@ public class WorldSpawner : MonoBehaviour
         int sizeY = worldData.sizeY;
         int sizeX = worldData.sizeX;
 
-        Debug.Log($"Inizio generazione asincrona. Dimensioni: X:{sizeX} Y:{sizeY} Z:{sizeZ}");
+        Debug.Log($"Starting async generation. Size: X:{sizeX} Y:{sizeY} Z:{sizeZ}");
 
         int spawnedCount = 0;
         int culledCount = 0;
@@ -125,7 +125,7 @@ public class WorldSpawner : MonoBehaviour
                 yield return null; // Aspetta solo il frame successivo
         }
 
-        Debug.Log($"OPERAZIONE COMPLETATA! Blocchi creati: {spawnedCount} | Blocchi nascosti scartati: {culledCount}");
+        Debug.Log($"OPERATION COMPLETED! Blocks created: {spawnedCount} | Hidden blocks discarded: {culledCount}");
     }
 
     // --- Resto del codice invariato (per compatibilità con la tua struttura) ---
@@ -144,7 +144,7 @@ public class WorldSpawner : MonoBehaviour
             if (prefab != null)
                 blockPrefabs.Add(prefab);
         }
-        Debug.Log($"Prefab caricati: {blockPrefabs.Count}");
+        Debug.Log($"Prefabs loaded: {blockPrefabs.Count}");
 #endif
     }
 
@@ -227,7 +227,7 @@ public class WorldSpawner : MonoBehaviour
         int sizeY = worldData.sizeY;
         int sizeX = worldData.sizeX;
 
-        Debug.Log($"Generazione sincrona avviata. Pulizia: {deletedCount} blocchi rimossi. Dimensioni: X:{sizeX} Y:{sizeY} Z:{sizeZ}");
+        Debug.Log($"Sync generation started. Cleanup: {deletedCount} blocks removed. Size: X:{sizeX} Y:{sizeY} Z:{sizeZ}");
 
         int spawnedCount = 0;
         int culledCount = 0;
@@ -264,7 +264,7 @@ public class WorldSpawner : MonoBehaviour
             }
         }
 
-        Debug.Log($"OPERAZIONE COMPLETATA! Blocchi creati: {spawnedCount} | Blocchi nascosti scartati: {culledCount}");
+        Debug.Log($"OPERATION COMPLETED! Blocks created: {spawnedCount} | Hidden blocks discarded: {culledCount}");
     }
 
     bool TryLoadWorldDataStreamed(out StreamedWorldData worldData, out string error)
@@ -308,7 +308,7 @@ public class WorldSpawner : MonoBehaviour
             sizeZ = sizeZ
         };
 
-        Debug.Log($"JSON letto in streaming da {sourceDescription}. Celle totali: {flatGrid.Length}");
+        Debug.Log($"JSON streamed from {sourceDescription}. Total cells: {flatGrid.Length}");
         return true;
     }
 

@@ -10891,7 +10891,6 @@ GameObject:
   - component: {fileID: 1447165635}
   - component: {fileID: 1447165636}
   - component: {fileID: 1447165637}
-  - component: {fileID: 1447165638}
   - component: {fileID: 1447165639}
   m_Layer: 0
   m_Name: VoxelTerrain
@@ -11023,22 +11022,6 @@ MonoBehaviour:
   highDistance: 0
   mediumDistance: 0
   maxDistance: 0
---- !u!114 &1447165638
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1447165632}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 49ac728a8c63e7e43bafab1fa3a02b9b, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::WorldSnapshotLoader
-  worldManager: {fileID: 0}
-  sessionFolderName: 
-  loadOnStart: 0
-  delayBetweenBiomes: 2
 --- !u!114 &1447165639
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -12095,12 +12078,6 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1634537603}
-    - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1634537604}
-    - targetCorrespondingSourceObject: {fileID: 1717954561962503725, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
-      insertIndex: -1
-      addedObject: {fileID: 1634537605}
     - targetCorrespondingSourceObject: {fileID: 1767192433, guid: f6336ac4ac8b4d34bc5072418cdc62a0, type: 3}
       insertIndex: -1
       addedObject: {fileID: 2134091350}
@@ -12167,34 +12144,6 @@ MonoBehaviour:
   pitchVariation: 0.08
   volumeVariation: 0.1
   baseVolume: 0.6
---- !u!114 &1634537604
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1634537599}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3ad091341b6baf045ae32a733c6f6535, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::VRPathRecorder
-  target: {fileID: 0}
-  sampleInterval: 0.1
-  flushEverySamples: 10
---- !u!114 &1634537605
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1634537599}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 5bc381a004d4ede48a47856337dc52e7, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: Assembly-CSharp::BiomeSnapshotRecorder
-  target: {fileID: 0}
 --- !u!1 &1651245722
 GameObject:
   m_ObjectHideFlags: 0

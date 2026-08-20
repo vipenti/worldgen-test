@@ -224,7 +224,7 @@ public class ObjectDistanceCuller : MonoBehaviour
 
             if (LODManager.Instance == null)
             {
-                Debug.LogWarning($"[ObjectDistanceCuller] LODManager.Instance ancora null dopo il tentativo di ripristino su '{go.name}' — registrazione di '{name}' saltata per questo frame.");
+                Debug.LogWarning($"[ObjectDistanceCuller] LODManager.Instance still null after the restore attempt on '{go.name}' — registration of '{name}' skipped for this frame.");
                 return;
             }
         }

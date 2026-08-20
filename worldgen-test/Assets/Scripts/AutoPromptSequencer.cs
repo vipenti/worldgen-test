@@ -87,7 +87,7 @@ public class AutoPromptSequencer : MonoBehaviour
     {
         if (llmWorldDirector == null)
         {
-            Debug.LogError("[AutoPromptSequencer] Nessun LLMWorldDirector trovato in scena — impossibile eseguire il prompt.");
+            Debug.LogError("[AutoPromptSequencer] No LLMWorldDirector found in scene — cannot run the prompt.");
             yield break;
         }
 
@@ -97,7 +97,7 @@ public class AutoPromptSequencer : MonoBehaviour
         LLMWorldDirector.OnTerrainPipelineDone += OnTerrainDone;
         LLMWorldDirector.OnGenerationFailed    += OnFailed;
 
-        Debug.Log($"<color=cyan>[AutoPromptSequencer]</color> Avvio prompt {CurrentIndex + 1}/{prompts.Count}: \"{prompt}\"");
+        Debug.Log($"<color=cyan>[AutoPromptSequencer]</color> Starting prompt {CurrentIndex + 1}/{prompts.Count}: \"{prompt}\"");
         llmWorldDirector.SendRequestToLLM(prompt);
 
         float elapsed = 0f;
@@ -111,12 +111,12 @@ public class AutoPromptSequencer : MonoBehaviour
 
         if (_failed)
         {
-            Debug.LogWarning($"[AutoPromptSequencer] Prompt {CurrentIndex + 1}/{prompts.Count} fallito, passo al successivo.");
+            Debug.LogWarning($"[AutoPromptSequencer] Prompt {CurrentIndex + 1}/{prompts.Count} failed, moving to the next one.");
             yield break;
         }
         if (!_terrainDone)
         {
-            Debug.LogWarning($"[AutoPromptSequencer] Prompt {CurrentIndex + 1}/{prompts.Count} in timeout dopo {perPromptTimeout}s, passo al successivo.");
+            Debug.LogWarning($"[AutoPromptSequencer] Prompt {CurrentIndex + 1}/{prompts.Count} timed out after {perPromptTimeout}s, moving to the next one.");
             yield break;
         }
 
@@ -128,7 +128,7 @@ public class AutoPromptSequencer : MonoBehaviour
         while (GenerateAsset.IsGenerating)
             yield return null;
 
-        Debug.Log($"<color=cyan>[AutoPromptSequencer]</color> Prompt {CurrentIndex + 1}/{prompts.Count} completato.");
+        Debug.Log($"<color=cyan>[AutoPromptSequencer]</color> Prompt {CurrentIndex + 1}/{prompts.Count} completed.");
     }
 
     void OnTerrainDone() => _terrainDone = true;

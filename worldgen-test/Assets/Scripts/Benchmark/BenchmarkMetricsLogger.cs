@@ -1,7 +1,6 @@
 using System.Collections.Generic;
-using System.Diagnostics;
 using UnityEngine;
-using Debug = UnityEngine.Debug;
+using UnityEngine.Profiling;
 
 /// <summary>
 /// Campiona FPS e % di RAM di processo a intervalli regolari, raggruppati in "segmenti"
@@ -24,24 +23,43 @@ public class BenchmarkMetricsLogger : MonoBehaviour
         public float fps1PercentLow;
         public float avgRamPercent;
         public float maxRamPercent;
+        // MB assoluti del working set del processo — indipendenti da SystemInfo.systemMemorySize,
+        // che su alcune configurazioni può restituire 0 (RAM totale non disponibile) e far collassare
+        // avgRamPercent/maxRamPercent a 0 anche quando il processo usa RAM per davvero. Vedi Awake().
+        public float avgRamMB;
+        public float maxRamMB;
     }
 
     readonly List<float> _fpsSamples = new List<float>();
-    readonly List<float> _ramSamples = new List<float>();
+    readonly List<float> _ramMbSamples = new List<float>();
     float _timer;
     bool _sampling;
     string _currentLabel;
     bool _currentStructured;
-    Process _process;
+    float _totalSystemMB;
 
-    void Awake() => _process = Process.GetCurrentProcess();
+    void Awake()
+    {
+        _totalSystemMB = SystemInfo.systemMemorySize;
+
+        // NOTA STORICA: qui prima leggevamo System.Diagnostics.Process.GetCurrentProcess().WorkingSet64
+        // per la RAM di processo — funziona in Editor (Mono) ma su una build IL2CPP restituisce
+        // silenziosamente 0 in ogni frame invece di lanciare un errore (limite noto: le API di
+        // introspezione del processo del BCL .NET non sono pienamente supportate sotto IL2CPP),
+        // quindi ogni report da build finiva con RAM sempre a 0 MB / 0%. Profiler.GetTotalAllocatedMemoryLong()
+        // è l'API nativa di Unity per lo stesso scopo (la usa anche la finestra Profiler) e funziona
+        // identica in Editor e in build a prescindere dal backend di scripting.
+        Debug.Log($"[BenchmarkMetricsLogger] System RAM: {_totalSystemMB:F0} MB. Initial allocated memory: {Profiler.GetTotalAllocatedMemoryLong() / 1024f / 1024f:F1} MB.");
+        if (_totalSystemMB <= 0f)
+            Debug.LogWarning("[BenchmarkMetricsLogger] SystemInfo.systemMemorySize returned an invalid value — RAM % will read 0.0 for the whole run; use avgRamMB/maxRamMB in the report instead.");
+    }
 
     public void BeginSegment(string label, bool structured)
     {
         _currentLabel = label;
         _currentStructured = structured;
         _fpsSamples.Clear();
-        _ramSamples.Clear();
+        _ramMbSamples.Clear();
         _timer = 0f;
         _sampling = true;
     }
@@ -80,14 +98,17 @@ public class BenchmarkMetricsLogger : MonoBehaviour
         for (int i = 0; i < lowCount; i++) lowSum += sorted[i];
         stats.fps1PercentLow = lowSum / lowCount;
 
-        float ramSum = 0f, ramMax = 0f;
-        foreach (float r in _ramSamples)
+        float mbSum = 0f, mbMax = 0f;
+        foreach (float mb in _ramMbSamples)
         {
-            ramSum += r;
-            if (r > ramMax) ramMax = r;
+            mbSum += mb;
+            if (mb > mbMax) mbMax = mb;
         }
-        stats.avgRamPercent = ramSum / _ramSamples.Count;
-        stats.maxRamPercent = ramMax;
+        float avgMb = mbSum / _ramMbSamples.Count;
+        stats.avgRamMB = avgMb;
+        stats.maxRamMB = mbMax;
+        stats.avgRamPercent = _totalSystemMB > 0f ? avgMb / _totalSystemMB * 100f : 0f;
+        stats.maxRamPercent = _totalSystemMB > 0f ? mbMax / _totalSystemMB * 100f : 0f;
 
         return stats;
     }
@@ -103,12 +124,9 @@ public class BenchmarkMetricsLogger : MonoBehaviour
         float fps = Time.unscaledDeltaTime > 0f ? 1f / Time.unscaledDeltaTime : 0f;
         _fpsSamples.Add(fps);
 
-        // % di RAM FISICA usata dal processo Unity sul totale disponibile sulla macchina — più
-        // leggibile per il paper di un valore assoluto in MB, e confrontabile fra hardware diversi.
-        _process.Refresh();
-        long workingSetBytes = _process.WorkingSet64;
-        float totalSystemBytes = SystemInfo.systemMemorySize * 1024f * 1024f;
-        float ramPercent = totalSystemBytes > 0f ? workingSetBytes / totalSystemBytes * 100f : 0f;
-        _ramSamples.Add(ramPercent);
+        // Memoria totale allocata da Unity (managed + subsystem nativi) — vedi nota in Awake() sul
+        // perché non usiamo più System.Diagnostics.Process qui.
+        float allocatedMB = Profiler.GetTotalAllocatedMemoryLong() / 1024f / 1024f;
+        _ramMbSamples.Add(allocatedMB);
     }
 }

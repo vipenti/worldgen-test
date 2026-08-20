@@ -104,7 +104,7 @@ public class LLM3DGeneration : MonoBehaviour
 
             if (!File.Exists(absImagePath))
             {
-                Debug.LogError($"LLM3DGeneration: file non trovato: {absImagePath}");
+                Debug.LogError($"LLM3DGeneration: file not found: {absImagePath}");
                 IsGenerating = false;
                 yield break;
             }
@@ -144,19 +144,21 @@ public class LLM3DGeneration : MonoBehaviour
             req.SetRequestHeader("Content-Type", "application/json");
             req.timeout = 180;
 
-            Debug.Log($"LLM3DGeneration: generazione '{name}'...");
+            Debug.Log($"LLM3DGeneration: generating '{name}'...");
+            float callStart = Time.realtimeSinceStartup;
             yield return req.SendWebRequest();
+            LlmCallMetrics.Report("llm3d_gen", Time.realtimeSinceStartup - callStart, req.result == UnityWebRequest.Result.Success);
 
             if (req.responseCode == 503)
             {
                 attempt++;
                 if (attempt > maxBusyRetries)
                 {
-                    Debug.LogError($"LLM3DGeneration: '{name}' — Trellis ancora occupato dopo {maxBusyRetries} tentativi, rinuncio.");
+                    Debug.LogError($"LLM3DGeneration: '{name}' — Trellis still busy after {maxBusyRetries} attempts, giving up.");
                     IsGenerating = false;
                     yield break;
                 }
-                Debug.Log($"LLM3DGeneration: '{name}' — Trellis occupato (503), retry {attempt}/{maxBusyRetries} tra {busyRetryDelaySeconds}s...");
+                Debug.Log($"LLM3DGeneration: '{name}' — Trellis busy (503), retry {attempt}/{maxBusyRetries} in {busyRetryDelaySeconds}s...");
                 yield return new WaitForSeconds(busyRetryDelaySeconds);
                 continue;
             }
@@ -168,7 +170,7 @@ public class LLM3DGeneration : MonoBehaviour
                 yield break;
             }
 
-            Debug.Log($"LLM3DGeneration: risposta ricevuta ({req.downloadHandler.data.Length} bytes)");
+            Debug.Log($"LLM3DGeneration: response received ({req.downloadHandler.data.Length} bytes)");
             voxelRenderer?.LoadFromJson(req.downloadHandler.text, name);
             break;
         }

@@ -327,7 +327,9 @@ public class LLMWorldDirector : MonoBehaviour
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
 
+            float callStart = Time.realtimeSinceStartup;
             yield return request.SendWebRequest();
+            LlmCallMetrics.Report("chat_completion", Time.realtimeSinceStartup - callStart, request.result == UnityWebRequest.Result.Success);
 
             if (request.result == UnityWebRequest.Result.Success)
             {
@@ -361,7 +363,7 @@ public class LLMWorldDirector : MonoBehaviour
                 // dettagli, e diventa visibile anche nel LogPanel in game via OnGenerationFailed
                 // (che WorldManager.HandleGenerationFailed già ascolta).
                 string label = string.IsNullOrEmpty(callLabel) ? "" : $" ({callLabel})";
-                Debug.LogError($"[LLMWorldDirector] Chiamata LLM fallita{label}: {request.result} — " +
+                Debug.LogError($"[LLMWorldDirector] LLM call failed{label}: {request.result} — " +
                     $"{request.error} (HTTP {request.responseCode})\n{request.downloadHandler?.text}");
                 OnGenerationFailed?.Invoke($"Chiamata al modello fallita{label}: {request.error}. " +
                     "Controlla che LM Studio sia in esecuzione e riprova.");
@@ -405,14 +407,14 @@ public class LLMWorldDirector : MonoBehaviour
             // Prima veniva inghiottita in silenzio: llm_generated.json restava quello vecchio
             // senza nessuna indicazione del perché, indistinguibile da un bug diverso. Ora almeno
             // si vede in console cosa ha risposto il modello e perché il parsing è fallito.
-            Debug.LogError($"[LLMWorldDirector] Impossibile analizzare la risposta LLM per i parametri del terreno: {ex.Message}\nRisposta grezza:\n{rawResponse}");
+            Debug.LogError($"[LLMWorldDirector] Could not parse the LLM response for terrain parameters: {ex.Message}\nRaw response:\n{rawResponse}");
             OnGenerationFailed?.Invoke("Risposta del modello non valida per i parametri del terreno. Riprova.");
             yield break;
         }
 
         if (string.IsNullOrEmpty(cleanJson))
         {
-            Debug.LogError($"[LLMWorldDirector] Nessun oggetto JSON trovato nella risposta LLM per i parametri del terreno. Risposta grezza:\n{rawResponse}");
+            Debug.LogError($"[LLMWorldDirector] No JSON object found in the LLM response for terrain parameters. Raw response:\n{rawResponse}");
             OnGenerationFailed?.Invoke("Il modello non ha restituito i parametri del terreno. Riprova.");
             yield break;
         }
@@ -471,8 +473,8 @@ public class LLMWorldDirector : MonoBehaviour
         if (!hasChunkHeight || !hasChunkWidth)
         {
             string missing = (!hasChunkHeight ? "chunkHeight " : "") + (!hasChunkWidth ? "chunkWidth" : "");
-            Debug.LogError($"[LLMWorldDirector] Risposta LLM incompleta: mancano '{missing.Trim()}' — " +
-                $"llm_generated.json NON aggiornato (resta il bioma precedente). JSON ricevuto dal modello:\n{cleanJson}");
+            Debug.LogError($"[LLMWorldDirector] Incomplete LLM response: missing '{missing.Trim()}' — " +
+                $"llm_generated.json NOT updated (previous biome kept). JSON received from the model:\n{cleanJson}");
             OnGenerationFailed?.Invoke("Il modello non ha generato tutti i parametri del terreno richiesti. Riprova.");
             yield break;
         }
@@ -556,7 +558,7 @@ public class LLMWorldDirector : MonoBehaviour
     /// </summary>
     void TriggerTerrainTransition()
     {
-        Debug.Log("<color=green>[LLMWorldDirector]</color> Gating superato con successo. Iniezione dati e avvio interpolazione.");
+        Debug.Log("<color=green>[LLMWorldDirector]</color> Gating passed successfully. Injecting data and starting interpolation.");
         OnGenerationProgress?.Invoke("Building terrain maps...", 0.75f);
 
         // Unico punto di swap: ApplyNewConfig congela il bioma vecchio (ancora quello attivo fino

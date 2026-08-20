@@ -7,14 +7,13 @@ using UnityEngine;
 /// <summary>
 /// Modalità "tour pregenerato": prima di far giocare, genera per davvero (via LLM + pipeline asset,
 /// come una generazione normale) N biomi in sequenza da <see cref="biomePrompts"/>, salvando ogni
-/// risultato come snapshot (stesso formato di BiomeSnapshotRecorder: biome_000N_llm_generated.json
+/// risultato come snapshot (formato biome_000N_llm_generated.json
 /// / biome_000N_current_objects.json) invece di lasciarlo semplicemente "l'ultimo bioma attivo".
 /// Una volta che tutti sono pronti (asset 3D già in cache su disco), il gameplay parte normale — il
 /// MONDO resta generato proceduralmente a runtime come sempre (chunk streaming, WorldManager
 /// invariato) — ma quale bioma è attivo avanza da solo mano a mano che il giocatore percorre la
 /// distanza assegnata a ciascuno (<see cref="biomeLengths"/>), applicando lo snapshot successivo
-/// con ApplyNewConfig() — zero chiamate LLM durante il gioco, esattamente come WorldSnapshotLoader,
-/// ma innescato dalla distanza percorsa invece che da un percorso registrato in precedenza.
+/// con ApplyNewConfig() — zero chiamate LLM durante il gioco, innescato dalla distanza percorsa.
 /// </summary>
 public class PregeneratedBiomeSequencer : MonoBehaviour
 {
@@ -75,7 +74,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
     void HandleAssetProgress(int done, int total)
     {
         if (!IsPregenerating || total <= 0) return;
-        LogPregenStatus($"Generazione asset 3D... ({done}/{total})");
+        LogPregenStatus($"Generating 3D assets... ({done}/{total})");
     }
 
     // Riga "viva": si sovrascrive ad ogni progresso granulare (step LLM, asset 3D N/M) — via
@@ -83,7 +82,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
     // di fila sostituiscono la stessa riga invece di accumularsi).
     void LogPregenStatus(string status)
     {
-        string msg = $"Bioma {_pregenIndex + 1}/{biomePrompts.Count}: {status}";
+        string msg = $"Biome {_pregenIndex + 1}/{biomePrompts.Count}: {status}";
         Debug.Log($"[PregeneratedBiomeSequencer] {msg}");
         worldManager?.SetStatusText(msg);
     }
@@ -124,13 +123,13 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
         if (IsPregenerating || IsReady) yield break;
         if (worldManager == null || llmWorldDirector == null)
         {
-            Debug.LogError("[PregeneratedBiomeSequencer] worldManager o llmWorldDirector mancante.");
-            worldManager?.logPanel?.LogError("PregeneratedBiomeSequencer: worldManager o llmWorldDirector mancante.");
+            Debug.LogError("[PregeneratedBiomeSequencer] worldManager or llmWorldDirector missing.");
+            worldManager?.logPanel?.LogError("PregeneratedBiomeSequencer: worldManager or llmWorldDirector missing.");
             yield break;
         }
         if (biomePrompts.Count == 0)
         {
-            LogPregenError("Nessun prompt in biomePrompts.");
+            LogPregenError("No prompts in biomePrompts.");
             yield break;
         }
 
@@ -149,7 +148,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
             string prompt = biomePrompts[i];
             if (string.IsNullOrWhiteSpace(prompt))
             {
-                LogPregenError($"Prompt #{i + 1} vuoto — sequenza interrotta.");
+                LogPregenError($"Prompt #{i + 1} empty — sequence stopped.");
                 IsPregenerating = false;
                 LLMWorldDirector.IsUIFocused = false;
                 yield break;
@@ -162,7 +161,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
             LLMWorldDirector.OnTerrainPipelineDone += onDone;
             LLMWorldDirector.OnGenerationFailed += onFail;
 
-            LogPregenEvent($"Bioma {i + 1}/{biomePrompts.Count}: avvio generazione — \"{prompt}\"");
+            LogPregenEvent($"Biome {i + 1}/{biomePrompts.Count}: starting generation — \"{prompt}\"");
             llmWorldDirector.SendRequestToLLM(prompt);
 
             float elapsed = 0f;
@@ -177,7 +176,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
 
             if (failed || !terrainDone)
             {
-                LogPregenError($"Bioma {i + 1}/{biomePrompts.Count} fallito o in timeout — sequenza interrotta.");
+                LogPregenError($"Biome {i + 1}/{biomePrompts.Count} failed or timed out — sequence stopped.");
                 IsPregenerating = false;
                 LLMWorldDirector.IsUIFocused = false;
                 yield break;
@@ -196,7 +195,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
             string objSrc = Path.Combine(jsonFolder, "current_objects.json");
             if (!File.Exists(llmSrc) || !File.Exists(objSrc))
             {
-                LogPregenError($"Bioma {i + 1}/{biomePrompts.Count}: file di config mancanti dopo la generazione — sequenza interrotta.");
+                LogPregenError($"Biome {i + 1}/{biomePrompts.Count}: config files missing after generation — sequence stopped.");
                 IsPregenerating = false;
                 LLMWorldDirector.IsUIFocused = false;
                 yield break;
@@ -205,7 +204,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
             string prefix = $"biome_{(i + 1):D4}";
             File.Copy(llmSrc, Path.Combine(PregenSessionFolder, prefix + "_llm_generated.json"), true);
             File.Copy(objSrc, Path.Combine(PregenSessionFolder, prefix + "_current_objects.json"), true);
-            LogPregenEvent($"Bioma {i + 1}/{biomePrompts.Count}: pronto e salvato.");
+            LogPregenEvent($"Biome {i + 1}/{biomePrompts.Count}: ready and saved.");
         }
 
         IsPregenerating = false;
@@ -220,7 +219,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
             ? new Vector2(worldManager.player.position.x, worldManager.player.position.z)
             : Vector2.zero;
         _advancing = true;
-        LogPregenEvent($"Sequenza pronta ({biomePrompts.Count} biomi) — gameplay avviato dal bioma #1.");
+        LogPregenEvent($"Sequence ready ({biomePrompts.Count} biomes) — gameplay started from biome #1.");
     }
 
     void ApplyPregeneratedBiome(int index)
@@ -234,7 +233,7 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
 
         if (!File.Exists(srcLlm) || !File.Exists(srcObjects))
         {
-            LogPregenError($"Snapshot bioma #{index + 1} mancante in {PregenSessionFolder}, applicazione saltata.");
+            LogPregenError($"Snapshot for biome #{index + 1} missing in {PregenSessionFolder}, apply skipped.");
             return;
         }
 
@@ -245,6 +244,6 @@ public class PregeneratedBiomeSequencer : MonoBehaviour
 
         // Riga permanente anche qui: durante il gameplay vero e proprio (non solo in fase di
         // pre-generazione) il giocatore vede quando entra in un nuovo bioma della sequenza.
-        LogPregenEvent($"Bioma #{index + 1}/{biomePrompts.Count} raggiunto in gioco (nessuna chiamata LLM, asset già in cache).");
+        LogPregenEvent($"Biome #{index + 1}/{biomePrompts.Count} reached in-game (no LLM call, assets already cached).");
     }
 }

@@ -86,7 +86,7 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
         catch (System.ArgumentException)
         {
             // Il device salvato non è più disponibile (scollegato/rinominato) — resta sul default.
-            Debug.LogWarning($"[VoiceBiomeInput] Device microfono '{device}' non trovato, uso il default.");
+            Debug.LogWarning($"[VoiceBiomeInput] Microphone device '{device}' not found, using default.");
             microphoneRecord.SelectedMicDevice = null;
         }
     }

@@ -271,7 +271,7 @@ public class OptionsPanel : MonoBehaviour
     {
         if (GameSettings.Instance == null)
         {
-            Debug.LogWarning("[OptionsPanel] GameSettings non presente in scena, impossibile applicare.");
+            Debug.LogWarning("[OptionsPanel] GameSettings not present in scene, cannot apply.");
             return;
         }
 
@@ -300,7 +300,7 @@ public class OptionsPanel : MonoBehaviour
     {
         if (GameSettings.Instance == null)
         {
-            Debug.LogWarning("[OptionsPanel] GameSettings non presente in scena, impossibile applicare.");
+            Debug.LogWarning("[OptionsPanel] GameSettings not present in scene, cannot apply.");
             return;
         }
         GameSettings.Instance.ApplyShadowQuality(level);
@@ -323,7 +323,7 @@ public class OptionsPanel : MonoBehaviour
     {
         if (GameSettings.Instance == null)
         {
-            Debug.LogWarning("[OptionsPanel] GameSettings non presente in scena, impossibile applicare.");
+            Debug.LogWarning("[OptionsPanel] GameSettings not present in scene, cannot apply.");
             return;
         }
         float density = densitySlider != null ? densitySlider.value : 1f;

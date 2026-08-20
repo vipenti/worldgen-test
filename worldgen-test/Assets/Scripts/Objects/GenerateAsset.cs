@@ -132,19 +132,19 @@ public class GenerateAsset : MonoBehaviour
 
                 if (renderer != null)
                 {
-                    Debug.Log($"[GenerateAsset] File voxjson per '{name}' trovato. Compilazione mesh a runtime...");
+                    Debug.Log($"[GenerateAsset] Voxjson file for '{name}' found. Compiling mesh at runtime...");
                     renderer.LoadFromJson(jsonContent, name);
                 }
                 else
                 {
-                    Debug.LogError($"[GenerateAsset] '{name}': voxjson trovato su disco ma nessun VoxelRenderer in scena, impossibile compilare la mesh.");
+                    Debug.LogError($"[GenerateAsset] '{name}': voxjson found on disk but no VoxelRenderer in scene, cannot compile the mesh.");
                     onResult(false);
                     yield break;
                 }
             }
             else
             {
-                Debug.Log($"[GenerateAsset] Asset '{name}' già presente in cache.");
+                Debug.Log($"[GenerateAsset] Asset '{name}' already present in cache.");
             }
             worldManager.ReplacePlaceholders(name);
             onResult(true);
@@ -197,7 +197,7 @@ public class GenerateAsset : MonoBehaviour
 
             if (foundAnyLOD)
             {
-                Debug.Log($"[GenerateAsset] Solo LOD trovati per '{name}' (nessun voxjson base). Compilazione mesh dai LOD esistenti...");
+                Debug.Log($"[GenerateAsset] Only LODs found for '{name}' (no base voxjson). Compiling mesh from existing LODs...");
                 worldManager.ReplacePlaceholders(name);
                 onResult(true);
                 yield break;
@@ -268,8 +268,10 @@ public class GenerateAsset : MonoBehaviour
             req.SetRequestHeader("Content-Type", "application/json");
             req.timeout = 120;
 
-            Debug.Log($"[GenerateAsset] Produttore immagini: richiesta '{name}'...");
+            Debug.Log($"[GenerateAsset] Image producer: requesting '{name}'...");
+            float imgCallStart = Time.realtimeSinceStartup;
             yield return req.SendWebRequest();
+            LlmCallMetrics.Report("asset_create_image", Time.realtimeSinceStartup - imgCallStart, req.result == UnityWebRequest.Result.Success);
 
             if (req.result == UnityWebRequest.Result.Success && req.downloadHandler.data != null && req.downloadHandler.data.Length > 0)
             {
@@ -277,7 +279,7 @@ public class GenerateAsset : MonoBehaviour
             }
             else
             {
-                Debug.LogError($"[GenerateAsset] Produttore immagini: '{name}' fallito — {req.responseCode} {req.error}");
+                Debug.LogError($"[GenerateAsset] Image producer: '{name}' failed — {req.responseCode} {req.error}");
                 onFailed?.Invoke();
             }
         }
@@ -311,15 +313,17 @@ public class GenerateAsset : MonoBehaviour
                 req.SetRequestHeader("Content-Type", "application/json");
                 req.timeout = 180;
 
-                Debug.Log($"[GenerateAsset] Trellis[{trellisEndpoint}]: generazione '{item.name}'...");
+                Debug.Log($"[GenerateAsset] Trellis[{trellisEndpoint}]: generating '{item.name}'...");
+                float trellisCallStart = Time.realtimeSinceStartup;
                 yield return req.SendWebRequest();
+                LlmCallMetrics.Report("asset_3d_gen", Time.realtimeSinceStartup - trellisCallStart, req.result == UnityWebRequest.Result.Success);
 
                 if (req.responseCode == 503)
                 {
                     attempt++;
                     if (attempt > trellisBusyMaxRetries)
                     {
-                        Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' ancora occupato dopo {trellisBusyMaxRetries} tentativi, rinuncio.");
+                        Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' still busy after {trellisBusyMaxRetries} attempts, giving up.");
                         break;
                     }
                     yield return new WaitForSeconds(trellisBusyRetryDelaySeconds);
@@ -345,12 +349,12 @@ public class GenerateAsset : MonoBehaviour
                     }
                     else
                     {
-                        Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' — voxjson ricevuto ma nessun VoxelRenderer trovato in scena, impossibile caricare la mesh. Resta placeholder.");
+                        Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' — voxjson received but no VoxelRenderer found in scene, cannot load the mesh. Placeholder remains.");
                     }
                 }
                 else
                 {
-                    Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' fallito — {req.responseCode} {req.error}");
+                    Debug.LogError($"[GenerateAsset] Trellis[{trellisEndpoint}]: '{item.name}' failed — {req.responseCode} {req.error}");
                 }
                 break;
             }
@@ -377,7 +381,7 @@ public class GenerateAsset : MonoBehaviour
     {
         if (!Application.isPlaying)
         {
-            Debug.LogWarning("[GenerateAsset] Avvia il gioco (Play Mode) prima di rigenerare gli asset via IA!");
+            Debug.LogWarning("[GenerateAsset] Start the game (Play Mode) before regenerating assets via AI!");
             return;
         }
         StartCoroutine(RegenerateAllFromRegistryRoutine());
@@ -388,7 +392,7 @@ public class GenerateAsset : MonoBehaviour
         string registryPath = Path.Combine(PathSettings.GetJsonFolder(), "all_objects.json");
         if (!File.Exists(registryPath))
         {
-            Debug.LogError($"[GenerateAsset] File di registro non trovato in: {registryPath}");
+            Debug.LogError($"[GenerateAsset] Registry file not found at: {registryPath}");
             yield break;
         }
 
@@ -403,17 +407,17 @@ public class GenerateAsset : MonoBehaviour
         }
         catch (System.Exception ex)
         {
-            Debug.LogError($"[GenerateAsset] Errore nel parsing di all_objects.json: {ex.Message}");
+            Debug.LogError($"[GenerateAsset] Error parsing all_objects.json: {ex.Message}");
             yield break;
         }
 
         if (names.Count == 0)
         {
-            Debug.LogWarning("[GenerateAsset] La lista di all_objects.json è vuota!");
+            Debug.LogWarning("[GenerateAsset] The all_objects.json list is empty!");
             yield break;
         }
 
-        Debug.Log($"[GenerateAsset] Inizio rigenerazione IA forzata per tutti i {names.Count} oggetti del registro globale.");
+        Debug.Log($"[GenerateAsset] Starting forced AI regeneration for all {names.Count} objects in the global registry.");
         
         // Forziamo la rigenerazione eliminando i prefabbricati e la cache delle mesh runtime
         foreach (string name in names)

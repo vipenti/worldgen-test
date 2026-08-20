@@ -53,7 +53,7 @@ public class VoxelRenderer : MonoBehaviour
         }
         else
         {
-            Debug.LogError($"[VoxelRenderer] File JSON originale non trovato per il reload in: {jsonPath}");
+            Debug.LogError($"[VoxelRenderer] Original JSON file not found for reload at: {jsonPath}");
         }
     }
 
@@ -120,7 +120,7 @@ public class VoxelRenderer : MonoBehaviour
                 }
                 catch (Exception ex)
                 {
-                    Debug.LogError($"[VoxelRenderer] Errore nel salvataggio del voxjson base per '{assetName}': {ex.Message}");
+                    Debug.LogError($"[VoxelRenderer] Error saving the base voxjson for '{assetName}': {ex.Message}");
                 }
             }
         }
@@ -191,7 +191,7 @@ public class VoxelRenderer : MonoBehaviour
             }
             catch (Exception ex)
             {
-                Debug.LogError($"[VoxelRenderer] Errore nel salvataggio dei file voxjson su disco: {ex.Message}");
+                Debug.LogError($"[VoxelRenderer] Error saving voxjson files to disk: {ex.Message}");
             }
 #endif
 
@@ -230,7 +230,7 @@ public class VoxelRenderer : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogWarning($"[VoxelRenderer] Impossibile leggere la size di '{assetName}' da current_objects.json: {ex.Message}");
+            Debug.LogWarning($"[VoxelRenderer] Could not read the size of '{assetName}' from current_objects.json: {ex.Message}");
         }
         return null;
     }

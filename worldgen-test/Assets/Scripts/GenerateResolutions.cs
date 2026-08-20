@@ -187,7 +187,7 @@ public class GenerateResolutions : MonoBehaviour
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[GenerateResolutions] Errore nell'uniformare il voxjson: {ex.Message}");
+            Debug.LogError($"[GenerateResolutions] Error uniforming the voxjson: {ex.Message}");
             return json;
         }
     }
@@ -201,7 +201,7 @@ public class GenerateResolutions : MonoBehaviour
         {
             if (!File.Exists(inputFilePath))
             {
-                Debug.LogError($"[GenerateResolutions] File di input non trovato: {inputFilePath}");
+                Debug.LogError($"[GenerateResolutions] Input file not found: {inputFilePath}");
                 return;
             }
 
@@ -215,11 +215,11 @@ public class GenerateResolutions : MonoBehaviour
             }
 
             File.WriteAllText(outputFilePath, outputJsonContent);
-            Debug.Log($"[GenerateResolutions] File uniformato a {resolution} salvato in: {outputFilePath}");
+            Debug.Log($"[GenerateResolutions] File uniformed to {resolution} saved to: {outputFilePath}");
         }
         catch (Exception ex)
         {
-            Debug.LogError($"[GenerateResolutions] Errore nell'uniformare il file: {ex.Message}");
+            Debug.LogError($"[GenerateResolutions] Error uniforming the file: {ex.Message}");
         }
     }
 
@@ -286,11 +286,11 @@ public class GenerateResolutions : MonoBehaviour
     {
         if (string.IsNullOrEmpty(inputJson))
         {
-            Debug.LogWarning("[GenerateResolutions] Il campo inputJson è vuoto!");
+            Debug.LogWarning("[GenerateResolutions] The inputJson field is empty!");
             return;
         }
         outputJson = UniformVoxJson(inputJson, testResolution);
-        Debug.Log("[GenerateResolutions] Downsampling completato per il testo dell'ispettore!");
+        Debug.Log("[GenerateResolutions] Downsampling completed for the inspector text!");
     }
 
     [ContextMenu("Test Downsample (Files on Disk)")]
