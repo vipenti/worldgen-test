@@ -9780,6 +9780,7 @@ MonoBehaviour:
   promptsPerRun: 10
   randomSeed: 0
   delayBetweenPrompts: 1
+  finalBiomeWalkDistance: 400
   perPromptTimeout: 600
   resetStateOnAwake: 1
 --- !u!4 &1034020761
@@ -11970,8 +11971,8 @@ MonoBehaviour:
   transitionLengthInChunks: 32
   frustumPadding: 20
   frustumExitMargin: 40
-  rotationUpdateInterval: 0.05
-  maxChunksCreatedPerFrame: 6
+  rotationUpdateInterval: 0.1
+  maxChunksCreatedPerFrame: 2
   immediateColliderBakeDistance: 40
   maxCollidersBakedPerFrame: 2
   verboseUrbanDecorLogging: 0
@@ -12026,16 +12027,16 @@ MonoBehaviour:
   lmStudioEndpoint: http://25.18.55.60:1234/v1/chat/completions
   modelId: qwen/qwen3.5-9b
   maxTokens: 124000
-  maxTokensThinking: 124000
-  thinkingForDescription: 0
+  maxTokensThinking: 12288
+  thinkingForDescription: 1
   thinkingForParams: 0
-  thinkingForAssetList: 0
-  logThinkingToConsole: 0
-  parallelizeStep2And3: 1
+  thinkingForAssetList: 1
+  logThinkingToConsole: 1
+  parallelizeStep2And3: 0
   thinkingDirective: "<|think|> Think briefly and efficiently. Focus only on the
     key decisions that affect the output \u2014 skip restating the instructions or
     listing every rule you're checking."
-  gptOssReasoningEffort: 0
+  gptOssReasoningEffort: 1
   generateTexture: {fileID: 1573031125}
   generateAsset: {fileID: 1772015175}
   worldManager: {fileID: 0}
@@ -14113,7 +14114,7 @@ MonoBehaviour:
   negativePrompt: shadow, background, ground, floor, base, text, watermark, multiple
     elements
   serverAddress: http://25.18.55.60:5000
-  imageSeed: 26
+  imageSeed: 46
   outputFolder: Assets/GeneratedImages
   llm3DGeneration: {fileID: 1772015173}
   autoGenerate: 0

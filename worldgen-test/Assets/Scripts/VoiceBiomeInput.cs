@@ -4,8 +4,12 @@ using UnityEngine.Events;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using UnityEngine.XR;
 using Whisper;
 using Whisper.Utils;
+// UnityEngine.InputSystem e UnityEngine.XR definiscono entrambi un tipo "InputDevice": alias per
+// disambiguare senza dover scrivere il nome completo ad ogni uso.
+using XRInputDevice = UnityEngine.XR.InputDevice;
 
 /// <summary>
 /// Input vocale "push-to-talk" per la richiesta del bioma, pensato per un gioco streammato
@@ -52,9 +56,25 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
     [Tooltip("Tenendo premuto questo tasto (in aggiunta al click sul pulsante UI) si registra allo stesso modo.")]
     public Key pushToTalkKey = Key.V;
 
+    [Header("VR — push-to-talk (controller)")]
+    [Tooltip("Mano il cui bottone, tenuto premuto, avvia/ferma la registrazione — in aggiunta al tasto fisico da tastiera e al click sul pulsante UI.")]
+    public XRNode vrPushToTalkHand = XRNode.LeftHand;
+    public VRControllerButton vrPushToTalkButton = VRControllerButton.Trigger;
+
+    [Header("VR — conferma/rifiuto trascrizione (controller destro)")]
+    [Tooltip("Bottone che conferma senza dover puntare (in aggiunta a Y/click sul pulsante UI Sì).")]
+    public VRControllerButton vrConfirmButton = VRControllerButton.PrimaryButton;
+    [Tooltip("Bottone che rifiuta/riprova senza dover puntare (in aggiunta a N/click sul pulsante UI No).")]
+    public VRControllerButton vrCancelButton = VRControllerButton.SecondaryButton;
+
     string _lastTranscription;
     bool _isTranscribing;
     bool _recordingFromKey;
+    bool _recordingFromVR;
+    XRInputDevice _vrPushToTalkDevice;
+    XRInputDevice _vrRightDevice;
+    bool _vrConfirmWasPressed;
+    bool _vrCancelWasPressed;
 
     void Awake()
     {
@@ -119,34 +139,63 @@ public class VoiceBiomeInput : MonoBehaviour, IPointerDownHandler, IPointerUpHan
 
     void Update()
     {
-        if (Keyboard.current == null) return;
+        bool typing = IsTypingInTextField();
 
-        // Se il pannello di conferma è aperto, "Y"/"N" confermano o annullano — al posto del
-        // click sui pulsanti Sì/No — e in questo stato ignoriamo il tasto push-to-talk (non ha
-        // senso avviare una nuova registrazione mentre si sta ancora confermando la precedente).
+        // Se il pannello di conferma è aperto, "Y"/"N" da tastiera oppure A/B sul controller
+        // destro confermano o annullano — al posto del click sui pulsanti Sì/No — e in questo
+        // stato ignoriamo il push-to-talk (non ha senso avviare una nuova registrazione mentre
+        // si sta ancora confermando la precedente).
         if (confirmPanel != null && confirmPanel.activeSelf)
         {
-            if (!IsTypingInTextField())
+            if (!typing)
             {
-                if (Keyboard.current.yKey.wasPressedThisFrame) OnConfirmClicked();
-                else if (Keyboard.current.nKey.wasPressedThisFrame) OnCancelClicked();
+                if (Keyboard.current != null)
+                {
+                    if (Keyboard.current.yKey.wasPressedThisFrame) { OnConfirmClicked(); return; }
+                    if (Keyboard.current.nKey.wasPressedThisFrame) { OnCancelClicked(); return; }
+                }
+
+                bool confirmNow = VRControllerInput.IsPressed(XRNode.RightHand, vrConfirmButton, ref _vrRightDevice);
+                if (confirmNow && !_vrConfirmWasPressed) { _vrConfirmWasPressed = true; OnConfirmClicked(); return; }
+                _vrConfirmWasPressed = confirmNow;
+
+                bool cancelNow = VRControllerInput.IsPressed(XRNode.RightHand, vrCancelButton, ref _vrRightDevice);
+                if (cancelNow && !_vrCancelWasPressed) { _vrCancelWasPressed = true; OnCancelClicked(); return; }
+                _vrCancelWasPressed = cancelNow;
             }
             return;
         }
 
         // Tasto fisico tenuto premuto (es. "V"): stesso comportamento del pulsante UI, ma
         // ignorato se l'utente sta scrivendo in un campo di testo (per non intercettare la
-        // lettera "v" digitata a mano).
-        var keyControl = Keyboard.current[pushToTalkKey];
-
-        if (keyControl.wasPressedThisFrame && !IsTypingInTextField())
+        // lettera "v" digitata a mano). Su un build VR standalone senza tastiera fisica,
+        // Keyboard.current è null: saltiamo semplicemente questo ramo, non l'intero metodo.
+        if (Keyboard.current != null && !typing)
         {
-            _recordingFromKey = true;
+            var keyControl = Keyboard.current[pushToTalkKey];
+
+            if (keyControl.wasPressedThisFrame)
+            {
+                _recordingFromKey = true;
+                BeginRecording();
+            }
+            else if (keyControl.wasReleasedThisFrame && _recordingFromKey)
+            {
+                _recordingFromKey = false;
+                EndRecording();
+            }
+        }
+
+        // Trigger sinistro del controller VR: stesso comportamento push-to-talk, tenuto premuto.
+        bool vrPressed = VRControllerInput.IsPressed(vrPushToTalkHand, vrPushToTalkButton, ref _vrPushToTalkDevice);
+        if (vrPressed && !_recordingFromVR)
+        {
+            _recordingFromVR = true;
             BeginRecording();
         }
-        else if (keyControl.wasReleasedThisFrame && _recordingFromKey)
+        else if (!vrPressed && _recordingFromVR)
         {
-            _recordingFromKey = false;
+            _recordingFromVR = false;
             EndRecording();
         }
     }

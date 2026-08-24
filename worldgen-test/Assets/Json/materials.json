@@ -1,0 +1,14 @@
+{
+  "coastal_dune_grass": { "id": 0, "footstepType": "grass" },
+  "packed_sand": { "id": 1, "footstepType": "soft" },
+  "basalt": { "id": 2, "footstepType": "hard" },
+  "deep_ocean_water": { "id": 3, "footstepType": "fluid" },
+  "cracked_obsidian": { "id": 4, "footstepType": "hard" },
+  "dark_volcanic_soil": { "id": 5, "footstepType": "soft" },
+  "molten_lava": { "id": 6, "footstepType": "fluid" },
+  "deep_loam_soil": { "id": 7, "footstepType": "soft" },
+  "rich_organic_turf": { "id": 8, "footstepType": "soft" },
+  "clear_stream_water": { "id": 9, "footstepType": "fluid" },
+  "fern_patch": { "id": 10, "footstepType": "grass" },
+  "pine_needle_bush": { "id": 11, "footstepType": "grass" }
+}

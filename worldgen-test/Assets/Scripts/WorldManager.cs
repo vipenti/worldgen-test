@@ -465,8 +465,13 @@ public class WorldManager : MonoBehaviour
             $"pending={chunk.PendingDecorCount}, isTransitioning={isTransitioning}, t={t:F2} ({(t < 0.5f ? "old biome" : "new biome")}), active={chunk.gameObject.activeSelf}.");
     }
 
+    // Usata quando llm_generated.json non esiste ancora (primo avvio, nessun mondo pre-generato)
+    // o è invalido. perlinScale=0 fa collassare SampleNoise() a un valore costante ovunque (la
+    // coordinata campionata diventa worldX*0, worldZ*0 per ogni punto/ottava) — quindi superficie
+    // piatta invece di un terreno "roccioso" casuale, molto più leggibile come stato di attesa
+    // prima che l'utente generi/carichi un bioma vero.
     BiomeConfig FallbackConfig() => new BiomeConfig {
-        perlinScale = 0.1f, chunkHeight = 64, chunkWidth = 16,
+        perlinScale = 0f, chunkHeight = 64, chunkWidth = 16,
         surfaceTileID = 1, middleTileID = 2, deepTileID = 3,
         liquidTileID = 13, waterLevel = 5,
         octaves = 4, ridgeFactor = 0f, warpStrength = 0.2f

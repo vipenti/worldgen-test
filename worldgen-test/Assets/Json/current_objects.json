@@ -1,0 +1,14 @@
+{
+  "tall pine tree": { "id": 70, "size": "big", "frequency": "very_common", "type": "vegetation", "priority": 3 },
+  "ancient oak trunk": { "id": 71, "size": "big", "frequency": "rare", "type": "vegetation", "priority": 3 },
+  "fern": { "id": 72, "size": "small", "frequency": "very_common", "type": "vegetation", "priority": 4 },
+  "small bush": { "id": 73, "size": "small", "frequency": "common", "type": "vegetation", "priority": 3 },
+  "wild boar": { "id": 8, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "deer": { "id": 7, "size": "normal", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "wolf": { "id": 4, "size": "normal", "frequency": "super_rare", "type": "clutter", "priority": 4 },
+  "fallen log": { "id": 74, "size": "small", "frequency": "rare", "type": "clutter", "priority": 4 },
+  "sharp rock": { "id": 75, "size": "tiny", "frequency": "common", "type": "clutter", "priority": 4 },
+  "sunflower": { "id": 9, "size": "small", "frequency": "super_rare", "type": "vegetation", "priority": 4 },
+  "charred tree trunk": { "id": 28, "size": "big", "frequency": "unique", "type": "clutter", "priority": 4 },
+  "glass bottle": { "id": 68, "size": "tiny", "frequency": "unique", "type": "clutter", "priority": 4 }
+}

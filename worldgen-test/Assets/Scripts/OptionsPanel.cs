@@ -7,6 +7,10 @@ using UnityEngine;
 using UnityEngine.EventSystems;
 using UnityEngine.InputSystem;
 using UnityEngine.UI;
+using UnityEngine.XR;
+// UnityEngine.InputSystem e UnityEngine.XR definiscono entrambi un tipo "InputDevice": alias per
+// disambiguare senza dover scrivere il nome completo ad ogni uso.
+using XRInputDevice = UnityEngine.XR.InputDevice;
 
 /// <summary>
 /// Pannello Opzioni apribile a runtime (pulsante UI o tasto fisico) con tre sezioni:
@@ -29,6 +33,14 @@ public class OptionsPanel : MonoBehaviour
     public Button closeButton;
     [Tooltip("Tasto fisico che apre/chiude il pannello, ignorato mentre si scrive in un campo di testo.")]
     public Key toggleKey = Key.O;
+
+    [Header("VR — toggle pannello (controller)")]
+    [Tooltip("Mano/bottone che apre/chiude il pannello in VR. NB: su Meta Quest il bottone 'Menu' è riservato al sistema (apre il menu Oculus) e non arriva mai all'app via OpenXR — per questo il default è SecondaryButton (Y sinistro), non Menu.")]
+    public XRNode vrToggleHand = XRNode.LeftHand;
+    public VRControllerButton vrToggleButton = VRControllerButton.SecondaryButton;
+
+    XRInputDevice _vrToggleDevice;
+    bool _vrToggleWasPressed;
 
     [Header("Tab")]
     public Button tabGeneraliButton;
@@ -153,8 +165,14 @@ public class OptionsPanel : MonoBehaviour
 
     void Update()
     {
-        if (Keyboard.current == null || IsTypingInTextField()) return;
-        if (Keyboard.current[toggleKey].wasPressedThisFrame) TogglePanel();
+        if (!IsTypingInTextField() && Keyboard.current != null && Keyboard.current[toggleKey].wasPressedThisFrame)
+            TogglePanel();
+
+        // VR: bottone dedicato sul controller, non serve puntare al pulsante. Letto anche su
+        // build standalone senza tastiera fisica (dove Keyboard.current è null).
+        bool vrPressed = VRControllerInput.IsPressed(vrToggleHand, vrToggleButton, ref _vrToggleDevice);
+        if (vrPressed && !_vrToggleWasPressed) TogglePanel();
+        _vrToggleWasPressed = vrPressed;
     }
 
     static bool IsTypingInTextField()

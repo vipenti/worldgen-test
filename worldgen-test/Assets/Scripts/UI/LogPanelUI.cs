@@ -10,6 +10,11 @@ public class LogPanelUI : MonoBehaviour
     public int maxEntries = 60;
     public float fontSize = 20f;
 
+    [Header("Auto-hide")]
+    [Tooltip("Non vogliamo il log permanentemente a schermo in VR: appare quando arriva un nuovo evento, resta leggibile per questi secondi, poi svanisce da solo.")]
+    public float visibleDuration = 4f;
+    public float fadeDuration = 1f;
+
     [Header("Colors")]
     public Color panelColor = new Color(0.05f, 0.05f, 0.08f, 0.6f);
     public Color eventColor = new Color(1f, 0.85f, 0.45f, 1f);
@@ -18,9 +23,11 @@ public class LogPanelUI : MonoBehaviour
 
     TextMeshProUGUI _logText;
     ScrollRect _scrollRect;
+    CanvasGroup _canvasGroup;
     readonly List<string> _lines = new List<string>();
     bool _lastWasProgress = false;
     Coroutine _scrollCoroutine;
+    Coroutine _hideCoroutine;
 
     void Awake()
     {
@@ -47,6 +54,34 @@ public class LogPanelUI : MonoBehaviour
             _lines.RemoveAt(0);
 
         RefreshText();
+        ShowThenAutoHide();
+    }
+
+    // Non vogliamo il log fisso a schermo in VR: ogni nuova riga lo rende visibile e (ri)avvia il
+    // conto alla rovescia per lo svanimento, così finché arrivano eventi ravvicinati resta leggibile
+    // senza sparire a metà, e si nasconde da solo appena il flusso si ferma.
+    void ShowThenAutoHide()
+    {
+        if (_canvasGroup == null) return;
+        if (_hideCoroutine != null) StopCoroutine(_hideCoroutine);
+        _canvasGroup.alpha = 1f;
+        _hideCoroutine = StartCoroutine(HideAfterDelay());
+    }
+
+    IEnumerator HideAfterDelay()
+    {
+        yield return new WaitForSeconds(visibleDuration);
+
+        float t = 0f;
+        float startAlpha = _canvasGroup.alpha;
+        while (t < fadeDuration)
+        {
+            t += Time.deltaTime;
+            _canvasGroup.alpha = Mathf.Lerp(startAlpha, 0f, t / fadeDuration);
+            yield return null;
+        }
+        _canvasGroup.alpha = 0f;
+        _hideCoroutine = null;
     }
 
     void RefreshText()
@@ -68,6 +103,9 @@ public class LogPanelUI : MonoBehaviour
     void BuildUI()
     {
         var rootRT = (RectTransform)transform;
+
+        _canvasGroup = gameObject.AddComponent<CanvasGroup>();
+        _canvasGroup.alpha = 0f; // niente in vista finché non arriva il primo evento
 
         var bgImg = gameObject.AddComponent<Image>();
         bgImg.sprite = RoundedRectSprite.Create();
